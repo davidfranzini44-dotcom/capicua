@@ -12,6 +12,7 @@ import { Avatar } from './common';
 import { Confetti } from './Confetti';
 import { handLayout } from './handLayout';
 import { LookPicker } from './LookPicker';
+import { arrowPath, OWNER_ARROW, ownerRole, type OwnerRole } from './owners';
 import { HandTile, TileBack } from './Tile';
 import { ListIcon, XIcon, ChatCircleDotsIcon, MicrophoneSlashIcon } from '@phosphor-icons/react';
 import './table.css';
@@ -74,6 +75,29 @@ function useAutoplayPref(): [boolean, (v: boolean) => void] {
   return [on, set];
 }
 
+/** "Show who played each tile" — off unless the player turns it on (per device). */
+function useShowOwnersPref(): [boolean, (v: boolean) => void] {
+  const [on, setOn] = useState(() => {
+    try { return localStorage.getItem('capicua.showOwners') === '1'; } catch { return false; }
+  });
+  const set = (v: boolean) => {
+    setOn(v);
+    try { localStorage.setItem('capicua.showOwners', v ? '1' : '0'); } catch { /* storage unavailable */ }
+  };
+  return [on, set];
+}
+
+/** Tall enough for full-size hand tiles? Short phones get smaller ones so the board has room. */
+function useViewportHeight() {
+  const [h, setH] = useState(() => window.innerHeight);
+  useEffect(() => {
+    const on = () => setH(window.innerHeight);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return h;
+}
+
 /** Opponent colors in free-for-all (by position around the table). */
 const FFA_COLORS = ['var(--us)', 'var(--them)', '#6fb7ff', '#c79bff'];
 
@@ -90,11 +114,13 @@ export function TableView(props: TableViewProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDialogElement>(null);
   const [autoplay, setAutoplay] = useAutoplayPref();
+  const [showOwners, setShowOwners] = useShowOwnersPref();
   const look = useTableLook();
   const [now, setNow] = useState(() => Date.now());
   const handRef = useRef<HTMLDivElement>(null);
   const handWidth = useWidth(handRef);
-  const hand = handLayout(myHand.length, handWidth);
+  const viewportHeight = useViewportHeight();
+  const hand = handLayout(myHand.length, handWidth, viewportHeight < 700 ? 46 : undefined);
 
   const mode = view.rules.mode;
   const n = playerCount(mode);
@@ -204,6 +230,9 @@ export function TableView(props: TableViewProps) {
     else status = t.yourTurn;
   } else status = away?.has(view.turn) ? `${t.serverPlaysFor} ${name(view.turn)}` : `${name(view.turn)} ${t.thinking}`;
 
+  /** Marker spot for a seat when "who played each tile" is on. */
+  const ownerOf = showOwners ? (s: Seat) => ownerRole(mode, mySeat, s) : null;
+
   const colorOf = (s: Seat) => (mode === 'ffa' ? FFA_COLORS[(s - mySeat + n) % n] : sideOf(mode, s) === mySide ? 'var(--us)' : 'var(--them)');
 
   const seatProps = (s: Seat) => ({
@@ -220,6 +249,7 @@ export function TableView(props: TableViewProps) {
     muted: mutedSeats?.has(s) ?? false,
     onTap: onSeatTap ? () => onSeatTap(s) : undefined,
     seconds: view.turn === s ? secondsLeft : null,
+    owner: ownerOf?.(s),
   });
 
   const myBubble = bubble(mySeat);
@@ -264,15 +294,19 @@ export function TableView(props: TableViewProps) {
         )}
 
         <div className="board-wrap">
-          <Board line={view.line} origin={view.origin} newestKey={newestKey} targets={targets} selected={pending} onPickSide={(side) => {
+          <Board line={view.line} origin={view.origin} newestKey={newestKey} targets={targets} selected={pending}
+            ownerOf={ownerOf} nameOf={name} onPickSide={(side) => {
             const move = myMoves.find((m) => m.type === 'play' && pending && sameTile(m.tile, pending) && m.side === side);
             if (move) play(move);
           }} />
         </div>
 
-        <div className={`self-seat ${speaking?.has(mySeat) ? 'speaking' : ''}`}>
-          <div className="avatar"><Avatar name={t.you} url={avatars?.[mySeat]} /></div>
-          <b>{t.you}</b>
+        <div className={`self-seat ${myTurn ? 'active' : ''} ${speaking?.has(mySeat) ? 'speaking' : ''}`}>
+          <div className="avatar">
+            <Avatar name={t.you} url={avatars?.[mySeat]} />
+            {myTurn && <TurnArrow />}
+          </div>
+          <b>{ownerOf && <OwnerChip role="me" />}{t.you}</b>
           {myBubble && <span className="self-bubble">{myBubble.text}</span>}
         </div>
 
@@ -327,6 +361,7 @@ export function TableView(props: TableViewProps) {
         <h2>{t.settings}</h2>
         <label>{t.language}<select value={lang} onChange={(e) => setLang(e.target.value as 'es' | 'en')}><option value="es">Español</option><option value="en">English</option></select></label>
         <label><span>{t.auto}<small>{t.autoplayHint}</small></span><input type="checkbox" checked={autoplay} onChange={(e) => setAutoplay(e.target.checked)} /></label>
+        <label><span>{t.showOwners}<small>{t.showOwnersHint}</small></span><input type="checkbox" checked={showOwners} onChange={(e) => setShowOwners(e.target.checked)} /></label>
         <LookPicker compact />
         <button className="btn primary" onClick={() => setMenuOpen(false)}>{copy.done}</button>
       </dialog>
@@ -398,12 +433,27 @@ function useWidth(ref: RefObject<HTMLElement | null>) {
   return width;
 }
 
+/** Gold arrow beside the avatar of whoever's turn it is, pointing at them (CSS flips it for the right seat). */
+function TurnArrow() {
+  return (
+    <span className="turn-arrow" aria-hidden>
+      <svg viewBox="0 0 16 16"><path d="M1 8 L8.5 1.5 V5.2 H15 V10.8 H8.5 V14.5 Z" /></svg>
+    </span>
+  );
+}
+
+/** The small marker a player's tiles carry on the board, shown by their name as a key. */
+function OwnerChip({ role }: { role: OwnerRole }) {
+  return <svg className={`owner-chip owner-${role}`} viewBox="-1 -1 2 2" aria-hidden><path d={arrowPath(0, 0, 0.85, OWNER_ARROW[role])} className="owner-mark" /></svg>;
+}
+
 function SeatBadge({
-  name, avatar, level, color, count, active, bubble, pos, partnerLabel, speaking, away, offline, muted, onTap, seconds,
+  name, avatar, level, color, count, active, bubble, pos, partnerLabel, speaking, away, offline, muted, onTap, seconds, owner,
 }: {
   name: string; avatar?: string | null; level: number | null; color: string; count: number; active: boolean;
   bubble: { text: string; chat: boolean } | null; pos: 'top' | 'left' | 'right'; partnerLabel?: string;
   speaking: boolean; away: boolean; offline: boolean; muted: boolean; onTap?: () => void; seconds: number | null;
+  owner?: OwnerRole;
 }) {
   const { t, lang } = useI18n();
   return (
@@ -414,12 +464,15 @@ function SeatBadge({
         {level != null && <span className="lvl">{level}</span>}
         {muted ? <span className="mic-dot">🔇</span> : speaking && <span className="mic-dot eq"><i /><i /><i /></span>}
         {active && seconds !== null && seconds <= 10 && <span className={`seat-timer ${seconds <= 5 ? 'hot' : ''}`}>{seconds}</span>}
+        {active && <TurnArrow />}
       </button>
       <div className="seat-info">
-        <span className="seat-name">{name}{partnerLabel && <small> · {partnerLabel}</small>}</span>
+        <span className="seat-name">{owner && <OwnerChip role={owner} />}{name}{partnerLabel && <small> · {partnerLabel}</small>}</span>
         {offline && <span className="offline-tag">📵 {t.offline}</span>}
-        <span className="backs" aria-hidden>{Array.from({ length: Math.min(count, 7) }, (_, i) => <TileBack key={i} />)}</span>
-        <small className="tile-count">{count} {lang === 'es' ? 'fichas' : 'tiles'}</small>
+        <span className="seat-tiles" aria-label={`${count} ${count === 1 ? (lang === 'es' ? 'ficha' : 'tile') : (lang === 'es' ? 'fichas' : 'tiles')}`}>
+          <span className="backs" aria-hidden>{Array.from({ length: Math.min(count, 7) }, (_, i) => <TileBack key={i} />)}</span>
+          <b className="tile-count" aria-hidden>{count}</b>
+        </span>
       </div>
       {bubble && <span className={`bubble ${bubble.chat ? 'chat' : ''}`}>{bubble.text}</span>}
     </div>

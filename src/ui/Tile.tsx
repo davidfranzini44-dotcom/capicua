@@ -1,3 +1,5 @@
+import { arrowPath, OWNER_ARROW, type OwnerRole } from './owners';
+
 const P = 0.26;
 const C = 0.5;
 const Q = 0.74;
@@ -23,10 +25,17 @@ function Half({ value, ox, oy, rotate }: { value: number; ox: number; oy: number
   );
 }
 
-/** A tile drawn in board units at (x, y): 2×1 when horizontal, 1×2 when vertical. */
+/**
+ * A tile drawn in board units at (x, y): 2×1 when horizontal, 1×2 when vertical.
+ * `owner` marks who played it: a thin colored ring inside the edge and a small
+ * arrow on the middle line (pips never sit there), pointing at that player.
+ */
 export function TileShape({
-  x, y, vertical, first, second, className,
-}: { x: number; y: number; vertical: boolean; first: number; second: number; className?: string }) {
+  x, y, vertical, first, second, className, owner, ownerName,
+}: {
+  x: number; y: number; vertical: boolean; first: number; second: number; className?: string;
+  owner?: OwnerRole; ownerName?: string;
+}) {
   const w = vertical ? 1 : 2;
   const h = vertical ? 2 : 1;
   const g = 0.035; // gap so neighbouring tiles read as separate pieces
@@ -41,6 +50,13 @@ export function TileShape({
       )}
       <Half value={first} ox={x} oy={y} rotate={!vertical} />
       <Half value={second} ox={vertical ? x : x + 1} oy={vertical ? y + 1 : y} rotate={!vertical} />
+      {owner && (
+        <g className={`owner owner-${owner}`}>
+          {ownerName && <title>{`${Math.min(first, second)}-${Math.max(first, second)} · ${ownerName}`}</title>}
+          <rect x={x + g + 0.045} y={y + g + 0.045} width={w - 2 * g - 0.09} height={h - 2 * g - 0.09} rx={0.1} className="owner-ring" />
+          <path d={arrowPath(x + w / 2, y + h / 2, 0.15, OWNER_ARROW[owner])} className="owner-mark" />
+        </g>
+      )}
     </g>
   );
 }

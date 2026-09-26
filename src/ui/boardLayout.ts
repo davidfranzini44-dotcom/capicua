@@ -24,8 +24,36 @@ export interface BoardLayout {
   viewBox: [number, number, number, number];
 }
 
-/** Half-width of a row before the snake turns. */
-const LIMIT = 5;
+/** Half-width of a row before the snake turns, unless the board asks for another. */
+export const DEFAULT_LIMIT = 5;
+
+/**
+ * Row length that makes chains as big as possible in a board of this size:
+ * short and wide boards want long rows, tall ones short rows. Scored on a
+ * short and a long sample chain; on a tie the longer row wins (fewer turns as
+ * the chain grows). Depends on the board size only, so the snake never
+ * reflows while a hand is being played.
+ */
+export function bestLimit(width: number, height: number): number {
+  if (!width || !height) return DEFAULT_LIMIT;
+  let best = DEFAULT_LIMIT;
+  let bestScore = 0;
+  for (let limit = 4; limit <= 10; limit++) {
+    const score = REFERENCE_CHAINS.reduce((sum, chain) => {
+      const [, , vw, vh] = layoutBoard(chain, chain.length >> 1, limit).viewBox;
+      return sum + Math.min(width / vw, height / vh);
+    }, 0);
+    if (score >= bestScore * 0.99) {
+      best = limit;
+      bestScore = Math.max(score, bestScore);
+    }
+  }
+  return best;
+}
+
+/** Chains without doubles, played out from the middle: what bestLimit sizes the board for. */
+const referenceChain = (n: number): Placed[] => Array.from({ length: n }, (_, i) => ({ a: i % 6, b: (i + 1) % 6, seat: (i % 4) as Seat }));
+const REFERENCE_CHAINS = [referenceChain(14), referenceChain(22)];
 
 const keyOf = (p: Placed) => `${Math.min(p.a, p.b)}-${Math.max(p.a, p.b)}`;
 
@@ -34,12 +62,12 @@ const keyOf = (p: Placed) => `${Math.min(p.a, p.b)}-${Math.max(p.a, p.b)}`;
  * right arm running right then turning down, the left arm running left then
  * turning up. Doubles sit crosswise, except on a corner.
  */
-export function layoutBoard(line: Placed[], origin: number): BoardLayout {
+export function layoutBoard(line: Placed[], origin: number, limit = DEFAULT_LIMIT): BoardLayout {
   const tiles: LaidTile[] = [];
   const ends: ArmEnd[] = [];
 
   if (line.length === 0) {
-    return { tiles, ends, viewBox: [-LIMIT - 1.5, -3.5, 2 * LIMIT + 3, 7] };
+    return { tiles, ends, viewBox: [-limit - 1.5, -3.5, 2 * limit + 3, 7] };
   }
 
   const center = line[origin];
@@ -52,8 +80,8 @@ export function layoutBoard(line: Placed[], origin: number): BoardLayout {
   const right = line.slice(origin + 1).map((p) => ({ near: p.a, far: p.b, p }));
   const left = line.slice(0, origin).reverse().map((p) => ({ near: p.b, far: p.a, p }));
 
-  layArm(right, half, 'E', 'S', 'R', tiles, ends);
-  layArm(left, -half, 'W', 'N', 'L', tiles, ends);
+  layArm(right, half, 'E', 'S', 'R', tiles, ends, limit);
+  layArm(left, -half, 'W', 'N', 'L', tiles, ends, limit);
 
   let minX = Infinity;
   let maxX = -Infinity;
@@ -90,6 +118,7 @@ function layArm(
   side: 'L' | 'R',
   out: LaidTile[],
   ends: ArmEnd[],
+  limit: number,
 ) {
   let cx = startX;
   let cy = 0;
@@ -102,7 +131,7 @@ function layArm(
     const len = crosswise ? 1 : 2;
     const nx = d === 'E' ? cx + len : cx - len;
 
-    if (!justTurned && Math.abs(nx) > LIMIT) {
+    if (!justTurned && Math.abs(nx) > limit) {
       // Corner: the tile stands upright and the snake heads back the other way.
       out.push({
         key: keyOf(p),

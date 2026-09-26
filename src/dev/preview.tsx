@@ -26,6 +26,10 @@ import { LookContext, type LookState } from '../lib/look';
 import { SocialContext, type Friend, type Invite, type Social } from '../lib/social';
 import { FriendsSection, InviteFriendsSheet, InviteToast, QuickInviteSheet } from '../ui/Friends';
 import { LookPicker } from '../ui/LookPicker';
+import { TileShape } from '../ui/Tile';
+import { lookVars } from '../lib/look';
+import { feltById, tilesById } from '../../supabase/functions/_shared/cosmetics.ts';
+import '../ui/table.css';
 
 /** A stand-in profile photo (a coloured face) so avatar layouts can be checked offline. */
 const face = (bg: string) => `data:image/svg+xml,${encodeURIComponent(
@@ -282,6 +286,44 @@ function Screen({ s }: { s: string }) {
     });
     return <Pregame r={r} uid="me" profile={profile} voice={null} onLeave={noop} />;
   }
+  if (s.startsWith('board-')) {
+    // board-<mode>-<moves>[-t<turn seat>], e.g. board-2v2-24, board-ffa-18-t3: a game N moves in.
+    const [, m = '2v2', moves = '16', turn] = s.split('-');
+    const mode = m as '1v1' | '2v2' | 'ffa';
+    let g = newGame(() => 0.37, publicRules(mode));
+    for (let i = 0; i < Number(moves) && !g.handResult; i++) g = applyMove(g, forcedMove(g, g.turn) ?? chooseMove(g, g.turn, () => 0.5));
+    const view = publicState(g);
+    if (turn) view.turn = Number(turn.slice(1)) as Seat;
+    const names = mode === '1v1' ? ['', 'Yokasta'] : ['', 'Yokasta', 'Robert', 'Kirsy'];
+    return (
+      <TableView view={view} myHand={g.hands[0]} mySeat={0} names={names} onPlay={noop} onNextHand={noop} onExit={noop}
+        chat={{}} onChat={noop} endActions={null} turnDeadline={Date.now() + 12_000}
+        avatars={mode === '1v1' ? [profile.avatar_url, face('#c0487a')] : [profile.avatar_url, face('#c0487a'), null, face('#2d8a5f')]} />
+    );
+  }
+  if (s === 'markers') {
+    // Close-up of every ownership marker on the busiest tiles, in three domino styles.
+    const roles = ['me', 'partner', 'top', 'left', 'right'] as const;
+    const styles = ['marfil', 'noche', 'latino'];
+    return (
+      <div style={{ padding: 12, display: 'grid', gap: 12 }}>
+        {styles.map((st) => (
+          <PreviewLook key={st} tiles={st}>
+            <div className="mode-2v2" style={{ ...lookVars(feltById('verde'), tilesById(st)), background: '#0b4934', borderRadius: 12, padding: 8, height: 'auto', minHeight: 0 }}>
+              <svg viewBox="-0.2 -0.2 16.4 2.4" style={{ width: '100%', display: 'block' }}>
+                {roles.map((r, i) => (
+                  <g key={r}>
+                    <TileShape x={i * 3.2} y={0.5} vertical={false} first={6} second={5} owner={r} ownerName={r} className="placed" />
+                    <TileShape x={i * 3.2 + 2.1} y={0} vertical first={6} second={6} owner={r} className="placed" />
+                  </g>
+                ))}
+              </svg>
+            </div>
+          </PreviewLook>
+        ))}
+      </div>
+    );
+  }
   if (s === 'one-move') {
     // My turn with exactly one legal tile; the server never answers (onPlay only counts), so a
     // tap followed by autoplay must still send just one move.
@@ -337,6 +379,37 @@ function Screen({ s }: { s: string }) {
 
 import { ChestArt } from '../ui/Chests';
 const ChestArtPreview = () => <ChestArt kind="silver" className="bounce-in" />;
+
+/**
+ * Layout check for the table screen, run from the browser console / automation:
+ * nothing may cover the domino chain or step into the board area, and nothing may scroll sideways.
+ */
+(window as unknown as { __tableCheck: () => unknown }).__tableCheck = () => {
+  const R = (e: Element) => e.getBoundingClientRect();
+  const hit = (a: DOMRect, b: { left: number; right: number; top: number; bottom: number }) =>
+    a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+  const board = R(document.querySelector('.board-wrap')!);
+  const tiles = [...document.querySelectorAll('.board .placed')].map(R);
+  const chain = tiles.length
+    ? { left: Math.min(...tiles.map((t) => t.left)), top: Math.min(...tiles.map((t) => t.top)), right: Math.max(...tiles.map((t) => t.right)), bottom: Math.max(...tiles.map((t) => t.bottom)) }
+    : null;
+  const others: [string, DOMRect][] = [
+    ...[...document.querySelectorAll('.seat')].map((e) => [`seat-${e.className.match(/seat-(top|left|right)/)?.[1]}`, R(e)] as [string, DOMRect]),
+    ['self-seat', R(document.querySelector('.self-seat')!)],
+    ...[...document.querySelectorAll('.bubble, .self-bubble, .turn-arrow, .toast')].map((e) => [e.classList[0], R(e)] as [string, DOMRect]),
+  ];
+  const screen = document.querySelector('.table-screen')!;
+  return {
+    size: `${innerWidth}x${innerHeight}`,
+    sideScroll: document.documentElement.scrollWidth > innerWidth || screen.scrollWidth > screen.clientWidth,
+    board: `${Math.round(board.width)}x${Math.round(board.height)}`,
+    tilePx: tiles.length ? Math.round(Math.min(...tiles.map((t) => Math.min(t.width, t.height)))) : null,
+    chainInsideBoard: !chain || (chain.left >= board.left - 1 && chain.right <= board.right + 1 && chain.top >= board.top - 1 && chain.bottom <= board.bottom + 1),
+    coversChain: others.filter(([, r]) => chain && hit(r, chain)).map(([n]) => n),
+    inBoardArea: others.filter(([, r]) => hit(r, board)).map(([n]) => n),
+    arrowBeside: [...document.querySelectorAll('.turn-arrow')].map((a) => a.closest('.seat, .self-seat')?.className.match(/seat-(top|left|right)|self-seat/)?.[0]),
+  };
+};
 
 function App() {
   const [lang, setLang] = useState<Lang>('es');

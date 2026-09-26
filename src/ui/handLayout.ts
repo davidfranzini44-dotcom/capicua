@@ -13,13 +13,13 @@ const TILE_RATIO = 2.1 / 1.04;  // height / width of a standing tile (see HandTi
  * One row while tiles stay comfortably big; otherwise the fewest rows that
  * keep them big, never taller than MAX_HEIGHT.
  */
-export function handLayout(n: number, width: number): { perRow: number; tile: number; rows: number } {
+export function handLayout(n: number, width: number, maxTile = MAX_TILE): { perRow: number; tile: number; rows: number } {
   const count = Math.max(n, 1);
   let best = { perRow: count, tile: 0, rows: 1 };
   for (let rows = 1; rows <= 3; rows++) {
     const perRow = Math.ceil(count / rows);
     const tile = Math.floor(Math.min(
-      MAX_TILE,
+      maxTile,
       (width - (perRow - 1) * HAND_GAP) / perRow,
       (MAX_HEIGHT - (rows - 1) * HAND_ROW_GAP) / rows / TILE_RATIO,
     ));
