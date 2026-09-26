@@ -1,4 +1,4 @@
--- Capicúa Arcade: 2v2, first team to three hands, two power uses per player.
+-- Capicúa Arcade: 2v2, first team to three hands, powers earned in play (up to two held).
 -- The ruleset lives in the room's and game's rules (rules.ruleset = 'arcade';
 -- anything without it is Traditional). This migration keeps the two apart:
 --   * the matchmaking queue knows which one you're waiting for;
