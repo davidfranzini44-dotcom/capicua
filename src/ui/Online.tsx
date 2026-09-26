@@ -778,7 +778,7 @@ export function CustomForm({ profile, guest = false, onBack, onCreated }: { prof
   const { t } = useI18n();
   const errText = useErrorText();
   const [c, setC] = useState<CustomSettings>({
-    ruleset: 'traditional', mode: '2v2', stake: guest ? 0 : 500, target: 200, capicuaBonus: true, paseCorridoBonus: true,
+    ruleset: 'traditional', mode: '2v2', stake: guest ? 0 : 500, target: 200, capicuaBonus: true, paseCorridoBonus: true, paseSalidaBonus: true,
     turnSeconds: TURN_SECONDS.customDefault, visibility: 'private',
   });
   const arcade = c.ruleset === 'arcade';
@@ -835,6 +835,11 @@ export function CustomForm({ profile, guest = false, onBack, onCreated }: { prof
           <button className={c.capicuaBonus ? 'on' : ''} onClick={() => set('capicuaBonus', !c.capicuaBonus)}>{c.capicuaBonus ? '✓ ' : ''}{t.capicuaBonusLbl}</button>
           <button className={c.paseCorridoBonus ? 'on' : ''} onClick={() => set('paseCorridoBonus', !c.paseCorridoBonus)}>{c.paseCorridoBonus ? '✓ ' : ''}{t.paseBonusLbl}</button>
         </div>
+        {c.mode === '2v2' && (
+          <div className="seg">
+            <button className={c.paseSalidaBonus ? 'on' : ''} onClick={() => set('paseSalidaBonus', !c.paseSalidaBonus)}>{c.paseSalidaBonus ? '✓ ' : ''}{t.paseSalidaLbl}</button>
+          </div>
+        )}
         </>}
         <label className="label">{t.turnTimerLbl}</label>
         <Seg value={c.turnSeconds} options={[[15, '15s'], [25, '25s'], [40, '40s']]} onChange={(v) => set('turnSeconds', v)} />

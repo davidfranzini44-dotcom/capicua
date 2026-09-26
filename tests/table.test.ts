@@ -3,7 +3,9 @@ import { CLASSIC_DR, newGame, type Mode, type Seat } from '../supabase/functions
 import {
   autoAction, botsAllowed, chestReward, CHESTS, effectiveStake, packFor, rollChest, rushCost, salaFor, gameXp, levelFromXp, levelTitle, minHumans, needsReadyCheck, payouts, publicState, roomCode,
   sideBetMultiplier, sideBetWon, TIMING, validateCustom, voiceRoomFor, xpForLevel, type SeatInfo,
+  customRules, publicRules,
 } from '../supabase/functions/_shared/table.ts';
+import { tournamentRules } from '../supabase/functions/_shared/tournament.ts';
 
 const human = (seat: Seat, id: string): SeatInfo => ({ seat, userId: id, name: id, isBot: false, away: false });
 const bot = (seat: Seat): SeatInfo => ({ seat, userId: null, name: 'bot', isBot: true, away: false });
@@ -152,6 +154,19 @@ describe('levels & matchmaking', () => {
     expect(validateCustom({ mode: '2v2', stake: -1, target: 150, turnSeconds: 25, visibility: 'private' })).toBeNull();
     expect(validateCustom({ mode: '3v3' as Mode, stake: 0, target: 100, turnSeconds: 25, visibility: 'public' })).toBeNull();
     expect(validateCustom({ mode: '1v1', stake: 0, target: 120, turnSeconds: 25, visibility: 'public' })).toBeNull();
+  });
+
+  it('pase de salida: +30 in 2v2 only, and private hosts can turn it off', () => {
+    expect(publicRules('2v2').paseSalidaBonus).toBe(30);
+    expect(publicRules('1v1').paseSalidaBonus).toBe(0);
+    expect(publicRules('ffa').paseSalidaBonus).toBe(0);
+    expect(tournamentRules({ mode: '2v2', target: 150 }).paseSalidaBonus).toBe(30);
+    expect(tournamentRules({ mode: '1v1', target: 150 }).paseSalidaBonus).toBe(0);
+    const base = { stake: 0, target: 150, turnSeconds: 25, visibility: 'private' as const };
+    expect(customRules(validateCustom({ ...base, mode: '2v2' })!).paseSalidaBonus).toBe(30); // older apps don't send it: on
+    expect(customRules(validateCustom({ ...base, mode: '2v2', paseSalidaBonus: false })!).paseSalidaBonus).toBe(0);
+    expect(customRules(validateCustom({ ...base, mode: '1v1', paseSalidaBonus: true })!).paseSalidaBonus).toBe(0);
+    expect(customRules(validateCustom({ ...base, ruleset: 'arcade' })!).paseSalidaBonus).toBe(0);
   });
 
   it('voice: full table in custom, team-only in public 2v2, none in public 1v1/ffa', () => {

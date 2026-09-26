@@ -81,6 +81,51 @@ describe('2v2 (classic)', () => {
   });
 });
 
+describe('pase de salida (2v2)', () => {
+  // Seat 0 opens with 1-3; seat 1 holds no 1 or 3.
+  const opening = (seat2: Tile[], seat3: Tile[], rules?: Rules) =>
+    stateWith([[[1, 3], [2, 2]], [[5, 5], [6, 6]], seat2, seat3], [], 0, rules ? { rules } : {});
+
+  it('the next player can\'t follow the first tile: +30 to the team that opened', () => {
+    let u = applyMove(opening([[1, 1]], [[4, 4]]), { type: 'play', tile: [1, 3], side: 'R' });
+    u = applyMove(u, { type: 'pass' });
+    expect(u.scores).toEqual([30, 0]);
+    expect(u.events.at(-1)).toEqual({ kind: 'paseSalida', seat: 0, points: 30 });
+    expect(u.turn).toBe(2);
+  });
+
+  it('only that first pass counts: the partner passing too, or a pass later in the hand, adds nothing', () => {
+    let u = applyMove(opening([[5, 6], [4, 5]], [[1, 4], [0, 0]]), { type: 'play', tile: [1, 3], side: 'R' });
+    u = applyMove(u, { type: 'pass' }); // seat 1: +30
+    u = applyMove(u, { type: 'pass' }); // seat 2, the opener's partner
+    expect(u.scores).toEqual([30, 0]);
+    u = applyMove(u, { type: 'play', tile: [1, 4], side: 'L' }); // seat 3: ends 4 and 3
+    u = applyMove(u, { type: 'pass' }); // seat 0 has 2-2, can't follow 4 or 3
+    expect(u.scores).toEqual([30, 0]);
+    expect(u.events.filter((e) => e.kind === 'paseSalida')).toHaveLength(1);
+  });
+
+  it('if everyone passes back to the opener, both count: 30 + 25', () => {
+    // The opener keeps a 3-4 to follow up with, so the hand isn't blocked.
+    const s = stateWith([[[1, 3], [3, 4]], [[5, 5], [6, 6]], [[5, 6]], [[4, 6]]], [], 0);
+    let u = applyMove(s, { type: 'play', tile: [1, 3], side: 'R' });
+    for (let i = 0; i < 3; i++) u = applyMove(u, { type: 'pass' });
+    expect(u.turn).toBe(0);
+    expect(u.scores).toEqual([55, 0]);
+    expect(u.events.filter((e) => e.kind === 'paseSalida' || e.kind === 'paseCorrido').map((e) => e.kind)).toEqual(['paseSalida', 'paseCorrido']);
+  });
+
+  it('off when the table turned it off, and on tables made before the rule existed', () => {
+    const { paseSalidaBonus: _, ...older } = CLASSIC_DR;
+    for (const rules of [{ ...CLASSIC_DR, paseSalidaBonus: 0 }, older]) {
+      let u = applyMove(opening([[1, 1]], [[4, 4]], rules), { type: 'play', tile: [1, 3], side: 'R' });
+      u = applyMove(u, { type: 'pass' });
+      expect(u.scores).toEqual([0, 0]);
+      expect(u.events.some((e) => e.kind === 'paseSalida')).toBe(false);
+    }
+  });
+});
+
 describe('1v1 with robar', () => {
   it('deals 7 each and leaves 14 in the pile; the highest double opens', () => {
     const g = newGame(seeded(3), rulesOf('1v1'));

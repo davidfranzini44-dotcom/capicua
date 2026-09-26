@@ -55,7 +55,7 @@ export function PracticeTable({ mode, ruleset = 'traditional', onExit }: { mode:
     const fresh = game.events.slice(seen.current.events);
     seen.current.events = game.events.length;
     for (const e of fresh) {
-      if (e.kind === 'paseCorrido') {
+      if (e.kind === 'paseCorrido' || e.kind === 'paseSalida') {
         if (e.seat !== ME) say(e.seat, 'nollevas', 400);
         else if (rivals.length) say(pick(rivals), 'aymadre', 500);
       } else if (e.kind === 'pass' && e.seat === ME && rivals.length && Math.random() < 0.3) {

@@ -55,6 +55,15 @@ describe('table sounds and bonus pop-ups', () => {
     expect(fx.moves).toEqual([{ sound: 'knock', seat: 0 }]);
   });
 
+  it('pops up a pase de salida for the team that opened, with the pase "ta-da"', () => {
+    const before = view({ events: [play(0)] });
+    const after = view({ events: [play(0), pass(1), { kind: 'paseSalida', seat: 0, points: 30 }] });
+    const fx = tableFx(snapshotOf(before), after, 1);
+    expect(fx.fanfare).toBe('paseCorrido');
+    expect(fx.bonus).toMatchObject({ kind: 'paseSalida', seat: 0, points: 30, key: 'ps:1:2' });
+    expect(fx.moves).toEqual([{ sound: 'knock', seat: 1 }]);
+  });
+
   it('pops up a capicúa when the hand ends on one, once', () => {
     const before = view({ events: [play(0)] });
     const after = view({ events: [play(0), play(1)], handResult: result({ winnerSeat: 1, side: 1, capicua: true, bonus: 25 }) });

@@ -3,7 +3,7 @@
 // and the browser draws the bracket from the same numbers.
 
 import type { Mode, Rules } from './domino.ts';
-import { TARGETS } from './table.ts';
+import { paseSalidaFor, TARGETS } from './table.ts';
 
 export type TournamentMode = Extract<Mode, '1v1' | '2v2'>;
 export const TOURNAMENT_MODES: TournamentMode[] = ['1v1', '2v2'];
@@ -50,7 +50,7 @@ export function validateTournament(s: Partial<TournamentSettings>): TournamentSe
 }
 
 export const tournamentRules = (s: Pick<TournamentSettings, 'mode' | 'target'>): Rules =>
-  ({ mode: s.mode, target: s.target, capicuaBonus: 25, paseCorridoBonus: 25 });
+  ({ mode: s.mode, target: s.target, capicuaBonus: 25, paseCorridoBonus: 25, paseSalidaBonus: paseSalidaFor(s.mode) });
 
 /** Smallest power of two that fits every entry: the first round's slot count. */
 export function bracketSize(entries: number): number {

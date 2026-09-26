@@ -299,7 +299,7 @@ export function TableView(props: TableViewProps) {
   const newestPlay = [...view.events].reverse().find((e) => e.kind === 'play') as Extract<GameEvent, { kind: 'play' }> | undefined;
   const newestKey = newestPlay ? `${newestPlay.tile[0]}-${newestPlay.tile[1]}` : null;
 
-  const recent = view.events.filter((e) => e.kind !== 'paseCorrido').slice(-3);
+  const recent = view.events.filter((e) => e.kind !== 'paseCorrido' && e.kind !== 'paseSalida').slice(-3);
   // A power stays announced by its player until three more things happen at the table.
   const recentPowers = view.events.slice(-4).filter((e): e is Extract<GameEvent, { kind: 'power' }> => e.kind === 'power');
   const recentEarns = view.events.slice(-3).filter((e): e is Extract<GameEvent, { kind: 'earn' }> => e.kind === 'earn' && e.reason === 'block');
@@ -414,7 +414,7 @@ export function TableView(props: TableViewProps) {
         {bonus && (
           <BonusPop
             key={bonus.key}
-            title={bonus.kind === 'capicua' ? t.capicua : t.paseCorrido}
+            title={bonus.kind === 'capicua' ? t.capicua : bonus.kind === 'paseSalida' ? t.paseSalida : t.paseCorrido}
             points={bonus.points}
             who={name(bonus.seat)}
             ours={sideOf(mode, bonus.seat) === mySide}
@@ -600,7 +600,7 @@ function useWidth(ref: RefObject<HTMLElement | null>) {
 }
 
 /**
- * Extra points (capicúa, pase corrido) celebrated over the board. It never
+ * Extra points (capicúa, pase corrido, pase de salida) celebrated over the board. It never
  * takes a tap (the game goes on underneath) and leaves on its own.
  */
 function BonusPop({ title, points, who, ours, onDone }: {

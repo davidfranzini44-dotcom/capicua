@@ -187,6 +187,7 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
           <span>⏱ {room.turn_seconds}s</span>
           {room.rules.ruleset !== 'arcade' && room.rules.capicuaBonus === 0 && <span className="off">{t.capicuaBonusLbl}</span>}
           {room.rules.ruleset !== 'arcade' && room.rules.paseCorridoBonus === 0 && <span className="off">{t.paseBonusLbl}</span>}
+          {room.rules.ruleset !== 'arcade' && mode === '2v2' && !room.rules.paseSalidaBonus && <span className="off">{t.paseSalidaLbl}</span>}
         </div>
       </header>
 

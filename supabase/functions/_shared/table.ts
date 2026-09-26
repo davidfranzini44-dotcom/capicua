@@ -4,7 +4,7 @@
 
 import { chooseArcadeMove, chooseMove } from './bot.ts';
 import {
-  arcadeRules, canRescue, forcedMove, isPollona, legalMoves, playerCount, sideOf, standings,
+  arcadeRules, canRescue, forcedMove, isPollona, legalMoves, PASE_SALIDA, playerCount, sideOf, standings,
   type GameState, type Mode, type Move, type Rules, type Ruleset, type Seat,
 } from './domino.ts';
 
@@ -101,7 +101,11 @@ export const MIN_PEOPLE_FOR_BOT_FILL = 2;
 export const MODES: Mode[] = ['1v1', '2v2', 'ffa'];
 export const TARGETS = [100, 150, 200] as const;
 
-export const publicRules = (mode: Mode): Rules => ({ mode, target: 100, capicuaBonus: 25, paseCorridoBonus: 25 });
+/** Pase de salida is a 2v2 rule: elsewhere the next player draws or plays for themselves. */
+export const paseSalidaFor = (mode: Mode, on = true) => (on && mode === '2v2' ? PASE_SALIDA : 0);
+
+export const publicRules = (mode: Mode): Rules =>
+  ({ mode, target: 100, capicuaBonus: 25, paseCorridoBonus: 25, paseSalidaBonus: paseSalidaFor(mode) });
 
 /** Arcade is free, 2v2 only: no stakes, side bets or tournaments (yet). */
 export const RULESETS: Ruleset[] = ['traditional', 'arcade'];
@@ -119,6 +123,8 @@ export interface CustomSettings {
   target: number;
   capicuaBonus: boolean;
   paseCorridoBonus: boolean;
+  /** Only means something in 2v2. */
+  paseSalidaBonus: boolean;
   turnSeconds: number;
   visibility: 'public' | 'private';
 }
@@ -131,7 +137,7 @@ export function validateCustom(c: Partial<CustomSettings>): CustomSettings | nul
     if (c.visibility !== 'public' && c.visibility !== 'private') return null;
     return {
       ruleset: 'arcade', mode: '2v2', stake: 0, target: arcadeRules().target, turnSeconds: c.turnSeconds!, visibility: c.visibility,
-      capicuaBonus: false, paseCorridoBonus: false,
+      capicuaBonus: false, paseCorridoBonus: false, paseSalidaBonus: false,
     };
   }
   if (c.ruleset !== undefined && c.ruleset !== 'traditional') return null;
@@ -143,6 +149,7 @@ export function validateCustom(c: Partial<CustomSettings>): CustomSettings | nul
   return {
     mode: c.mode, stake: c.stake!, target: c.target!, turnSeconds: c.turnSeconds!, visibility: c.visibility,
     capicuaBonus: c.capicuaBonus !== false, paseCorridoBonus: c.paseCorridoBonus !== false,
+    paseSalidaBonus: c.mode === '2v2' && c.paseSalidaBonus !== false,
   };
 }
 
@@ -150,6 +157,7 @@ export const customRules = (c: CustomSettings): Rules => c.ruleset === 'arcade' 
   mode: c.mode, target: c.target,
   capicuaBonus: c.capicuaBonus ? 25 : 0,
   paseCorridoBonus: c.paseCorridoBonus ? 25 : 0,
+  paseSalidaBonus: paseSalidaFor(c.mode, c.paseSalidaBonus),
 });
 
 // ---------- chips ----------
@@ -264,15 +272,16 @@ export const SIDE_BET_KINDS: SideBetKind[] = ['cap1', 'cap2', 'pollona'];
 
 /**
  * Chance that YOUR side hits each bet, from 4,000 simulated bot games per
- * mode/target (2026-09-25). Re-tune from real results once people play.
+ * mode/target (2026-09-25; 2v2 re-run with pase de salida +30 on 2026-09-26,
+ * which makes games shorter). Re-tune from real results once people play.
  */
 const SIDE_BET_ODDS: Record<string, Record<SideBetKind, number>> = {
   '1v1@100': { cap1: 0.3068, cap2: 0.0367, pollona: 0.0757 },
   '1v1@150': { cap1: 0.4125, cap2: 0.086, pollona: 0.0267 },
   '1v1@200': { cap1: 0.489, cap2: 0.1323, pollona: 0.014 },
-  '2v2@100': { cap1: 0.2395, cap2: 0.0225, pollona: 0.137 },
-  '2v2@150': { cap1: 0.3435, cap2: 0.0587, pollona: 0.068 },
-  '2v2@200': { cap1: 0.4377, cap2: 0.1017, pollona: 0.0293 },
+  '2v2@100': { cap1: 0.2308, cap2: 0.0185, pollona: 0.1465 },
+  '2v2@150': { cap1: 0.3093, cap2: 0.0455, pollona: 0.0828 },
+  '2v2@200': { cap1: 0.3942, cap2: 0.078, pollona: 0.0382 },
   'ffa@100': { cap1: 0.142, cap2: 0.0107, pollona: 0.0305 },
   'ffa@150': { cap1: 0.2185, cap2: 0.0285, pollona: 0.008 },
   'ffa@200': { cap1: 0.3085, cap2: 0.0597, pollona: 0.0047 },

@@ -1,4 +1,4 @@
-// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report|fx|fx-win|fx-lose|fx-sounds
+// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report|fx|fx-win|fx-lose|fx-salida|fx-sounds
 // Renders the online screens with sample data so layouts can be checked without a backend.
 import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -158,6 +158,29 @@ function FxDemo({ end }: { end: 'win' | 'lose' | null }) {
     <TableView view={view} myHand={base.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']}
       onPlay={() => {}} onNextHand={() => {}} onExit={() => {}} chat={{}} onChat={() => {}}
       endActions={<button className="btn primary">Otra partida</button>} />
+  );
+}
+
+/** A real opening: I lay the doble seis, the next player has no six → pase de salida (+30) after 1.2 s. */
+function SalidaDemo() {
+  const [before, after] = useMemo(() => {
+    for (let i = 0; i < 5000; i++) {
+      const g = newGame(Math.random, publicRules('2v2'));
+      if (g.mano !== 0 || g.hands[1].some((t) => t[0] === 6 || t[1] === 6)) continue;
+      const b = applyMove(g, legalMoves(g, 0)[0]);
+      return [b, applyMove(b, { type: 'pass' })];
+    }
+    throw new Error('no deal found');
+  }, []);
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const id = setTimeout(() => setStep(1), 1200);
+    return () => clearTimeout(id);
+  }, []);
+  const g = step ? after : before;
+  return (
+    <TableView view={publicState(g)} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']}
+      onPlay={() => {}} onNextHand={() => {}} onExit={() => {}} chat={{}} onChat={() => {}} endActions={null} />
   );
 }
 
@@ -483,6 +506,7 @@ function Screen({ s }: { s: string }) {
     return <Pregame r={r} uid="me" profile={profile} voice={null} onLeave={noop} />;
   }
   if (s === 'fx' || s === 'fx-win' || s === 'fx-lose') return <FxDemo end={s === 'fx' ? null : s === 'fx-win' ? 'win' : 'lose'} />;
+  if (s === 'fx-salida') return <SalidaDemo />;
   if (s === 'report') {
     const who = { id: 'u-Robert', display_name: 'Robert', xp: 1_100, games: 88, wins: 41, capicuas: 12, pollonas: 1, biggest_pot: 3_000, tournaments_won: 0, avatar_url: null };
     return (

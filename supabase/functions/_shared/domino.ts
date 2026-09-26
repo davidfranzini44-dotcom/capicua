@@ -43,6 +43,8 @@ export type GameEvent =
   | { kind: 'pass'; seat: Seat }
   | { kind: 'draw'; seat: Seat }
   | { kind: 'paseCorrido'; seat: Seat; points: number }
+  /** The player right after a hand's first tile couldn't follow it; `seat` opened (their side scores). */
+  | { kind: 'paseSalida'; seat: Seat; points: number }
   /** An Arcade power. Never carries the values of fichas that change hands. */
   | { kind: 'power'; seat: Seat; power: Power; target?: Seat; side?: Side; tile?: Tile; from?: number; to?: number }
   /** Arcade: a power earned — `block` (my play left the next rival without a play) or `comeback` (my team lost a hand). */
@@ -70,11 +72,16 @@ export interface Rules {
   target: number;
   capicuaBonus: number;
   paseCorridoBonus: number;
+  /** Pase de salida (2v2): the next player can't follow a hand's first tile. Missing on older tables = off. */
+  paseSalidaBonus?: number;
   /** Missing on everything created before Arcade existed: those are traditional. */
   ruleset?: Ruleset;
 }
 
-export const CLASSIC_DR: Rules = { mode: '2v2', target: 200, capicuaBonus: 25, paseCorridoBonus: 25 };
+/** Points for a pase de salida, where it's played (2v2 only). */
+export const PASE_SALIDA = 30;
+
+export const CLASSIC_DR: Rules = { mode: '2v2', target: 200, capicuaBonus: 25, paseCorridoBonus: 25, paseSalidaBonus: PASE_SALIDA };
 
 /** Arcade's public, per-match power state. */
 export interface ArcadeState {
@@ -363,6 +370,12 @@ export function applyMove(prev: GameState, move: Move, rng: Rng = Math.random): 
       if (s.arcade.passes >= ARCADE.passesToBlock) return finishTranque(s);
       return s;
     }
+    // Pase de salida: the first player after the hand's opening tile can't follow it.
+    const salida = s.rules.paseSalidaBonus ?? 0;
+    if (salida > 0 && s.line.length === 1 && s.passesSinceLastPlay === 1 && s.lastPlayer !== null) {
+      s.scores[sideOf(mode, s.lastPlayer)] += salida;
+      s.events.push({ kind: 'paseSalida', seat: s.lastPlayer, points: salida });
+    }
     s.turn = nextSeat(s, seat);
     // Everyone else passed and it's back to the player who last played.
     if (s.passesSinceLastPlay === playerCount(mode) - 1 && s.turn === s.lastPlayer) {
@@ -458,7 +471,7 @@ export const ARCADE = {
 } as const;
 
 /** Arcade rules: 2v2, first team to three hands. No bonus points. */
-export const arcadeRules = (): Rules => ({ mode: '2v2', target: ARCADE.stars, capicuaBonus: 0, paseCorridoBonus: 0, ruleset: 'arcade' });
+export const arcadeRules = (): Rules => ({ mode: '2v2', target: ARCADE.stars, capicuaBonus: 0, paseCorridoBonus: 0, paseSalidaBonus: 0, ruleset: 'arcade' });
 
 /** Why a power can't be used right now (null = it can). */
 export type PowerBlock =
