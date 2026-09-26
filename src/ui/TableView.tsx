@@ -61,7 +61,7 @@ export interface TableViewProps {
 /** Autoplay when only one tile can be played — a per-device preference. */
 function useAutoplayPref(): [boolean, (v: boolean) => void] {
   const [on, setOn] = useState(() => {
-    try { return localStorage.getItem('capicua.autoplay') === '1'; } catch { return false; }
+    try { return localStorage.getItem('capicua.autoplay') !== '0'; } catch { return true; } // on unless turned off
   });
   const set = (v: boolean) => {
     setOn(v);
@@ -153,7 +153,9 @@ export function TableView(props: TableViewProps) {
   const onTileTap = (tile: Tile) => {
     const options = myMoves.filter((m): m is Extract<Move, { type: 'play' }> => m.type === 'play' && sameTile(m.tile, tile));
     if (options.length === 0) return;
-    setPending(pending && sameTile(pending, tile) ? null : tile);
+    // Fits only one end: play it straight away. Fits both: pick the end on the board.
+    if (options.length === 1) play(options[0]);
+    else setPending(pending && sameTile(pending, tile) ? null : tile);
   };
 
   const targets = pending
