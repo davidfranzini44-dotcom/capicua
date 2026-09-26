@@ -866,7 +866,8 @@ export const handlers = {
         // Cambio doesn't end the turn, and it doesn't restart the clock either.
         if (move.type === 'cambio' && game.auto_delay_ms !== null) {
           const natural = autoDelay(next, seats.map(toSeatInfo), game.turn_ms);
-          delayMs = natural === game.turn_ms ? Math.max(1500, game.auto_delay_ms - elapsed) : natural ?? undefined;
+          // last_move_at has microseconds, so `elapsed` is fractional; the column is an integer.
+          delayMs = natural === game.turn_ms ? Math.max(1500, Math.round(game.auto_delay_ms - elapsed)) : natural ?? undefined;
         }
       }
       // Playing a tile means you're back: the server stops playing for you.
