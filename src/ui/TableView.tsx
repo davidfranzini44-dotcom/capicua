@@ -73,6 +73,8 @@ export interface TableViewProps {
   watching?: { name: string; onLeave: () => void };
   /** Friends watching this table (the players can always see who). */
   watchers?: string[];
+  /** Board look: the Focus Table (default) or the classic board, kept for the design comparison preview. */
+  presentation?: 'classic' | 'focus';
 }
 
 /** Autoplay when only one tile can be played — a per-device preference. */
@@ -367,7 +369,7 @@ export function TableView(props: TableViewProps) {
   }, [menuOpen]);
 
   return (
-    <div className={`table-screen table-redesign mode-${mode} ${arcade ? 'ruleset-arcade' : ''} ${look.className}`} style={look.style} onKeyDown={(e) => {
+    <div className={`table-screen table-redesign mode-${mode} ${arcade ? 'ruleset-arcade' : ''} ${props.presentation === 'classic' ? '' : 'table-focus'} ${look.className}`} style={look.style} onKeyDown={(e) => {
       if (e.key === 'Escape') { setPending(null); setChatOpen(false); setDraft(null); setPowersOpen(false); }
     }}>
       <header className="table-header">
@@ -665,7 +667,7 @@ function SeatBadge({
 }) {
   const { t, lang } = useI18n();
   return (
-    <div className={`seat seat-${pos} ${active ? 'active' : ''} ${speaking ? 'speaking' : ''} ${away ? 'away' : ''} ${offline || outOfApp ? 'offline' : ''}`} style={{ '--seat-color': color } as CSSProperties}>
+    <div className={`seat seat-${pos} ${active ? 'active' : ''} ${speaking ? 'speaking' : ''} ${away ? 'away' : ''} ${offline || outOfApp ? 'offline' : ''} ${locked ? 'locked' : ''}`} style={{ '--seat-color': color } as CSSProperties}>
       <button className={`avatar ${onTap ? 'tappable' : ''}`} onClick={onTap} disabled={!onTap} aria-label={onTap ? `${name} · ${muted ? t.voice.muted : t.voice.live}` : name} aria-pressed={onTap ? muted : undefined}>
         {speaking && <span className="talk-ring" aria-hidden />}
         <Avatar name={name} url={avatar} />
@@ -675,9 +677,12 @@ function SeatBadge({
         {active && <TurnArrow />}
       </button>
       <div className="seat-info">
-        <span className="seat-name">{owner && <OwnerChip role={owner} />}{name}{charges != null && <Charges n={charges} label={t.arcade.charges} />}{partnerLabel && <small> · {partnerLabel}</small>}</span>
-        {locked && <span className="offline-tag lock-tag">🔒 {t.arcade.lockTag}</span>}
-        {outOfApp ? <span className="offline-tag out-of-app">📵 {t.fair.outTag}</span> : offline && <span className="offline-tag">📵 {t.offline}</span>}
+        <span className="seat-name">{owner && <OwnerChip role={owner} />}{name}{partnerLabel && <small> · {partnerLabel}</small>}</span>
+        {charges != null && <Charges n={charges} label={t.arcade.charges} />}
+        {locked && <span className="offline-tag lock-tag">🔒 <span className="tag-text">{t.arcade.lockTag}</span></span>}
+        {outOfApp
+          ? <span className="offline-tag out-of-app">📵 <span className="tag-text">{t.fair.outTag}</span></span>
+          : offline && <span className="offline-tag">📵 <span className="tag-text">{t.offline}</span></span>}
         <span className="seat-tiles" aria-label={`${count} ${count === 1 ? (lang === 'es' ? 'ficha' : 'tile') : (lang === 'es' ? 'fichas' : 'tiles')}`}>
           <span className="backs" aria-hidden>{Array.from({ length: Math.min(count, 7) }, (_, i) => <TileBack key={i} />)}</span>
           <b className="tile-count" aria-hidden>{count}</b>

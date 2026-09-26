@@ -1,4 +1,4 @@
-// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|board-design|board-motion|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|friends-empty|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report|fx|fx-win|fx-lose|fx-salida|fx-sounds
+// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|board-design|board-focus|board-motion|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|friends-empty|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report|fx|fx-win|fx-lose|fx-salida|fx-sounds
 // Renders the online screens with sample data so layouts can be checked without a backend.
 import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -219,6 +219,7 @@ function Screen({ s }: { s: string }) {
   if (s === 'fx-sounds') return <Soundboard />;
   if (s === 'board-motion') return <BoardDesignPreview auto />;
   if (s === 'board-design') return <BoardDesignPreview />;
+  if (s === 'board-focus') return <BoardDesignPreview focus />;
   if (s.startsWith('arcade')) return <ArcadePreview s={s} />;
   if (s.startsWith('main')) {
     // main | main-guest | main-out (signed out) | main-offline (no Supabase) | main-<tab>
@@ -580,15 +581,31 @@ const ChestArtPreview = () => <ChestArt kind="silver" className="bounce-in" />;
     ...[...document.querySelectorAll('.bubble, .self-bubble, .turn-arrow, .toast')].map((e) => [e.classList[0], R(e)] as [string, DOMRect]),
   ];
   const screen = document.querySelector('.table-screen')!;
+  const all = (s: string) => [...document.querySelectorAll<HTMLElement>(s)];
+  const offX = (e: Element) => { const r = R(e); return r.width > 0 && (r.left < -1 || r.right > innerWidth + 1); };
+  const felt = R(document.querySelector('.felt')!);
+  const hand = all('.hand-tile').map(R);
   return {
     size: `${innerWidth}x${innerHeight}`,
+    focus: !!document.querySelector('.table-focus'),
     sideScroll: document.documentElement.scrollWidth > innerWidth || screen.scrollWidth > screen.clientWidth,
+    vScroll: screen.scrollHeight > screen.clientHeight + 2,
     board: `${Math.round(board.width)}x${Math.round(board.height)}`,
     tilePx: tiles.length ? Math.round(Math.min(...tiles.map((t) => Math.min(t.width, t.height)))) : null,
     chainInsideBoard: !chain || (chain.left >= board.left - 1 && chain.right <= board.right + 1 && chain.top >= board.top - 1 && chain.bottom <= board.bottom + 1),
     coversChain: others.filter(([, r]) => chain && hit(r, chain)).map(([n]) => n),
     inBoardArea: others.filter(([, r]) => hit(r, board)).map(([n]) => n),
     arrowBeside: [...document.querySelectorAll('.turn-arrow')].map((a) => a.closest('.seat, .self-seat')?.className.match(/seat-(top|left|right)|self-seat/)?.[0]),
+    // Board-end targets: A = playable (with its size and label), d = just the end's number.
+    ends: all('.board-end').map((e) => `${e.classList.contains('available') ? 'A' : 'd'}${Math.round(R(e).width)}[${e.textContent!.trim().replace(/\s+/g, ' ')}]`),
+    endsCovered: all('.board-end').filter((e) => others.some(([, r]) => hit(r, R(e)))).length,
+    hand: hand.length ? `${hand.length} tiles, min ${Math.round(Math.min(...hand.map((r) => Math.min(r.width, r.height))))}px` : 'none',
+    handOffscreen: all('.hand-tile').filter(offX).length,
+    clipped: all('.seat-name, .score > span, .target, .table-instruction, .table-header button, .power-row, .charges')
+      .filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => `${e.classList[0] ?? e.tagName}:${e.textContent!.trim().slice(0, 14)}`),
+    seatsOutsideFelt: all('.seat, .self-seat').filter((e) => { const r = R(e); return r.top < felt.top - 1 || r.bottom > felt.bottom + 1 || r.left < felt.left - 1 || r.right > felt.right + 1; })
+      .map((e) => e.className.match(/seat-(top|left|right)|self-seat/)?.[0]),
+    offscreen: all('.table-header *, .my-area *').filter(offX).map((e) => e.classList[0] ?? e.tagName).slice(0, 4),
   };
 };
 

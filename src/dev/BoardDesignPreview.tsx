@@ -13,7 +13,7 @@ function example(): GameState {
   return { ...newGame(() => .5, publicRules('2v2')), hands: [mine, rest.slice(0, 6), rest.slice(6, 12), rest.slice(12)], line, origin: 2, turn: 0, mano: 1, lastPlayer: 3, mustOpen: null, scores: [42, 28], handNo: 3, events: [] };
 }
 
-export function BoardDesignPreview({ auto = false }: { auto?: boolean }) {
+export function BoardDesignPreview({ auto = false, focus = false }: { auto?: boolean; focus?: boolean }) {
   const [game, setGame] = useState(example);
   const [chat, setChat] = useState<ChatBubbles>({});
   useEffect(() => {
@@ -28,6 +28,7 @@ export function BoardDesignPreview({ auto = false }: { auto?: boolean }) {
     return () => clearTimeout(timer);
   }, [game, auto]);
   return <TableView view={publicState(game)} myHand={game.hands[0]} mySeat={0} names={['Tú', 'Chelo', 'Yuly', 'Papo']}
+    presentation={focus || auto ? 'focus' : 'classic'}
     avatars={['/images/papo-avatar.webp', '/images/papo-avatar.webp', '/images/yuly-avatar.webp', '/images/papo-avatar.webp']}
     onPlay={move => setGame(g => applyMove(g, move))} onNextHand={() => setGame(g => nextHand(g))}
     onExit={() => { window.location.href = '/'; }} chat={chat} onChat={id => setChat({0: { id, at: Date.now() }})}

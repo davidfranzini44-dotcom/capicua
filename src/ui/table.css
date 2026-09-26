@@ -153,7 +153,7 @@
   .table-redesign .board-wrap { inset: 38% 12px 19%; }
   .table-redesign .my-area { padding-top: 13px; }
 }
-@media (orientation: landscape) and (max-height: 500px) and (min-width: 700px) {
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 560px) {
   .table-redesign { min-height: 0; grid-template-columns: minmax(0, 1fr) 280px; grid-template-rows: 66px minmax(0, 1fr); }
   .table-header { grid-column: 1 / -1; width: 100%; padding: 5px 16px; }
   .table-redesign .table-rail { grid-column: 1; grid-row: 2; margin-bottom: 8px; }
@@ -301,7 +301,7 @@
   .table-redesign .board-wrap { inset: 29% 10px 20%; }
 }
 /* Landscape phones: the board fills the space between the side players and below the partner. */
-@media (orientation: landscape) and (max-height: 500px) and (min-width: 700px) {
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 560px) {
   .table-redesign .board-wrap { inset: 28% 74px 21%; }
 }
 /* My "Paso"/chat bubble sits beside my avatar, never above it where the board is. */
@@ -358,4 +358,122 @@
 @media (prefers-reduced-motion: reduce) {
   .bonus-card { animation-name: bonus-fade; }
   @keyframes bonus-fade { 0% { opacity: 0; } 10%, 75% { opacity: 1; } 100% { opacity: 0; } }
+}
+
+/* Focus Table concept: keep the familiar felt, but give play one clear stage. */
+.table-focus { background: #071e19; }
+.table-focus .table-header { width: min(100%, 1040px); }
+.table-focus .table-header .scores {
+  background: #10392e; border-color: #6592718c;
+  box-shadow: inset 0 1px #ffffff16, 0 5px 15px #00130e55;
+}
+.table-focus .table-rail {
+  padding: 6px; border-radius: 26px;
+  background: linear-gradient(145deg, #b57c43, #53351f 28%, #8a5b30 72%, #3c291b);
+  box-shadow: inset 0 0 0 1px #cf985f, inset 0 -3px 0 #25190e, 0 8px 22px #0008;
+}
+.table-focus .felt {
+  border-radius: 20px;
+  background: radial-gradient(ellipse 86% 68% at 50% 51%, #28795861, #00170f66 100%),
+    url('/images/table-felt.webp') center / 460px, #0e4534;
+  background-blend-mode: screen, soft-light;
+  box-shadow: inset 0 0 0 1px #d3a86570, inset 0 0 24px 5px #001b16a6;
+}
+/* A chosen felt color keeps its own hue: a neutral light instead of the green glow. */
+.table-focus.felt-tint .felt {
+  background: radial-gradient(ellipse 86% 68% at 50% 51%, #ffffff17, #0000005c 100%),
+    url('/images/table-felt.webp') center / 460px, var(--felt-color);
+  background-blend-mode: normal, soft-light;
+}
+.table-focus.felt-tint .board-wrap::before { background: radial-gradient(ellipse at center, #ffffff12, transparent 72%); }
+.table-focus .felt::before {
+  content: ''; position: absolute; inset: 11px; border: 1px solid #e0c18228;
+  border-radius: 14px; pointer-events: none;
+}
+.table-focus .seat, .table-focus .seat-left, .table-focus .seat-right { top: 15px; }
+.table-focus .seat-left { left: 18px; }
+.table-focus .seat-right { right: 18px; }
+.table-focus .seat .avatar { width: 47px; height: 47px; }
+.table-focus .seat-name { color: #fff5de; font-weight: 800; }
+/* All opponents share the top strip, so a seat must never grow down into the board:
+   a status tag (offline, out of the app, Arcade lock) shares the tile-count line. */
+.table-focus .seat-info { flex-flow: row wrap; justify-content: center; align-items: center; column-gap: 5px; }
+.table-focus .seat-name { flex-basis: 100%; }
+.table-focus .seat.offline .backs, .table-focus .seat.locked .backs { display: none; }
+/* Three opponents share the strip: each keeps to its third, so names never run into each other. */
+.table-focus:not(.mode-1v1) .seat { max-width: 30%; }
+.table-focus .seat-name { max-width: 100%; }
+.table-focus .seat-tiles .tile-count { color: #f2e4bd; }
+/* Clear of the opponents' strip above and my seat below at any size (desktop seats are bigger). */
+.table-focus .board-wrap { inset: max(20%, 128px) 30px max(17%, 98px); }
+.table-focus .board-wrap::before {
+  content: ''; position: absolute; inset: 7% 0; pointer-events: none;
+  border-radius: 50%; border: 1px solid #e3cc8b2b;
+  background: radial-gradient(ellipse at center, #68bc8a1a, #0b443512 63%, transparent 72%);
+}
+.table-focus .board-scene { z-index: 1; }
+.table-focus .board-end:disabled {
+  width: 38px; height: 38px; opacity: 1; border: 1px solid #d5e7cc80;
+  background: #00000061; color: #fff2cf; font-size: 15px;
+  box-shadow: 0 3px 9px #0019118a;
+}
+.table-focus .board-end:disabled b { font-size: 15px; }
+.table-focus .board-end.available {
+  width: 54px; height: 54px; border: 2px solid #fff1bc; border-radius: 15px;
+  background: #f5c542; color: #2b2108; box-shadow: 0 0 0 5px #f5c54233, 0 4px 14px #001911a6;
+}
+.table-focus .board-end.available small { font-size: 11px; font-weight: 800; }
+.table-focus .self-seat {
+  bottom: 10px; min-width: 94px; padding: 5px 10px; border-radius: 16px;
+  background: #0000004d; border: 1px solid #e4bd6f4f;
+}
+/* My "Paso"/chat bubble sits beside my seat box, never over my name or the board. */
+.table-focus .self-bubble { top: 50%; left: calc(100% + 8px); transform: translateY(-50%); }
+.table-focus .my-area {
+  border-top: 1px solid #68907065; border-radius: 18px 18px 0 0;
+  background: linear-gradient(180deg, #143b2e 0%, #08251d 42%, #071e19 100%);
+  box-shadow: 0 -8px 23px #00140f7a;
+}
+.table-focus .hand-tile.playable { filter: drop-shadow(0 0 4px #f5c542b3) drop-shadow(0 4px 3px #0008); }
+.table-focus .hand-tile.dim { opacity: .7; }
+.table-focus .table-instruction { color: #f0e7cf; font-weight: 700; }
+@media (max-width: 699px) {
+  .table-focus:not(.mode-ffa) .table-header {
+    display: grid; grid-template-columns: 42px minmax(0, 1fr) 42px;
+    align-items: center; gap: 8px; padding: max(7px, env(safe-area-inset-top)) 10px 8px;
+  }
+  .table-focus:not(.mode-ffa) .table-topbar { display: contents; }
+  .table-focus:not(.mode-ffa) .table-wordmark { display: none; }
+  .table-focus:not(.mode-ffa) .table-topbar > :first-child { grid-column: 1; grid-row: 1; }
+  .table-focus:not(.mode-ffa) .table-topbar > :last-child { grid-column: 3; grid-row: 1; }
+  .table-focus:not(.mode-ffa) .table-header .scores { grid-column: 2; grid-row: 1; margin: 0; gap: 6px; padding: 4px 5px; min-width: 0; }
+  .table-focus:not(.mode-ffa) .table-header .target { min-width: 46px; padding: 0 5px; }
+  .table-focus .table-icon { width: 42px; height: 42px; }
+  .table-focus .table-rail { width: min(calc(100% - 8px), 1040px); }
+  .table-focus .seat, .table-focus .seat-left, .table-focus .seat-right { top: 11px; }
+  .table-focus .seat-left { left: 12px; }
+  .table-focus .seat-right { right: 12px; }
+  .table-focus .seat .avatar { width: 42px; height: 42px; }
+  .table-focus .seat-name { font-size: 12px; }
+  .table-focus .seat-name small { font-size: 10px; }
+  /* Never higher than the opponents' strip (partner: avatar, name, "compañero", tiles ≈ 108 px). */
+  .table-focus .board-wrap { inset: max(20%, 114px) 15px max(17%, 76px); }
+  .table-focus .my-area { width: 100%; padding-top: 14px; }
+}
+/* Short phones, and phones on their side (the hand sits in its own column there): same compact strip. */
+@media (max-height: 640px) and (max-width: 699px), (orientation: landscape) and (max-height: 500px) {
+  .table-focus .seat, .table-focus .seat-left, .table-focus .seat-right { top: 8px; }
+  .table-focus .seat-name small, .table-focus .backs { display: none; }
+  /* Short phones: every pixel goes to the chain. Opponents: avatar + one line (name · count);
+     me: avatar and name side by side. The board starts and ends clear of both. */
+  .table-focus .seat .avatar { width: 34px; height: 34px; font-size: 17px; }
+  .table-focus .seat-name { flex-basis: auto; }
+  .table-focus .self-seat { flex-direction: row; gap: 6px; bottom: 6px; min-width: 0; padding: 3px 10px 3px 4px; }
+  .table-focus .self-seat .avatar { width: 30px; height: 30px; font-size: 15px; }
+  .table-focus .board-wrap { inset: 66px 10px 48px; }
+  /* Arcade: the name keeps its own line; powers, lock and count share the next. */
+  .table-focus.ruleset-arcade .seat-name { flex-basis: 100%; }
+  .table-focus.ruleset-arcade .board-wrap { top: 82px; }
+  /* Status tags keep their icon beside the count; the words stay for screen readers. */
+  .table-focus .seat .tag-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
