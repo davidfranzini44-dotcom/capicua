@@ -1,4 +1,4 @@
-import { arrowPath, OWNER_ARROW, type OwnerRole } from './owners';
+import { arrowPath, OWNER_ARROW, ownerBadgePoint, type OwnerRole } from './owners';
 
 const P = 0.26;
 const C = 0.5;
@@ -27,8 +27,8 @@ function Half({ value, ox, oy, rotate }: { value: number; ox: number; oy: number
 
 /**
  * A tile drawn in board units at (x, y): 2×1 when horizontal, 1×2 when vertical.
- * `owner` marks who played it: a thin colored ring inside the edge and a small
- * arrow on the middle line (pips never sit there), pointing at that player.
+ * `owner` marks who played it: a colored edge badge in the direction of that
+ * player, plus a light inner ring so the tile can still be read at a glance.
  */
 export function TileShape({
   x, y, vertical, first, second, className, owner, ownerName,
@@ -39,6 +39,7 @@ export function TileShape({
   const w = vertical ? 1 : 2;
   const h = vertical ? 2 : 1;
   const g = 0.035; // gap so neighbouring tiles read as separate pieces
+  const ownerBadge = owner ? ownerBadgePoint(x, y, w, h, owner, 0.16) : null;
   return (
     <g className={className}>
       <rect x={x + g} y={y + g + 0.05} width={w - 2 * g} height={h - 2 * g} rx={0.14} className="tile-shadow" />
@@ -54,7 +55,11 @@ export function TileShape({
         <g className={`owner owner-${owner}`}>
           {ownerName && <title>{`${Math.min(first, second)}-${Math.max(first, second)} · ${ownerName}`}</title>}
           <rect x={x + g + 0.045} y={y + g + 0.045} width={w - 2 * g - 0.09} height={h - 2 * g - 0.09} rx={0.1} className="owner-ring" />
-          <path d={arrowPath(x + w / 2, y + h / 2, 0.15, OWNER_ARROW[owner])} className="owner-mark" />
+          {ownerBadge && <>
+            <circle cx={ownerBadge.x} cy={ownerBadge.y} r={0.155} className="owner-badge-shadow" />
+            <circle cx={ownerBadge.x} cy={ownerBadge.y} r={0.13} className="owner-badge" />
+            <path d={arrowPath(ownerBadge.x, ownerBadge.y, 0.07, OWNER_ARROW[owner])} className="owner-mark" />
+          </>}
         </g>
       )}
     </g>

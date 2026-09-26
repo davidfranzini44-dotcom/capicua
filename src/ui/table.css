@@ -171,18 +171,21 @@
 }
 
 /* ---------- Who played each tile (setting) ---------- */
-/* A ring inside the tile's edge + a small arrow on its middle line pointing at that player.
-   Colors follow the seat colors where they can; the arrow shape alone already tells them apart. */
+/* A soft ring plus an edge badge points toward the player who put the tile down.
+   Colors follow the seat colors where they can; the badge direction also tells them apart. */
 .owner-me { --owner: #f5c542; }
 .owner-partner { --owner: #5fd3a0; }
 .owner-top { --owner: #6fb7ff; }
 .mode-1v1 .owner-top { --owner: #ff7a59; }
 .owner-left { --owner: #c79bff; }
 .owner-right { --owner: #ff7a59; }
-.owner-ring { fill: none; stroke: var(--owner); stroke-width: .06; opacity: .95; }
-.owner-mark { fill: var(--owner); stroke: #1c1a17; stroke-width: .025; stroke-linejoin: round; }
-.owner-chip { width: 11px; height: 11px; margin-right: 4px; vertical-align: -1px; overflow: visible; flex: none; }
-.owner-chip .owner-mark { stroke-width: .14; }
+.owner-ring { fill: none; stroke: var(--owner); stroke-width: .035; opacity: .7; }
+.owner-badge-shadow { fill: #1a150f; opacity: .55; }
+.owner-badge { fill: var(--owner); stroke: #fff7df; stroke-width: .035; }
+.owner-mark { fill: #1f211d; stroke: #fff5d6; stroke-width: .018; stroke-linejoin: round; }
+.owner-chip { width: 13px; height: 13px; margin-right: 4px; vertical-align: -2px; overflow: visible; flex: none; filter: drop-shadow(0 1px 1px #0007); }
+.owner-chip-bg { fill: var(--owner); stroke: #fff7df; stroke-width: .2; }
+.owner-chip .owner-mark { stroke-width: .12; }
 
 /* ---------- Whose turn: a gold arrow beside their avatar ---------- */
 .turn-arrow {

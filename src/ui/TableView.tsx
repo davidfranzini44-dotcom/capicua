@@ -79,10 +79,10 @@ function useAutoplayPref(): [boolean, (v: boolean) => void] {
   return [on, set];
 }
 
-/** "Show who played each tile" — off unless the player turns it on (per device). */
+/** "Show who played each tile" — on unless the player turns it off (per device). */
 function useShowOwnersPref(): [boolean, (v: boolean) => void] {
   const [on, setOn] = useState(() => {
-    try { return localStorage.getItem('capicua.showOwners') === '1'; } catch { return false; }
+    try { return localStorage.getItem('capicua.showOwners') !== '0'; } catch { return true; }
   });
   const set = (v: boolean) => {
     setOn(v);
@@ -464,7 +464,12 @@ function TurnArrow() {
 
 /** The small marker a player's tiles carry on the board, shown by their name as a key. */
 function OwnerChip({ role }: { role: OwnerRole }) {
-  return <svg className={`owner-chip owner-${role}`} viewBox="-1 -1 2 2" aria-hidden><path d={arrowPath(0, 0, 0.85, OWNER_ARROW[role])} className="owner-mark" /></svg>;
+  return (
+    <svg className={`owner-chip owner-${role}`} viewBox="-1 -1 2 2" aria-hidden>
+      <circle r={0.92} className="owner-chip-bg" />
+      <path d={arrowPath(0, 0, 0.43, OWNER_ARROW[role])} className="owner-mark" />
+    </svg>
+  );
 }
 
 function SeatBadge({

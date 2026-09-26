@@ -21,6 +21,15 @@ export const OWNER_ARROW: Record<OwnerRole, 'down' | 'up' | 'left' | 'right'> = 
   me: 'down', partner: 'up', top: 'up', left: 'left', right: 'right',
 };
 
+/** Point on a tile edge where that owner's mark should sit, as seen from my chair. */
+export function ownerBadgePoint(x: number, y: number, w: number, h: number, role: OwnerRole, inset: number): { x: number; y: number } {
+  const dir = OWNER_ARROW[role];
+  if (dir === 'down') return { x: x + w / 2, y: y + h - inset };
+  if (dir === 'up') return { x: x + w / 2, y: y + inset };
+  if (dir === 'left') return { x: x + inset, y: y + h / 2 };
+  return { x: x + w - inset, y: y + h / 2 };
+}
+
 /** A small triangle centred on (cx, cy), pointing `dir`; r = distance from centre to the tip. */
 export function arrowPath(cx: number, cy: number, r: number, dir: 'down' | 'up' | 'left' | 'right'): string {
   const w = r * 0.95; // half the base
