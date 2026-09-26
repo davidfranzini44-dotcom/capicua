@@ -271,3 +271,37 @@
 .watch-lobby { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .watch-lobby li { padding: 6px 12px; border-radius: 99px; background: rgba(255,255,255,.08); }
 .table-header .watchers { color: #9fd6ff; font-weight: 700; }
+
+/* ---------- Bonus pop-up (capicúa, pase corrido) ---------- */
+/* Floats over the middle of the felt, never takes a tap, and fades away by itself. */
+.bonus-pop {
+  position: absolute; inset: 0; z-index: 8; display: grid; place-items: center;
+  pointer-events: none;
+}
+.bonus-card {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 10px 22px 12px; border-radius: 20px; max-width: 86%;
+  background: rgba(8, 30, 22, .82); border: 2px solid var(--us);
+  box-shadow: 0 10px 30px #0009, 0 0 26px rgba(245, 197, 66, .35);
+  animation: bonus-pop 1.9s cubic-bezier(.2, .9, .3, 1) both;
+}
+.bonus-card.theirs { border-color: var(--them); box-shadow: 0 10px 30px #0009, 0 0 22px rgba(255, 122, 89, .3); }
+.bonus-title {
+  font-family: var(--display); font-weight: 400; font-size: clamp(1.5rem, 7vw, 2.4rem); line-height: 1.05;
+  color: #ffe08a; text-shadow: 0 2px 0 #7a4b00, 0 4px 14px #0008; white-space: nowrap;
+}
+.bonus-card.theirs .bonus-title { color: #ffc1ad; text-shadow: 0 2px 0 #7a2a10, 0 4px 14px #0008; }
+.bonus-who { display: flex; align-items: baseline; gap: 8px; font-weight: 700; font-size: .95rem; color: #f3ead6; }
+.bonus-who strong { font-family: var(--display); font-weight: 400; font-size: 1.25rem; color: #7dffa8; }
+.bonus-card.theirs .bonus-who strong { color: #ffd0c2; }
+@keyframes bonus-pop {
+  0% { opacity: 0; transform: scale(.4) rotate(-4deg); }
+  12% { opacity: 1; transform: scale(1.12) rotate(1deg); }
+  20% { transform: scale(1) rotate(0); }
+  72% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-26px) scale(.92); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bonus-card { animation-name: bonus-fade; }
+  @keyframes bonus-fade { 0% { opacity: 0; } 10%, 75% { opacity: 1; } 100% { opacity: 0; } }
+}

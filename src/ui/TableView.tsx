@@ -6,6 +6,8 @@ import {
 import { gameXp, type PublicState } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { useTableLook } from '../lib/look';
+import { playSfx, useSfxPref } from '../lib/sfx';
+import { snapshotOf, tableFx, type Bonus, type FxSnapshot } from '../lib/tableFx';
 import { BUBBLE_MS, PHRASE_IDS, PHRASES, type PhraseId } from '../quickchat';
 import { Board } from './Board';
 import { Avatar } from './common';
@@ -104,6 +106,12 @@ function useViewportHeight() {
   return h;
 }
 
+/** How long a bonus pop-up stays on screen. */
+const BONUS_MS = 1900;
+/** The hand summary appears this long after the hand ends (longer after a capicúa, so its pop-up finishes first). */
+const RESULT_MS = 1100;
+const RESULT_AFTER_BONUS_MS = BONUS_MS + 200;
+
 /** Opponent colors in free-for-all (by position around the table). */
 const FFA_COLORS = ['var(--us)', 'var(--them)', '#6fb7ff', '#c79bff'];
 
@@ -116,12 +124,13 @@ export function TableView(props: TableViewProps) {
   const { t, lang, setLang } = useI18n();
   const [pending, setPending] = useState<Tile | null>(null);
   const [showResult, setShowResult] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [bonus, setBonus] = useState<Bonus | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDialogElement>(null);
   const [autoplay, setAutoplay] = useAutoplayPref();
   const [showOwners, setShowOwners] = useShowOwnersPref();
+  const [sfx, setSfx] = useSfxPref();
   const look = useTableLook();
   const [now, setNow] = useState(() => Date.now());
   const handRef = useRef<HTMLDivElement>(null);
@@ -163,29 +172,39 @@ export function TableView(props: TableViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoplay, single && JSON.stringify(single), view.line.length, view.handNo]);
 
+  // The hand's summary waits for the last tile to land — and for a capicúa pop-up to finish.
+  const resultDelay = view.handResult?.capicua ? RESULT_AFTER_BONUS_MS : RESULT_MS;
   useEffect(() => {
     if (!view.handResult) {
       setShowResult(false);
       return;
     }
-    const id = setTimeout(() => setShowResult(true), 1100);
+    const id = setTimeout(() => setShowResult(true), resultDelay);
     return () => clearTimeout(id);
-  }, [view.handResult]);
+  }, [view.handResult, resultDelay]);
 
-  const lastEvent = view.events.at(-1);
-  const paseCorridoKey = lastEvent?.kind === 'paseCorrido'
-    ? `${view.handNo}:${view.events.length}:${lastEvent.seat}:${lastEvent.points}`
-    : '';
-  const paseCorridoText = lastEvent?.kind === 'paseCorrido'
-    ? `${t.paseCorrido} ${sideOf(mode, lastEvent.seat) === mySide ? (mode === '2v2' ? t.us : t.you) : name(lastEvent.seat)} +${lastEvent.points}`
-    : '';
+  // Sounds and bonus pop-ups for whatever just happened (never for a state seen before).
+  const fxPrev = useRef<FxSnapshot | null>(null);
+  /** When I last laid a tile myself: its sound already played on the tap. */
+  const myTileAt = useRef(0);
+  const fxKey = `${view.handNo}:${view.events.length}:${view.handResult ? 1 : 0}:${view.winner}`;
   useEffect(() => {
-    setToast(null);
-    if (!paseCorridoKey) return;
-    setToast(paseCorridoText);
-    const id = setTimeout(() => setToast(null), 2200);
-    return () => clearTimeout(id);
-  }, [paseCorridoKey, paseCorridoText]);
+    const fx = tableFx(fxPrev.current, view, mySeat);
+    fxPrev.current = snapshotOf(view);
+    let delay = 0;
+    for (const m of fx.moves) {
+      if (m.sound === 'tile' && m.seat === mySeat && Date.now() - myTileAt.current < 2500) {
+        myTileAt.current = 0;
+        continue;
+      }
+      playSfx(m.sound, delay);
+      delay += 120;
+    }
+    if (fx.fanfare) playSfx(fx.fanfare, delay + 220);
+    if (fx.bonus) setBonus(fx.bonus);
+    if (fx.ending) playSfx(fx.ending, resultDelay);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fxKey]);
 
   // Tick while bubbles or a turn timer are on screen.
   const ticking = Object.keys(chat).length > 0 || (turnDeadline != null && playing);
@@ -200,6 +219,10 @@ export function TableView(props: TableViewProps) {
     const last = sent.current;
     if (last && last.key === moveKey && Date.now() - last.at < 3000) return; // already sent for this turn
     sent.current = { key: moveKey, at: Date.now() };
+    if (m.type === 'play') {
+      playSfx('tile'); // right away, not when the server answers
+      myTileAt.current = Date.now();
+    }
     onPlay(m);
   };
 
@@ -311,6 +334,17 @@ export function TableView(props: TableViewProps) {
           }} />
         </div>
 
+        {bonus && (
+          <BonusPop
+            key={bonus.key}
+            title={bonus.kind === 'capicua' ? t.capicua : t.paseCorrido}
+            points={bonus.points}
+            who={name(bonus.seat)}
+            ours={sideOf(mode, bonus.seat) === mySide}
+            onDone={() => setBonus(null)}
+          />
+        )}
+
         <div className={`self-seat ${bottomTurn ? 'active' : ''} ${speaking?.has(mySeat) ? 'speaking' : ''}`}>
           <div className="avatar">
             <Avatar name={name(mySeat)} url={avatars?.[mySeat]} />
@@ -363,8 +397,8 @@ export function TableView(props: TableViewProps) {
           </div>
         </div>
         <div className={`table-instruction ${notice ? 'notice' : ''}`} role="status" aria-live="polite">
-          {notice || toast || (pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status)}
-          {!notice && !toast && playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
+          {notice || (pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status)}
+          {!notice && playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
           {pending && <button className="table-cancel" onClick={() => setPending(null)} aria-label={t.cancel}><XIcon size={17} /></button>}
         </div>
         {watching ? (
@@ -384,6 +418,7 @@ export function TableView(props: TableViewProps) {
         <label>{t.language}<select value={lang} onChange={(e) => setLang(e.target.value as 'es' | 'en')}><option value="es">Español</option><option value="en">English</option></select></label>
         <label><span>{t.auto}<small>{t.autoplayHint}</small></span><input type="checkbox" checked={autoplay} onChange={(e) => setAutoplay(e.target.checked)} /></label>
         <label><span>{t.showOwners}<small>{t.showOwnersHint}</small></span><input type="checkbox" checked={showOwners} onChange={(e) => setShowOwners(e.target.checked)} /></label>
+        <label><span>{t.sfx}<small>{t.sfxHint}</small></span><input type="checkbox" checked={sfx} onChange={(e) => setSfx(e.target.checked)} /></label>
         <LookPicker compact />
         <button className="btn primary" onClick={() => setMenuOpen(false)}>{copy.done}</button>
       </dialog>
@@ -454,6 +489,28 @@ function useWidth(ref: RefObject<HTMLElement | null>) {
     return () => ro.disconnect();
   }, [ref]);
   return width;
+}
+
+/**
+ * Extra points (capicúa, pase corrido) celebrated over the board. It never
+ * takes a tap (the game goes on underneath) and leaves on its own.
+ */
+function BonusPop({ title, points, who, ours, onDone }: {
+  title: string; points: number; who: string; ours: boolean; onDone: () => void;
+}) {
+  useEffect(() => {
+    const id = setTimeout(onDone, BONUS_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className="bonus-pop" role="status" aria-live="polite">
+      <div className={`bonus-card ${ours ? 'ours' : 'theirs'}`} style={{ animationDuration: `${BONUS_MS}ms` }}>
+        <b className="bonus-title">{title}</b>
+        <span className="bonus-who">{points > 0 && <strong>+{points}</strong>}{who}</span>
+      </div>
+    </div>
+  );
 }
 
 /** Gold arrow beside the avatar of whoever's turn it is, pointing at them (CSS flips it for the right seat). */

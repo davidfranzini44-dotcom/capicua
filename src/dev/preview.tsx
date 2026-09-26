@@ -1,6 +1,6 @@
-// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report
+// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report|fx|fx-win|fx-lose
 // Renders the online screens with sample data so layouts can be checked without a backend.
-import { StrictMode, useState } from 'react';
+import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { applyMove, forcedMove, fullSet, legalMoves, newGame, type Seat } from '../../supabase/functions/_shared/domino.ts';
 import { chooseMove } from '../../supabase/functions/_shared/bot.ts';
@@ -114,6 +114,48 @@ function fakeMissions(): Missions {
     resetsAt: Date.parse(resets), reload: async () => {}, claim: async () => ({ chips: 150, xp: 15 }), ready,
     claimable: 1, done: 2,
   };
+}
+
+/**
+ * A scripted hand for sounds and bonus pop-ups: Yokasta plays (0.9 s), Robert
+ * knocks (1.8 s), pase corrido for Yokasta (2.8 s), then the hand ends on a
+ * capicúa (6.5 s) — for us, or for them in fx-lose — and fx-win / fx-lose also
+ * end the game. Sounds are logged in window.__sfxLog.
+ */
+function FxDemo({ end }: { end: 'win' | 'lose' | null }) {
+  const base = useMemo(() => {
+    let g = newGame(Math.random, publicRules('2v2'));
+    for (let i = 0; i < 5 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
+    return g;
+  }, []);
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const ids = [900, 1800, 2800, 6500].map((ms, i) => setTimeout(() => setStep(i + 1), ms));
+    return () => ids.forEach(clearTimeout);
+  }, []);
+  const pv = publicState(base);
+  const events = [...pv.events];
+  if (step >= 1) events.push({ kind: 'play', seat: 1, tile: [2, 5], side: 'R' });
+  if (step >= 2) events.push({ kind: 'pass', seat: 2 });
+  if (step >= 3) events.push({ kind: 'pass', seat: 3 }, { kind: 'pass', seat: 0 }, { kind: 'paseCorrido', seat: 1, points: 25 });
+  let view = { ...pv, events };
+  if (step >= 4) {
+    const winnerSeat = end === 'lose' ? 1 : 0;
+    view = {
+      ...view,
+      events: [...events, { kind: 'play', seat: winnerSeat, tile: [3, 4], side: 'L' }],
+      handResult: {
+        kind: 'domino', winnerSeat, side: winnerSeat % 2, points: 42, capicua: true, bonus: 25, total: 67,
+        counts: [0, 12, 14, 16], hands: [[], base.hands[1], base.hands[2], base.hands[3]], tieToMano: false,
+      },
+      ...(end ? { winner: winnerSeat % 2, scores: winnerSeat === 0 ? [112, 40] : [40, 112] } : {}),
+    };
+  }
+  return (
+    <TableView view={view} myHand={base.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']}
+      onPlay={() => {}} onNextHand={() => {}} onExit={() => {}} chat={{}} onChat={() => {}}
+      endActions={<button className="btn primary">Otra partida</button>} />
+  );
 }
 
 function Screen({ s }: { s: string }) {
@@ -405,6 +447,7 @@ function Screen({ s }: { s: string }) {
     });
     return <Pregame r={r} uid="me" profile={profile} voice={null} onLeave={noop} />;
   }
+  if (s === 'fx' || s === 'fx-win' || s === 'fx-lose') return <FxDemo end={s === 'fx' ? null : s === 'fx-win' ? 'win' : 'lose'} />;
   if (s === 'report') {
     const who = { id: 'u-Robert', display_name: 'Robert', xp: 1_100, games: 88, wins: 41, capicuas: 12, pollonas: 1, biggest_pot: 3_000, tournaments_won: 0, avatar_url: null };
     return (
