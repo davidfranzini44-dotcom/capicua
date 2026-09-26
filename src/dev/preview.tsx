@@ -1,8 +1,8 @@
-// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp
+// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp
 // Renders the online screens with sample data so layouts can be checked without a backend.
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { applyMove, fullSet, newGame, type Seat } from '../../supabase/functions/_shared/domino.ts';
+import { applyMove, forcedMove, fullSet, legalMoves, newGame, type Seat } from '../../supabase/functions/_shared/domino.ts';
 import { chooseMove } from '../../supabase/functions/_shared/bot.ts';
 import { publicRules, publicState } from '../../supabase/functions/_shared/table.ts';
 import { LangContext, strings, type Lang } from '../i18n';
@@ -272,6 +272,40 @@ function Screen({ s }: { s: string }) {
       bets: [{ kind: 'cap1', amount: 250, multiplier: 2.7, status: 'open', payout: 0, game_id: null }],
     });
     return <Pregame r={r} uid="me" profile={profile} voice={null} onLeave={noop} />;
+  }
+  if (s === 'custom-guest') {
+    // Someone else's full 2v2 table: the switch button explains the other team is full.
+    const r = data({
+      room: room({ kind: 'custom', phase: 'lobby', phase_ends_at: null, host: 'u-Robert', stake: 0, turn_seconds: 25,
+        rules: { mode: '2v2', target: 100, capicuaBonus: 25, paseCorridoBonus: 25 } }),
+      seats: [seat(0, 'Robert', 6, { ready: true }), seat(1, 'Wilfri', 4), seat(2, 'Kirsy', 2, { ready: true }), seat(3, 'Yokasta', 13)],
+    });
+    return <Pregame r={r} uid="me" profile={profile} voice={null} onLeave={noop} />;
+  }
+  if (s === 'one-move') {
+    // My turn with exactly one legal tile; the server never answers (onPlay only counts), so a
+    // tap followed by autoplay must still send just one move.
+    let g = newGame(Math.random, publicRules('1v1'));
+    for (let i = 0; i < 60; i++) {
+      if (g.handResult) g = newGame(Math.random, publicRules('1v1'));
+      const moves = legalMoves(g, g.turn);
+      if (g.turn === 0 && moves.length === 1 && g.line.length > 0) break;
+      g = applyMove(g, forcedMove(g, g.turn) ?? chooseMove(g, g.turn));
+    }
+    const w = window as unknown as { __plays: number };
+    w.__plays = 0;
+    return (
+      <TableView view={publicState(g)} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta']}
+        onPlay={() => { w.__plays++; }} onNextHand={noop} onExit={noop} chat={{}} onChat={noop} endActions={null} />
+    );
+  }
+  if (s === 'notice') {
+    let g = newGame(Math.random, publicRules('2v2'));
+    for (let i = 0; i < 6 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
+    return (
+      <TableView view={{ ...publicState(g), turn: 1 }} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']}
+        onPlay={noop} onNextHand={noop} onExit={noop} chat={{}} onChat={noop} endActions={null} notice="No es tu turno." />
+    );
   }
   if (s === 'custom') {
     const r = data({

@@ -58,6 +58,8 @@ export interface TableViewProps {
   exitConfirm?: string;
   /** Online games earn XP; practice doesn't. */
   showXp?: boolean;
+  /** A short message (e.g. a refused move) shown in the line under the hand, never over the table. */
+  notice?: string | null;
 }
 
 /** Autoplay when only one tile can be played — a per-device preference. */
@@ -78,7 +80,7 @@ const FFA_COLORS = ['var(--us)', 'var(--them)', '#6fb7ff', '#c79bff'];
 export function TableView(props: TableViewProps) {
   const {
     view, myHand, mySeat, names, levels, avatars, onPlay, onNextHand, onExit, chat, onChat,
-    speaking, voice, pot, away, onSeatTap, mutedSeats, turnDeadline, resultNote, offline, exitConfirm,
+    speaking, voice, pot, away, onSeatTap, mutedSeats, turnDeadline, resultNote, offline, exitConfirm, notice,
   } = props;
   const { t, lang, setLang } = useI18n();
   const [pending, setPending] = useState<Tile | null>(null);
@@ -112,11 +114,16 @@ export function TableView(props: TableViewProps) {
   // A new state from the server can make a half-finished selection stale.
   useEffect(() => setPending(null), [view.line.length, view.turn]);
 
+  // One move per turn: a tap plus autoplay (or a double tap) before the server's answer
+  // arrives would send it twice, and the second one comes back as "not your turn".
+  const moveKey = `${view.handNo}:${view.events.length}`;
+  const sent = useRef<{ key: string; at: number } | null>(null);
+
   // Only one thing you can do? Do it (after a beat, so you see it happen).
   const single = myMoves.length === 1 ? myMoves[0] : null;
   useEffect(() => {
     if (!autoplay || !single) return;
-    const id = setTimeout(() => onPlay(single), 650);
+    const id = setTimeout(() => play(single), 650);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoplay, single && JSON.stringify(single), view.line.length, view.handNo]);
@@ -155,6 +162,9 @@ export function TableView(props: TableViewProps) {
 
   const play = (m: Move) => {
     setPending(null);
+    const last = sent.current;
+    if (last && last.key === moveKey && Date.now() - last.at < 3000) return; // already sent for this turn
+    sent.current = { key: moveKey, at: Date.now() };
     onPlay(m);
   };
 
@@ -302,9 +312,9 @@ export function TableView(props: TableViewProps) {
             })}
           </div>
         </div>
-        <div className="table-instruction" role="status" aria-live="polite">
-          {toast || (pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status)}
-          {!toast && playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
+        <div className={`table-instruction ${notice ? 'notice' : ''}`} role="status" aria-live="polite">
+          {notice || toast || (pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status)}
+          {!notice && !toast && playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
           {pending && <button className="table-cancel" onClick={() => setPending(null)} aria-label={t.cancel}><XIcon size={17} /></button>}
         </div>
         <div className="table-tools">

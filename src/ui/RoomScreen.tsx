@@ -5,7 +5,7 @@ import {
 } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { forgetTable, rememberTable } from '../lib/lastTable';
-import { api, supabase, type Profile } from '../lib/supabase';
+import { api, ApiError, supabase, type Profile } from '../lib/supabase';
 import { usePlayerStats, useRoom, type PlayerStats, type RoomData, type SeatRow } from '../lib/useRoom';
 import { useSocial } from '../lib/social';
 import { useVoice, type Voice } from '../lib/useVoice';
@@ -113,6 +113,8 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
   const [copied, setCopied] = useState(false);
   const [card, setCard] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [arranging, setArranging] = useState(false);
+  const [picked, setPicked] = useState<number | null>(null);
   const social = useSocial();
   const room = r.room!;
   const mode = room.mode;
@@ -134,6 +136,30 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
   const enoughPeople = humansSeated.length >= minHumans(mode, room.stake);
   const withBots = botsAllowed(mode, room.stake);
   const seatNote = !withBots ? t.peopleOnly : room.stake > 0 ? t.ffaMinTwo : t.botsFill;
+
+  // Teams (2v2 private tables, before the game): anyone hops to a free chair on the
+  // other team; the host can swap any two chairs or shuffle.
+  const teamTools = room.kind === 'custom' && room.phase === 'lobby' && mode === '2v2';
+  const layout = () => seatsOf(mode).map((s) => r.seats.find((x) => x.seat === s)?.user_id ?? null);
+  const freeOnOtherTeam = me ? seatsOf(mode).find((s) => s % 2 !== me.seat % 2 && !r.seats.some((x) => x.seat === s)) : undefined;
+  const saveLayout = (next: (string | null)[]) => run(async () => {
+    const { error: e } = await supabase.rpc('set_seats', { p_room: room.id, p_users: next });
+    if (e) throw new ApiError(['host_only', 'game_in_progress', 'bad_seat', 'room_not_found'].includes(e.message) ? e.message : 'server_error');
+  });
+  const pickSeat = (seat: number) => {
+    if (picked === null) return setPicked(seat);
+    setPicked(null);
+    if (picked === seat) return;
+    const next = layout();
+    [next[picked], next[seat]] = [next[seat], next[picked]];
+    if (next.some((id, i) => id !== layout()[i])) saveLayout(next);
+  };
+  const shuffleTeams = () => {
+    const now = layout();
+    let next = now;
+    for (let i = 0; i < 20 && teamsKey(next) === teamsKey(now); i++) next = shuffled(now);
+    saveLayout(next);
+  };
 
   return (
     <div className="screen lobby2">
@@ -184,7 +210,35 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
         emptyHint={withBots ? t.botsFill : t.waitingPerson}
         onSit={(seat) => run(() => api('take_seat', { roomId: room.id, seat }))}
         onCard={setCard}
+        arrange={arranging ? { picked, onPick: pickSeat } : undefined}
       />
+
+      {teamTools && (
+        <div className="team-tools">
+          {isHost ? (
+            arranging ? (
+              <>
+                <p className="fine team-hint">{t.teams.arrangeHint}</p>
+                <button className="btn ghost" onClick={shuffleTeams}>🔀 {t.teams.shuffle}</button>
+                <button className="btn primary" onClick={() => { setArranging(false); setPicked(null); }}>✓ {t.teams.done}</button>
+              </>
+            ) : (
+              <>
+                <button className="btn ghost" onClick={() => setArranging(true)}>⇄ {t.teams.arrange}</button>
+                <button className="btn ghost" onClick={shuffleTeams}>🔀 {t.teams.shuffle}</button>
+              </>
+            )
+          ) : (
+            <>
+              <button className="btn ghost" disabled={freeOnOtherTeam === undefined}
+                onClick={() => freeOnOtherTeam !== undefined && run(() => api('take_seat', { roomId: room.id, seat: freeOnOtherTeam }))}>
+                ⇄ {t.teams.switch}
+              </button>
+              {freeOnOtherTeam === undefined && <p className="fine team-hint">{t.teams.full}</p>}
+            </>
+          )}
+        </div>
+      )}
 
       {room.kind === 'custom' && room.phase === 'lobby' && (
         <>
@@ -223,9 +277,23 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
   );
 }
 
-function PlayerList({ mode, seats, stats, hostId, uid, showReady, speaking, canSit, emptyHint, onSit, onCard }: {
+/** Who partners with whom, ignoring which team is called 1 or 2. */
+const teamsKey = (l: (string | null)[]) =>
+  [[l[0], l[2]], [l[1], l[3]]].map((team) => team.filter(Boolean).sort().join('+')).sort().join('|');
+const shuffled = <T,>(xs: T[]) => {
+  const a = [...xs];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+
+function PlayerList({ mode, seats, stats, hostId, uid, showReady, speaking, canSit, emptyHint, onSit, onCard, arrange }: {
   mode: Mode; seats: SeatRow[]; stats: Record<string, PlayerStats>; hostId: string | null; uid: string;
   showReady: boolean; speaking?: Set<string>; canSit: boolean; emptyHint: string; onSit: (seat: number) => void; onCard: (id: string) => void;
+  /** Host is arranging teams: every chair is tappable, two taps swap them. */
+  arrange?: { picked: number | null; onPick: (seat: number) => void };
 }) {
   const { t } = useI18n();
   // Group by side: teams in 2v2, one per player otherwise.
@@ -239,7 +307,8 @@ function PlayerList({ mode, seats, stats, hostId, uid, showReady, speaking, canS
             const s = seats.find((x) => x.seat === seat);
             if (!s) {
               return (
-                <button key={seat} className="player-card empty" disabled={!canSit} onClick={() => onSit(seat)}>
+                <button key={seat} className={`player-card empty ${arrange ? 'pickable' : ''} ${arrange?.picked === seat ? 'picked' : ''}`}
+                  disabled={!canSit && !arrange} onClick={() => (arrange ? arrange.onPick(seat) : onSit(seat))}>
                   <span className="avatar">+</span>
                   <span className="pc-main"><b>{t.emptySeat}</b><small>{canSit ? t.sitHere : emptyHint}</small></span>
                 </button>
@@ -249,8 +318,9 @@ function PlayerList({ mode, seats, stats, hostId, uid, showReady, speaking, canS
             const winRate = st && st.games ? Math.round((100 * st.wins) / st.games) : null;
             const talking = !!s.user_id && !!speaking?.has(s.user_id);
             return (
-              <button key={seat} className={`player-card ${s.user_id === uid ? 'me' : ''} ${talking ? 'speaking' : ''}`}
-                disabled={!st} onClick={() => st && onCard(st.id)}>
+              <button key={seat}
+                className={`player-card ${s.user_id === uid ? 'me' : ''} ${talking ? 'speaking' : ''} ${arrange ? 'pickable' : ''} ${arrange?.picked === seat ? 'picked' : ''}`}
+                disabled={!st && !arrange} onClick={() => (arrange ? arrange.onPick(seat) : st && onCard(st.id))}>
                 <span className="avatar">
                   {talking && <span className="talk-ring" aria-hidden />}
                   <Avatar name={s.name} url={st?.avatar_url} />
@@ -341,6 +411,12 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
   const [chest, setChest] = useState<ChestKind | null>(null);
   const room = r.room!;
   const game = r.game!;
+  // Messages at the table fade on their own (they show under the hand, not over the board).
+  useEffect(() => {
+    if (!error) return;
+    const id = setTimeout(() => setError(null), 3000);
+    return () => clearTimeout(id);
+  }, [error]);
   const view = game.public_state;
   const me = r.seats.find((s) => s.user_id === uid);
   const mySeat = (me?.seat ?? 0) as Seat;
@@ -491,6 +567,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
         endActions={endActions}
         offline={offline}
         exitConfirm={t.exitConfirmOnline}
+        notice={error}
         showXp
       />
       {me?.away && room.phase === 'playing' && (
@@ -499,7 +576,6 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
           <button className="btn primary" onClick={imBack}>{t.imBack}</button>
         </div>
       )}
-      {error && <div className="error-toast" onClick={() => setError(null)}>{error}</div>}
     </div>
   );
 }

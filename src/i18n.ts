@@ -334,6 +334,11 @@ const dict = {
       invitesYou: 'te invita a su mesa', invitesYouTour: 'te invita a su torneo', join: 'Unirme', notNow: 'Ahora no',
       areFriends: 'Son amigos', requestPending: 'Solicitud enviada', acceptRequest: 'Aceptar solicitud', addFriend: 'Agregar amigo',
     },
+    teams: {
+      switch: 'Cambiar de equipo', full: 'El otro equipo está lleno. El anfitrión puede cambiarlos.',
+      arrange: 'Organizar equipos', shuffle: 'Equipos al azar', done: 'Listo',
+      arrangeHint: 'Toca dos puestos para cambiarlos de lugar.',
+    },
     looks: {
       title: 'Mi mesa', felt: 'Paño', tiles: 'Fichas', lvl: 'Nv',
       levelLocked: 'Se desbloquea en el nivel', guestBuy: 'Guarda tu cuenta con Google para comprar estilos.',
@@ -365,6 +370,7 @@ const dict = {
       bad_invite: 'No se pudo enviar la invitación.',
       look_locked: 'Todavía no tienes ese estilo.',
       no_look: 'Ese estilo no existe.',
+      bad_seat: 'Ese cambio de puestos no se puede hacer.',
       queue_blocked: 'Rechazaste varias mesas seguidas. Espera unos minutos.',
       balance_too_low: 'No tienes suficientes chelitos para esta sala.',
       bet_limit: 'Eso pasa el límite de apuestas extra.',
@@ -731,6 +737,11 @@ const dict = {
       invitesYou: 'invites you to their table', invitesYouTour: 'invites you to their tournament', join: 'Join', notNow: 'Not now',
       areFriends: 'Friends', requestPending: 'Request sent', acceptRequest: 'Accept request', addFriend: 'Add friend',
     },
+    teams: {
+      switch: 'Switch teams', full: 'The other team is full. The host can swap you.',
+      arrange: 'Arrange teams', shuffle: 'Random teams', done: 'Done',
+      arrangeHint: 'Tap two seats to swap them.',
+    },
     looks: {
       title: 'My table', felt: 'Felt', tiles: 'Dominoes', lvl: 'Lv',
       levelLocked: 'Unlocks at level', guestBuy: 'Save your account with Google to buy styles.',
@@ -762,6 +773,7 @@ const dict = {
       bad_invite: "Couldn't send the invite.",
       look_locked: "You don't have that style yet.",
       no_look: "That style doesn't exist.",
+      bad_seat: "That seat change isn't possible.",
       queue_blocked: 'You declined several tables in a row. Wait a few minutes.',
       balance_too_low: "You don't have enough chips for this room.",
       bet_limit: 'That goes over the side-bet limit.',
