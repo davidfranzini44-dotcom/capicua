@@ -11,6 +11,8 @@ import { Avatar } from './common';
 import { Confetti } from './Confetti';
 import { handLayout } from './handLayout';
 import { HandTile, TileBack } from './Tile';
+import { ListIcon, XIcon, ChatCircleDotsIcon, MicrophoneSlashIcon } from '@phosphor-icons/react';
+import './table.css';
 
 /** Latest sound-button phrase per seat; the view hides it after it goes stale. */
 export type ChatBubbles = Partial<Record<Seat, { id: PhraseId; at: number }>>;
@@ -59,7 +61,7 @@ export interface TableViewProps {
 /** Autoplay when only one tile can be played — a per-device preference. */
 function useAutoplayPref(): [boolean, (v: boolean) => void] {
   const [on, setOn] = useState(() => {
-    try { return localStorage.getItem('capicua.autoplay') !== '0'; } catch { return true; }
+    try { return localStorage.getItem('capicua.autoplay') === '1'; } catch { return false; }
   });
   const set = (v: boolean) => {
     setOn(v);
@@ -81,6 +83,8 @@ export function TableView(props: TableViewProps) {
   const [showResult, setShowResult] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDialogElement>(null);
   const [autoplay, setAutoplay] = useAutoplayPref();
   const [now, setNow] = useState(() => Date.now());
   const handRef = useRef<HTMLDivElement>(null);
@@ -149,8 +153,7 @@ export function TableView(props: TableViewProps) {
   const onTileTap = (tile: Tile) => {
     const options = myMoves.filter((m): m is Extract<Move, { type: 'play' }> => m.type === 'play' && sameTile(m.tile, tile));
     if (options.length === 0) return;
-    if (options.length === 1) play(options[0]);
-    else setPending(pending && sameTile(pending, tile) ? null : tile);
+    setPending(pending && sameTile(pending, tile) ? null : tile);
   };
 
   const targets = pending
@@ -200,25 +203,48 @@ export function TableView(props: TableViewProps) {
   });
 
   const myBubble = bubble(mySeat);
+  const copy = lang === 'es'
+    ? { pick: 'Elige una ficha iluminada', place: 'Toca un extremo iluminado', tiles: 'fichas', chat: 'Chat', practice: 'Voz disponible en partidas online', done: 'Listo' }
+    : { pick: 'Choose a highlighted tile', place: 'Tap a highlighted end', tiles: 'tiles', chat: 'Chat', practice: 'Voice is available in online games', done: 'Done' };
+
+  useEffect(() => {
+    if (menuOpen) menuRef.current?.showModal();
+    else menuRef.current?.close();
+  }, [menuOpen]);
 
   return (
-    <div className={`table-screen mode-${mode}`}>
-      <header className="scorebar">
-        <button className="icon-btn" onClick={() => (!playing || confirm(exitConfirm ?? t.exitConfirm)) && onExit()} aria-label={t.exit}>✕</button>
+    <div className={`table-screen table-redesign mode-${mode}`} onKeyDown={(e) => {
+      if (e.key === 'Escape') { setPending(null); setChatOpen(false); }
+    }}>
+      <header className="table-header">
+        <div className="table-topbar">
+          <button className="table-icon" onClick={() => setMenuOpen(true)} aria-label={t.settings}><ListIcon size={25} /></button>
+          <h1 className="table-wordmark">CAPICÚA</h1>
+          <button className="table-icon" onClick={() => (!playing || confirm(exitConfirm ?? t.exitConfirm)) && onExit()} aria-label={t.exit}><XIcon size={25} /></button>
+        </div>
         <Scores view={view} mySeat={mySeat} name={name} colorOf={colorOf} pot={pot} />
-        <button className="icon-btn lang" onClick={() => setLang(lang === 'es' ? 'en' : 'es')}>{lang === 'es' ? 'EN' : 'ES'}</button>
       </header>
 
-      <div className="felt">
+      <div className="table-rail"><div className="felt">
+        <div className="table-top-seat">
         {mode === '1v1' ? (
           <SeatBadge {...seatProps(rel(1))} pos="top" />
         ) : (
           <>
             <SeatBadge {...seatProps(rel(2))} pos="top" partnerLabel={mode === '2v2' ? t.partner : undefined} />
-            <SeatBadge {...seatProps(rel(3))} pos="left" />
-            <SeatBadge {...seatProps(rel(1))} pos="right" />
           </>
         )}
+
+        <div className={`table-turn ${myTurn ? 'mine' : ''}`} role="status">
+          {myTurn ? t.yourTurn : !playing ? t.hand + ' ' + view.handNo : name(view.turn)}
+          {playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
+          {!myTurn && playing && <small>{t.thinking}</small>}
+        </div>
+        </div>
+        {mode !== '1v1' && <>
+          <SeatBadge {...seatProps(rel(3))} pos="left" />
+          <SeatBadge {...seatProps(rel(1))} pos="right" />
+        </>}
 
         {mode === '1v1' && (
           <div className={`boneyard ${view.boneyardCount === 0 ? 'empty' : ''}`} title={t.pile}>
@@ -228,30 +254,25 @@ export function TableView(props: TableViewProps) {
         )}
 
         <div className="board-wrap">
-          <Board line={view.line} origin={view.origin} newestKey={newestKey} targets={targets} onPickSide={(side) => pending && play({ type: 'play', tile: pending, side })} />
+          <Board line={view.line} origin={view.origin} newestKey={newestKey} targets={targets} selected={pending} onPickSide={(side) => {
+            const move = myMoves.find((m) => m.type === 'play' && pending && sameTile(m.tile, pending) && m.side === side);
+            if (move) play(move);
+          }} />
+        </div>
+
+        <div className={`self-seat ${speaking?.has(mySeat) ? 'speaking' : ''}`}>
+          <div className="avatar"><Avatar name={t.you} url={avatars?.[mySeat]} /></div>
+          <b>{t.you}</b>
+          {myBubble && <span className="self-bubble">{myBubble.text}</span>}
         </div>
 
         {toast && <div className="toast">{toast}</div>}
-      </div>
+      </div></div>
 
       <footer className="my-area">
-        <div className="my-bar">
-          <div className="talk-tools">
-            {voice}
-            <button className={`icon-btn chat-btn ${chatOpen ? 'on' : ''}`} onClick={() => setChatOpen((o) => !o)} aria-label="Quick chat">💬</button>
-          </div>
-          <div className={`status ${myTurn ? 'mine' : ''} ${speaking?.has(mySeat) ? 'talking' : ''}`}>
-            {status}
-            {myTurn && secondsLeft !== null && secondsLeft <= 10 && <span className={`timer ${secondsLeft <= 5 ? 'hot' : ''}`}>{secondsLeft}s</span>}
-            {myBubble && <span className={`me-pass ${myBubble.chat ? 'chat' : ''}`}>{myBubble.text}</span>}
-            {pending && <button className="link-btn" onClick={() => setPending(null)}>{t.cancel}</button>}
-          </div>
-          <button className={`auto-chip ${autoplay ? 'on' : ''}`} onClick={() => setAutoplay(!autoplay)} title={t.autoplayHint}>
-            {t.auto}
-          </button>
-        </div>
         {chatOpen && (
-          <div className="chat-panel">
+          <div className="chat-panel" id="table-chat">
+            <button className="chat-close table-icon" onClick={() => setChatOpen(false)} aria-label={t.cancel}><XIcon size={20} /></button>
             {PHRASE_IDS.map((id) => (
               <button key={id} className="chat-chip" onClick={() => { onChat(id); setChatOpen(false); }}>
                 {PHRASES[id].es}
@@ -273,6 +294,8 @@ export function TableView(props: TableViewProps) {
                   className={`hand-tile ${myTurn ? (playable ? 'playable' : 'dim') : ''} ${selected ? 'selected' : ''}`}
                   onClick={() => onTileTap(tile)}
                   disabled={!playable}
+                  aria-label={`${tile[0]}–${tile[1]}`}
+                  aria-pressed={selected}
                 >
                   <HandTile tile={tile} />
                 </button>
@@ -280,7 +303,22 @@ export function TableView(props: TableViewProps) {
             })}
           </div>
         </div>
+        <div className="table-instruction" aria-live="polite">
+          {pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status}
+          {pending && <button className="table-cancel" onClick={() => setPending(null)} aria-label={t.cancel}><XIcon size={17} /></button>}
+        </div>
+        <div className="table-tools">
+          {voice ?? <span className="practice-voice" title={copy.practice}><MicrophoneSlashIcon size={25} /><small>{lang === 'es' ? 'Sin voz' : 'No voice'}</small></span>}
+          <button className={`table-chat-button ${chatOpen ? 'on' : ''}`} onClick={() => setChatOpen((o) => !o)} aria-expanded={chatOpen} aria-controls="table-chat"><ChatCircleDotsIcon size={28} weight="fill" /><span>{copy.chat}</span></button>
+        </div>
       </footer>
+
+      <dialog ref={menuRef} className="table-settings" onCancel={() => setMenuOpen(false)} onClose={() => setMenuOpen(false)}>
+        <h2>{t.settings}</h2>
+        <label>{t.language}<select value={lang} onChange={(e) => setLang(e.target.value as 'es' | 'en')}><option value="es">Español</option><option value="en">English</option></select></label>
+        <label><span>{t.auto}<small>{t.autoplayHint}</small></span><input type="checkbox" checked={autoplay} onChange={(e) => setAutoplay(e.target.checked)} /></label>
+        <button className="btn primary" onClick={() => setMenuOpen(false)}>{copy.done}</button>
+      </dialog>
 
       {showResult && view.handResult && view.winner === null && (
         <ResultSheet view={view} mySeat={mySeat} name={name} onNext={onNextHand} endActions={props.endActions} note={resultNote} />
@@ -356,20 +394,21 @@ function SeatBadge({
   bubble: { text: string; chat: boolean } | null; pos: 'top' | 'left' | 'right'; partnerLabel?: string;
   speaking: boolean; away: boolean; offline: boolean; muted: boolean; onTap?: () => void; seconds: number | null;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (
     <div className={`seat seat-${pos} ${active ? 'active' : ''} ${speaking ? 'speaking' : ''} ${away ? 'away' : ''} ${offline ? 'offline' : ''}`} style={{ '--seat-color': color } as CSSProperties}>
-      <div className={`avatar ${onTap ? 'tappable' : ''}`} onClick={onTap}>
+      <button className={`avatar ${onTap ? 'tappable' : ''}`} onClick={onTap} disabled={!onTap} aria-label={onTap ? `${name} · ${muted ? t.voice.muted : t.voice.live}` : name} aria-pressed={onTap ? muted : undefined}>
         {speaking && <span className="talk-ring" aria-hidden />}
         <Avatar name={name} url={avatar} />
         {level != null && <span className="lvl">{level}</span>}
         {muted ? <span className="mic-dot">🔇</span> : speaking && <span className="mic-dot eq"><i /><i /><i /></span>}
         {active && seconds !== null && seconds <= 10 && <span className={`seat-timer ${seconds <= 5 ? 'hot' : ''}`}>{seconds}</span>}
-      </div>
+      </button>
       <div className="seat-info">
         <span className="seat-name">{name}{partnerLabel && <small> · {partnerLabel}</small>}</span>
         {offline && <span className="offline-tag">📵 {t.offline}</span>}
-        <span className="backs">{Array.from({ length: Math.min(count, 12) }, (_, i) => <TileBack key={i} />)}{count > 12 && <small>+{count - 12}</small>}</span>
+        <span className="backs" aria-hidden>{Array.from({ length: Math.min(count, 7) }, (_, i) => <TileBack key={i} />)}</span>
+        <small className="tile-count">{count} {lang === 'es' ? 'fichas' : 'tiles'}</small>
       </div>
       {bubble && <span className={`bubble ${bubble.chat ? 'chat' : ''}`}>{bubble.text}</span>}
     </div>

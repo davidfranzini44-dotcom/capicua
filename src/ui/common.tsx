@@ -9,7 +9,7 @@ import { ApiError, avatarSrc, type Profile } from '../lib/supabase';
  * when there's none (or it won't load). The circle itself is the caller's.
  */
 export function Avatar({ name, url }: { name: string; url?: string | null }) {
-  const src = avatarSrc(url);
+  const src = url?.startsWith('/images/') ? url : avatarSrc(url);
   const [failed, setFailed] = useState<string | null>(null);
   if (src && failed !== src) {
     return <img className="avatar-img" src={src} alt="" referrerPolicy="no-referrer" loading="lazy" draggable={false} onError={() => setFailed(src)} />;

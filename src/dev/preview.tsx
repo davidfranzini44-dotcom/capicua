@@ -21,6 +21,7 @@ import type { InstallKind } from '../lib/install';
 import { TournamentInvite, TournamentView } from '../ui/Tournament';
 import type { EntryRow, MatchRow, TournamentRow } from '../lib/useTournament';
 import type { GameState } from '../../supabase/functions/_shared/domino.ts';
+import { BoardDesignPreview } from './BoardDesignPreview';
 
 /** A stand-in profile photo (a coloured face) so avatar layouts can be checked offline. */
 const face = (bg: string) => `data:image/svg+xml,${encodeURIComponent(
@@ -52,6 +53,7 @@ function data(over: Partial<RoomData>): RoomData {
 
 function Screen({ s }: { s: string }) {
   const noop = () => {};
+  if (s === 'board-design') return <BoardDesignPreview />;
   if (s.startsWith('main')) {
     // main | main-guest | main-out (signed out) | main-offline (no Supabase) | main-<tab>
     const signedOut = s === 'main-out' || s === 'main-offline';
@@ -242,4 +244,6 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+const root = createRoot(document.getElementById('root')!);
+root.render(<StrictMode><App /></StrictMode>);
+if (import.meta.hot) import.meta.hot.dispose(() => root.unmount());

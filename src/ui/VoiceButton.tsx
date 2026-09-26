@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useI18n } from '../i18n';
 import type { Voice } from '../lib/useVoice';
 import { Sheet } from './MainScreen';
+import { MicrophoneIcon, MicrophoneSlashIcon, SpeakerHighIcon, WarningCircleIcon, CircleNotchIcon } from '@phosphor-icons/react';
 
 const HOLD_MS = 300;
 
@@ -21,7 +22,7 @@ export function VoiceButton({ voice, me, others = 0 }: { voice: Voice; me?: stri
 
   const helpSheet = help && (
     <Sheet onClose={() => setHelp(false)} className="mic-help">
-      <h2>🎤 {t.voice.helpTitle}</h2>
+      <h2><MicrophoneIcon size={24} /> {t.voice.helpTitle}</h2>
       <p className="fine">{t.voice.helpWhy}</p>
       <ul className="mic-steps">
         <li><b>iPhone</b> · {t.voice.helpIos}</li>
@@ -32,7 +33,7 @@ export function VoiceButton({ voice, me, others = 0 }: { voice: Voice; me?: stri
   );
 
   if (voice.needsTap) {
-    return <button className="voice-pill hear pulse" onClick={voice.enableAudio}>🔈 {t.voice.tapToHear}</button>;
+    return <button className="voice-pill hear pulse" onClick={voice.enableAudio}><SpeakerHighIcon size={24} />{t.voice.tapToHear}</button>;
   }
 
   if (voice.status !== 'on') {
@@ -40,7 +41,7 @@ export function VoiceButton({ voice, me, others = 0 }: { voice: Voice; me?: stri
     return (
       <button className={`voice-pill join ${others > 0 && !connecting ? 'pulse' : ''}`} onClick={voice.join} disabled={connecting}
         title={voice.status === 'error' ? t.voiceError : t.voiceJoin}>
-        {connecting ? `⏳ ${t.voice.connecting}` : voice.status === 'error' ? `⚠️ ${t.voice.retry}` : `🎤 ${t.voice.join}`}
+        {connecting ? <><CircleNotchIcon size={24} />{t.voice.connecting}</> : voice.status === 'error' ? <><WarningCircleIcon size={24} />{t.voice.retry}</> : <><MicrophoneIcon size={24} />{t.voice.join}</>}
         {others > 0 && !connecting && <span className="vp-count">{others}</span>}
       </button>
     );
@@ -50,7 +51,7 @@ export function VoiceButton({ voice, me, others = 0 }: { voice: Voice; me?: stri
     return (
       <>
         <button className="voice-pill blocked" onClick={async () => { if (!(await voice.setMic(true))) setHelp(true); }}>
-          🎤 {t.voice.allowMic}
+          <MicrophoneIcon size={24} />{t.voice.allowMic}
         </button>
         {helpSheet}
       </>
@@ -83,10 +84,12 @@ export function VoiceButton({ voice, me, others = 0 }: { voice: Voice; me?: stri
         onPointerDown={down}
         onPointerUp={up}
         onPointerLeave={() => pushing.current && up()}
+        onPointerCancel={() => pushing.current && up()}
+        onClick={(e) => { if (e.detail === 0) void voice.setMic(!voice.micOn); }}
         onContextMenu={(e) => e.preventDefault()}
         title={voice.micOn ? t.mute : t.holdToTalk}
       >
-        {voice.micOn ? <><span className="eq"><i /><i /><i /></span>{t.voice.live}</> : `🔇 ${t.voice.muted}`}
+        {voice.micOn ? <><MicrophoneIcon size={24} />{t.voice.live}</> : <><MicrophoneSlashIcon size={24} />{t.voice.muted}</>}
       </button>
       {helpSheet}
     </>

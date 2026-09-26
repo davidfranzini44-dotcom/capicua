@@ -100,6 +100,7 @@ export function PracticeTable({ mode, onExit }: { mode: Mode; onExit: () => void
       myHand={game.hands[ME]}
       mySeat={ME}
       names={NAMES}
+      avatars={[null, '/images/papo-avatar.webp', '/images/yuly-avatar.webp', '/images/papo-avatar.webp']}
       onPlay={(m) => setGame((g) => applyMove(g, m))}
       onNextHand={() => setGame((g) => nextHand(g))}
       onExit={onExit}

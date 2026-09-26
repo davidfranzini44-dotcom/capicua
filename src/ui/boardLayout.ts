@@ -55,24 +55,31 @@ export function layoutBoard(line: Placed[], origin: number): BoardLayout {
   layArm(right, half, 'E', 'S', 'R', tiles, ends);
   layArm(left, -half, 'W', 'N', 'L', tiles, ends);
 
+  let minX = Infinity;
+  let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
   for (const t of tiles) {
+    minX = Math.min(minX, t.x);
+    maxX = Math.max(maxX, t.x + (t.vertical ? 1 : 2));
     minY = Math.min(minY, t.y);
     maxY = Math.max(maxY, t.y + (t.vertical ? 2 : 1));
   }
   for (const e of ends) {
+    minX = Math.min(minX, e.x - 0.8);
+    maxX = Math.max(maxX, e.x + 0.8);
     minY = Math.min(minY, e.y - 0.7);
     maxY = Math.max(maxY, e.y + 0.7);
   }
   const pad = 0.8;
   let h = maxY - minY + pad * 2;
   let y0 = minY - pad;
-  if (h < 7) {
-    y0 -= (7 - h) / 2;
-    h = 7;
+  if (h < 4.5) {
+    y0 -= (4.5 - h) / 2;
+    h = 4.5;
   }
-  return { tiles, ends, viewBox: [-LIMIT - 1.5, y0, 2 * LIMIT + 3, h] };
+  const w = Math.max(8.5, maxX - minX + pad * 2);
+  return { tiles, ends, viewBox: [(minX + maxX - w) / 2, y0, w, h] };
 }
 
 function layArm(
@@ -130,5 +137,6 @@ function layArm(
     justTurned = false;
   }
 
-  ends.push({ side, x: d === 'E' ? cx + 0.7 : cx - 0.7, y: cy });
+  // Reserve enough breathing room for a 44px touch target, even on small phones.
+  ends.push({ side, x: d === 'E' ? cx + 1.4 : cx - 1.4, y: cy });
 }
