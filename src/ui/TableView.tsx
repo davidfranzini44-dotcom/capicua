@@ -128,14 +128,19 @@ export function TableView(props: TableViewProps) {
   }, [view.handResult]);
 
   const lastEvent = view.events.at(-1);
+  const paseCorridoKey = lastEvent?.kind === 'paseCorrido'
+    ? `${view.handNo}:${view.events.length}:${lastEvent.seat}:${lastEvent.points}`
+    : '';
+  const paseCorridoText = lastEvent?.kind === 'paseCorrido'
+    ? `${t.paseCorrido} ${sideOf(mode, lastEvent.seat) === mySide ? (mode === '2v2' ? t.us : t.you) : name(lastEvent.seat)} +${lastEvent.points}`
+    : '';
   useEffect(() => {
-    if (lastEvent?.kind !== 'paseCorrido') return;
-    const who = sideOf(mode, lastEvent.seat) === mySide ? (mode === '2v2' ? t.us : t.you) : name(lastEvent.seat);
-    setToast(`${t.paseCorrido} ${who} +${lastEvent.points}`);
+    setToast(null);
+    if (!paseCorridoKey) return;
+    setToast(paseCorridoText);
     const id = setTimeout(() => setToast(null), 2200);
     return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastEvent, mySide, t]);
+  }, [paseCorridoKey, paseCorridoText]);
 
   // Tick while bubbles or a turn timer are on screen.
   const ticking = Object.keys(chat).length > 0 || (turnDeadline != null && playing);
@@ -228,21 +233,11 @@ export function TableView(props: TableViewProps) {
       </header>
 
       <div className="table-rail"><div className="felt">
-        <div className="table-top-seat">
         {mode === '1v1' ? (
           <SeatBadge {...seatProps(rel(1))} pos="top" />
         ) : (
-          <>
-            <SeatBadge {...seatProps(rel(2))} pos="top" partnerLabel={mode === '2v2' ? t.partner : undefined} />
-          </>
+          <SeatBadge {...seatProps(rel(2))} pos="top" partnerLabel={mode === '2v2' ? t.partner : undefined} />
         )}
-
-        <div className={`table-turn ${myTurn ? 'mine' : ''}`} role="status">
-          {myTurn ? t.yourTurn : !playing ? t.hand + ' ' + view.handNo : name(view.turn)}
-          {playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
-          {!myTurn && playing && <small>{t.thinking}</small>}
-        </div>
-        </div>
         {mode !== '1v1' && <>
           <SeatBadge {...seatProps(rel(3))} pos="left" />
           <SeatBadge {...seatProps(rel(1))} pos="right" />
@@ -268,7 +263,6 @@ export function TableView(props: TableViewProps) {
           {myBubble && <span className="self-bubble">{myBubble.text}</span>}
         </div>
 
-        {toast && <div className="toast">{toast}</div>}
       </div></div>
 
       <footer className="my-area">
@@ -305,8 +299,9 @@ export function TableView(props: TableViewProps) {
             })}
           </div>
         </div>
-        <div className="table-instruction" aria-live="polite">
-          {pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status}
+        <div className="table-instruction" role="status" aria-live="polite">
+          {toast || (pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status)}
+          {!toast && playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
           {pending && <button className="table-cancel" onClick={() => setPending(null)} aria-label={t.cancel}><XIcon size={17} /></button>}
         </div>
         <div className="table-tools">

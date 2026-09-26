@@ -49,12 +49,6 @@
 .table-redesign .seat-name small { display: block; font-size: 11px; opacity: 1; color: #c0d1c1; margin: 2px 0; }
 .table-redesign .tile-back { width: 8px; height: 16px; background: var(--ivory); box-shadow: 0 2px 2px #0005; border: 1px solid #d3c7b0; }
 .table-redesign .tile-count { color: #c5d6c9; font-size: 11px; }
-.table-top-seat { position: absolute; top: 13px; left: 50%; transform: translateX(-50%); width: 48%; display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 3; }
-.table-redesign .table-top-seat .seat-top { position: relative; top: auto; left: auto; transform: none; }
-.table-turn { color: var(--ivory); font-weight: 700; font-size: 14px; text-align: center; max-width: 100%; padding: 7px 12px; border-radius: 99px; background: #082d24; border: 1px solid #4f7762; }
-.table-turn.mine { background: var(--us); color: #272313; border-color: #ffe497; box-shadow: 0 2px 8px #0002; white-space: nowrap; }
-.table-turn small { display: block; font-size: 10px; font-weight: 400; }
-.table-turn .urgent { color: #8c260d; }
 .table-redesign .board-wrap { inset: 43% 10px 18%; }
 .board-scene { position: relative; height: 100%; width: 100%; }
 .table-redesign .board { display: block; overflow: visible; }
@@ -86,6 +80,7 @@
 .table-redesign .hand-tile.selected .tile-face { stroke-width: .08; }
 .table-redesign .hand.multi .hand-tile.selected { transform: translateY(-4px); }
 .table-instruction { display: flex; align-items: center; justify-content: center; min-height: 35px; gap: 8px; text-align: center; color: #c9d9cd; font-size: 13px; line-height: 1.25; margin: 5px 0; }
+.table-instruction .urgent { color: #ff9b76; font-weight: 700; }
 .table-cancel { display: grid; place-items: center; width: 35px; height: 35px; border: 0; border-radius: 50%; background: #204b3b; }
 .table-tools { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
 .table-chat-button, .practice-voice { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 66px; height: 54px; font-size: 12px; color: var(--ivory); border: 1px solid #335d4e; border-radius: 16px; background: transparent; }
@@ -127,7 +122,7 @@
   .table-header .score b { font-size: 24px; }
   .table-header .scores { padding: 5px 12px; }
   .table-redesign .seat .avatar { width: 36px; height: 36px; font-size: 18px; }
-  .table-top-seat { top: 8px; }
+  .table-redesign .seat-top { top: 8px; }
   .table-redesign .seat-left, .table-redesign .seat-right { top: 25%; }
   .table-redesign .seat-name { font-size: 12px; }
   .table-redesign .tile-count { font-size: 10px; }
@@ -146,7 +141,6 @@
   .table-redesign .seat-name { font-size: 16px; }
   .table-redesign .tile-count { font-size: 13px; }
   .table-redesign .self-seat .avatar { width: 50px; height: 50px; }
-  .table-turn { font-size: 17px; }
   .table-header .score span { font-size: 14px; }
   .table-header .score b { font-size: 30px; }
 }
@@ -155,7 +149,6 @@
   .table-redesign .seat-name small, .table-redesign .backs { display: none; }
   .table-redesign .seat-left, .table-redesign .seat-right { top: 16%; }
   .table-redesign .board-wrap { inset: 38% 12px 19%; }
-  .table-turn { font-size: 12px; padding: 4px 10px; }
   .table-redesign .my-area { padding-top: 13px; }
 }
 @media (orientation: landscape) and (max-height: 500px) and (min-width: 700px) {
@@ -172,6 +165,5 @@
   .table-redesign .seat-name { font-size: 11px; }
   .table-redesign .seat-name small, .table-redesign .backs { display: none; }
   .table-redesign .board-wrap { inset: 35% 62px 21%; }
-  .table-turn { font-size: 12px; padding: 4px 10px; }
   .table-redesign .self-seat .avatar { width: 26px; height: 26px; font-size: 15px; }
 }
