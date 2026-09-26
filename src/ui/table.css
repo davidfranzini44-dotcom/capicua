@@ -206,6 +206,60 @@
 .table-redesign .self-seat .avatar { position: relative; }
 .table-redesign .self-seat.active .avatar { box-shadow: 0 0 0 3px #f5c54266, 0 0 14px #f5c54240; }
 
+/* Motion follows real table changes; the board remains readable throughout. */
+.table-redesign .seat.active .avatar, .table-redesign .self-seat.active .avatar {
+  animation: turn-halo 1.8s ease-in-out infinite;
+}
+@keyframes turn-halo {
+  0%, 100% { box-shadow: 0 0 0 3px #f5c54255, 0 0 10px #f5c5422a; }
+  50% { box-shadow: 0 0 0 5px #f5c54230, 0 0 19px #f5c54255; }
+}
+.table-redesign .hand-tile { transition: transform .18s ease, filter .18s ease, opacity .18s ease; }
+.table-redesign .hand-tile.playable:not(.selected) { animation: hand-ready .38s ease-out both; }
+@keyframes hand-ready {
+  from { opacity: .6; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.table-redesign .board .placed.arriving {
+  transform-box: fill-box; transform-origin: center;
+  animation: tile-land .52s cubic-bezier(.16, .8, .24, 1) both;
+}
+@keyframes tile-land {
+  0% { opacity: 0; transform: translateY(-11px) scale(.83) rotate(-4deg); }
+  62% { opacity: 1; transform: translateY(2px) scale(1.045) rotate(1deg); }
+  100% { opacity: 1; transform: none; }
+}
+.tile-impact-ring { fill: none; stroke: #ffe08a; stroke-width: .045; opacity: 0; pointer-events: none; }
+.table-redesign .board .placed.arriving .tile-impact-ring {
+  transform-box: fill-box; transform-origin: center;
+  animation: tile-impact .6s ease-out both;
+}
+@keyframes tile-impact {
+  0%, 25% { opacity: 0; transform: scale(.85); }
+  42% { opacity: .8; }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+.table-redesign .score > b { animation: score-tick .43s ease-out both; }
+@keyframes score-tick {
+  0% { transform: scale(.76); color: #ffe08a; }
+  55% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.table-header .score > span { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.table-header .score-streak {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 28px; padding: 1px 4px; border-radius: 7px;
+  background: #a2471d; color: #fff1ca; border: 1px solid #ffc05c;
+  font: 800 11px/1.25 var(--font); white-space: nowrap;
+  box-shadow: 0 0 10px #ff9c3c66;
+  animation: streak-in .48s cubic-bezier(.2, .9, .24, 1.2) both;
+}
+@keyframes streak-in {
+  0% { opacity: 0; transform: translateY(6px) scale(.6); }
+  65% { opacity: 1; transform: translateY(-2px) scale(1.14); }
+  100% { transform: none; }
+}
+
 /* ---------- Seats: tile count beside the tile backs (one line instead of two) ---------- */
 .seat-tiles { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 16px; }
 .table-redesign .seat-tiles .tile-count { font-size: 12px; font-weight: 700; color: #d9e6dc; }

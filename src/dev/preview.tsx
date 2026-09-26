@@ -1,4 +1,4 @@
-// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report|fx|fx-win|fx-lose|fx-salida|fx-sounds
+// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|board-design|board-motion|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report|fx|fx-win|fx-lose|fx-salida|fx-sounds
 // Renders the online screens with sample data so layouts can be checked without a backend.
 import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -217,6 +217,7 @@ function Soundboard() {
 function Screen({ s }: { s: string }) {
   const noop = () => {};
   if (s === 'fx-sounds') return <Soundboard />;
+  if (s === 'board-motion') return <BoardDesignPreview auto />;
   if (s === 'board-design') return <BoardDesignPreview />;
   if (s.startsWith('arcade')) return <ArcadePreview s={s} />;
   if (s.startsWith('main')) {

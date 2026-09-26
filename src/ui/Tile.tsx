@@ -31,9 +31,11 @@ function Half({ value, ox, oy, rotate }: { value: number; ox: number; oy: number
  * player, plus a light inner ring so the tile can still be read at a glance.
  */
 export function TileShape({
-  x, y, vertical, first, second, className, owner, ownerName, wild, wildNote,
+  x, y, vertical, first, second, className, tileKey, owner, ownerName, wild, wildNote,
 }: {
   x: number; y: number; vertical: boolean; first: number; second: number; className?: string;
+  /** Stable physical identity, used to animate a newly placed board tile. */
+  tileKey?: string;
   owner?: OwnerRole; ownerName?: string;
   /** Arcade Comodín: this half was changed to connect — it keeps a small star. */
   wild?: 'first' | 'second';
@@ -45,7 +47,7 @@ export function TileShape({
   const g = 0.035; // gap so neighbouring tiles read as separate pieces
   const ownerBadge = owner ? ownerBadgePoint(x, y, w, h, owner, 0.16) : null;
   return (
-    <g className={className}>
+    <g className={className} data-tile-key={tileKey}>
       <rect x={x + g} y={y + g + 0.05} width={w - 2 * g} height={h - 2 * g} rx={0.14} className="tile-shadow" />
       <rect x={x + g} y={y + g} width={w - 2 * g} height={h - 2 * g} rx={0.14} className="tile-face" />
       {vertical ? (
@@ -78,6 +80,7 @@ export function TileShape({
           </>}
         </g>
       )}
+      {tileKey && <rect x={x - 0.04} y={y - 0.04} width={w + 0.08} height={h + 0.08} rx={0.19} className="tile-impact-ring" aria-hidden="true" />}
     </g>
   );
 }

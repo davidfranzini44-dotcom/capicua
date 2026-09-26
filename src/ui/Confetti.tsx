@@ -6,6 +6,7 @@ const COLORS = ['#ffd23f', '#ff7a59', '#56b8ff', '#97e85a', '#c79bff', '#ffffff'
 export function Confetti({ pieces = 140, duration = 3200 }: { pieces?: number; duration?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;

@@ -13,15 +13,20 @@ function example(): GameState {
   return { ...newGame(() => .5, publicRules('2v2')), hands: [mine, rest.slice(0, 6), rest.slice(6, 12), rest.slice(12)], line, origin: 2, turn: 0, mano: 1, lastPlayer: 3, mustOpen: null, scores: [42, 28], handNo: 3, events: [] };
 }
 
-export function BoardDesignPreview() {
+export function BoardDesignPreview({ auto = false }: { auto?: boolean }) {
   const [game, setGame] = useState(example);
   const [chat, setChat] = useState<ChatBubbles>({});
   useEffect(() => {
-    if (game.handResult || game.winner !== null) return;
-    if (game.turn === 0 && !forcedMove(game, 0)) return;
-    const timer = setTimeout(() => setGame(g => applyMove(g, chooseMove(g, g.turn))), 1200);
+    if (game.winner !== null) return;
+    if (game.handResult) {
+      if (!auto) return;
+      const timer = setTimeout(() => setGame(g => nextHand(g)), 2600);
+      return () => clearTimeout(timer);
+    }
+    if (!auto && game.turn === 0 && !forcedMove(game, 0)) return;
+    const timer = setTimeout(() => setGame(g => applyMove(g, chooseMove(g, g.turn))), auto ? 950 : 1200);
     return () => clearTimeout(timer);
-  }, [game]);
+  }, [game, auto]);
   return <TableView view={publicState(game)} myHand={game.hands[0]} mySeat={0} names={['Tú', 'Chelo', 'Yuly', 'Papo']}
     avatars={['/images/papo-avatar.webp', '/images/papo-avatar.webp', '/images/yuly-avatar.webp', '/images/papo-avatar.webp']}
     onPlay={move => setGame(g => applyMove(g, move))} onNextHand={() => setGame(g => nextHand(g))}

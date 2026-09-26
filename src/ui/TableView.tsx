@@ -11,6 +11,7 @@ import { playEarnSfx, playPowerSfx } from '../lib/arcadeSfx';
 import { draftPickSide, draftTapTile, draftView, startDraft, type Draft } from '../lib/powerDraft';
 import { ArcadeIntro, Charges, PowerBar, PowersPanel, Stars, useArcadeIntro } from './Arcade';
 import { snapshotOf, tableFx, type Bonus, type FxSnapshot } from '../lib/tableFx';
+import { placementRun } from '../lib/tableMotion';
 import { BUBBLE_MS, PHRASE_IDS, PHRASES, type PhraseId } from '../quickchat';
 import { Board } from './Board';
 import { Avatar } from './common';
@@ -398,12 +399,12 @@ export function TableView(props: TableViewProps) {
 
         <div className="board-wrap">
           {dv ? (
-            <Board line={dv.line} origin={dv.origin} newestKey={null} targets={dv.sides} selected={dv.selected}
+            <Board key={view.handNo} line={dv.line} origin={dv.origin} newestKey={null} targets={dv.sides} selected={dv.selected}
               ghostKeys={dv.ghosts} ownerOf={ownerOf} nameOf={name}
               lockedSide={dv.move?.type === 'play' && dv.move.lock ? dv.move.lock : arcade?.lock?.side ?? null}
               onPickSide={(side) => setDraft(draftPickSide(mine, mySeat, draft!, side))} />
           ) : (
-            <Board line={view.line} origin={view.origin} newestKey={newestKey} targets={targets} selected={pending}
+            <Board key={view.handNo} line={view.line} origin={view.origin} newestKey={newestKey} targets={targets} selected={pending}
               ownerOf={ownerOf} nameOf={name} lockedSide={playing ? arcade?.lock?.side ?? null : null} onPickSide={(side) => {
               const move = myMoves.find((m) => m.type === 'play' && pending && sameTile(m.tile, pending) && m.side === side);
               if (move) play(move);
@@ -421,6 +422,7 @@ export function TableView(props: TableViewProps) {
             onDone={() => setBonus(null)}
           />
         )}
+        {bonus?.kind === 'capicua' && view.winner === null && sideOf(mode, bonus.seat) === mySide && <Confetti pieces={48} duration={1500} />}
 
         <div className={`self-seat ${bottomTurn ? 'active' : ''} ${speaking?.has(mySeat) ? 'speaking' : ''}`}>
           <div className="avatar">
@@ -535,9 +537,17 @@ function Scores({ view, mySeat, name, colorOf, pot, watchers, watching }: {
   view: PublicState; mySeat: Seat; name: (s: Seat) => string; colorOf: (s: Seat) => string; pot?: number;
   watchers?: string[]; watching?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const mode = view.rules.mode;
   const mySide = sideOf(mode, mySeat);
+  const run = placementRun(view.events, mode);
+  const streakChip = (side: number) => run?.side === side ? (
+    <small key={`${view.handNo}-${run.count}-${side}`} className="score-streak"
+      title={lang === 'es' ? `${run.count} fichas seguidas de este equipo` : `${run.count} consecutive tiles from this team`}
+      aria-label={lang === 'es' ? `Racha: ${run.count} fichas seguidas` : `Streak: ${run.count} consecutive tiles`}>
+      🔥{run.count}
+    </small>
+  ) : null;
   const middle = (
     <div className="target">
       {t.to} {view.rules.target}
@@ -561,17 +571,17 @@ function Scores({ view, mySeat, name, colorOf, pot, watchers, watching }: {
   if (view.arcade) {
     return (
       <div className="scores arcade">
-        <div className="score us"><span>{ourLabel}</span><Stars n={view.scores[mySide]} label={ourLabel} /></div>
+        <div className="score us"><span>{ourLabel}{streakChip(mySide)}</span><Stars n={view.scores[mySide]} label={ourLabel} /></div>
         <div className="target"><span className="arcade-label">⚡ ARCADE</span><small>{t.hand} {view.handNo}</small></div>
-        <div className="score them"><span>{theirLabel}</span><Stars n={view.scores[other]} label={theirLabel} /></div>
+        <div className="score them"><span>{theirLabel}{streakChip(other)}</span><Stars n={view.scores[other]} label={theirLabel} /></div>
       </div>
     );
   }
   return (
     <div className="scores">
-      <div className="score us"><span>{ourLabel}</span><b>{view.scores[mySide]}</b></div>
+      <div className="score us"><span>{ourLabel}{streakChip(mySide)}</span><b key={view.scores[mySide]}>{view.scores[mySide]}</b></div>
       {middle}
-      <div className="score them"><span>{theirLabel}</span><b>{view.scores[other]}</b></div>
+      <div className="score them"><span>{theirLabel}{streakChip(other)}</span><b key={view.scores[other]}>{view.scores[other]}</b></div>
     </div>
   );
 }

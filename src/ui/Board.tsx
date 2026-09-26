@@ -37,6 +37,21 @@ export function Board({ line, origin, newestKey, targets, selected, onPickSide, 
   // as big as possible. It only changes when the screen does, never in the middle of a hand.
   const limit = useMemo(() => bestLimit(size.width, size.height), [size.width, size.height]);
   const layout = useMemo(() => layoutBoard(line, origin, limit), [line, origin, limit]);
+  // Only tiles that arrive after this board mounted land with motion. Existing
+  // tiles on reload and unconfirmed Arcade ghosts stay still.
+  const seen = useRef<Set<string> | null>(null);
+  useLayoutEffect(() => {
+    const visible = new Set(layout.tiles.filter((tile) => !ghostKeys?.includes(tile.key)).map((tile) => tile.key));
+    if (seen.current && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      for (const key of visible) {
+        if (seen.current.has(key)) continue;
+        const tile = Array.from(box.current?.querySelectorAll<SVGGElement>('[data-tile-key]') ?? [])
+          .find((element) => element.dataset.tileKey === key);
+        tile?.classList.add('arriving');
+      }
+    }
+    seen.current = visible;
+  }, [layout.tiles, ghostKeys]);
   const [vx, vy, vw, vh] = layout.viewBox;
   const scale = Math.min(size.width / vw, size.height / vh);
   const offsetX = (size.width - vw * scale) / 2;
@@ -50,7 +65,7 @@ export function Board({ line, origin, newestKey, targets, selected, onPickSide, 
     <div className="board-scene" ref={box}>
       <svg className="board" viewBox={`${vx} ${vy} ${vw} ${vh}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={described}>
         {layout.tiles.map((t) => (
-          <TileShape key={t.key} x={t.x} y={t.y} vertical={t.vertical} first={t.first} second={t.second}
+          <TileShape key={t.key} tileKey={t.key} x={t.x} y={t.y} vertical={t.vertical} first={t.first} second={t.second}
             className={`placed ${t.key === newestKey ? 'newest' : ''} ${ghostKeys?.includes(t.key) ? 'ghost' : ''}`}
             owner={ownerOf ? ownerOf(t.seat) : undefined} ownerName={nameOf?.(t.seat)}
             wild={t.wild}
