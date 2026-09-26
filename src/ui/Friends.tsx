@@ -159,12 +159,14 @@ export function QuickInviteSheet({ friend, onClose, onRoom, onCustom }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!s) return null;
-  const start = async (mode: '1v1' | '2v2') => {
+  const start = async (mode: '1v1' | '2v2' | 'arcade') => {
     setBusy(true);
     setError(null);
     try {
       const { roomId } = await api<{ roomId: string }>('create_custom', {
-        settings: { mode, stake: 0, target: 100, turnSeconds: 25, visibility: 'private' },
+        settings: mode === 'arcade'
+          ? { ruleset: 'arcade', turnSeconds: 15, visibility: 'private' }
+          : { mode, stake: 0, target: 100, turnSeconds: 25, visibility: 'private' },
       });
       await s.invite(friend.id, { roomId });
       onRoom(roomId);
@@ -179,6 +181,7 @@ export function QuickInviteSheet({ friend, onClose, onRoom, onCustom }: {
       <p className="fine">{t.social.quickSub}</p>
       <button className="btn primary wide" disabled={busy} onClick={() => start('1v1')}>🤝 {t.modes['1v1'].name} · {t.free}</button>
       <button className="btn primary wide" disabled={busy} onClick={() => start('2v2')}>🤝 {t.modes['2v2'].name} · {t.free}</button>
+      <button className="btn primary wide arcade-invite" disabled={busy} onClick={() => start('arcade')}>⚡ {t.arcade.name} · {t.free}</button>
       <button className="btn ghost wide" disabled={busy} onClick={() => onCustom(friend.id)}>⚙️ {t.social.customTable}</button>
       {error && <p className="error">{error}</p>}
     </Sheet>
@@ -240,6 +243,7 @@ export function InviteToast({ onRoom, onTournament }: { onRoom: (roomId: string)
   const friend = s.friends.find((f) => f.id === inv.from_user);
   const what = d.kind === 'tournament'
     ? `🏆 ${d.name} · ${t.modes[d.mode]?.name ?? d.mode}${d.stake ? ` · 🪙 ${d.stake.toLocaleString()}` : ''}`
+    : d.ruleset === 'arcade' ? `⚡ ${t.arcade.name} · ${t.arcade.goal}`
     : `${t.modes[d.mode]?.name ?? d.mode} · ${d.stake ? `🪙 ${d.stake.toLocaleString()}` : t.free}${d.target ? ` · ${t.targetLbl} ${d.target}` : ''}`;
   const accept = async () => {
     setBusy(true);

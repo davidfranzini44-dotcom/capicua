@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { seatsOf, type Mode, type Move, type Seat } from '../../supabase/functions/_shared/domino.ts';
+import { seatsOf, type Mode, type Move, type Ruleset, type Seat } from '../../supabase/functions/_shared/domino.ts';
 import {
   botsAllowed, minHumans, SIDE_BET_KINDS, sideBetLimit, sideBetMultiplier, voiceRoomFor, type SideBetKind,
 } from '../../supabase/functions/_shared/table.ts';
@@ -27,7 +27,7 @@ const fairReminded = new Set<string>();
 
 export function RoomScreen({ roomId, uid, profile, onLeave, onBrokeUp, onRequeue, onTournament }: {
   roomId: string; uid: string; profile: Profile;
-  onLeave: () => void; onBrokeUp: () => void; onRequeue: (stake: number, mode: Mode) => void; onTournament: (id: string) => void;
+  onLeave: () => void; onBrokeUp: () => void; onRequeue: (stake: number, mode: Mode, ruleset?: Ruleset) => void; onTournament: (id: string) => void;
 }) {
   const r = useRoom(roomId, uid);
   const me = r.seats.find((s) => s.user_id === uid);
@@ -89,7 +89,7 @@ export function RoomScreen({ roomId, uid, profile, onLeave, onBrokeUp, onRequeue
           voice.leave();
           forgetTable();
           await api('leave_room', { roomId }).catch(() => {});
-          onRequeue(r.room!.stake, r.room!.mode);
+          onRequeue(r.room!.stake, r.room!.mode, r.room!.rules.ruleset === 'arcade' ? 'arcade' : 'traditional');
         }}
       />
     );
@@ -176,12 +176,17 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
       <header className="lobby-title">
         <h2>{room.kind === 'tournament' ? `🏆 ${t.tour.matchTitle}` : room.kind === 'custom' ? `${t.tableCode}: ${room.code}` : room.stake === 0 ? `🤝 ${t.friendly}` : `${t.sala} ${room.stake.toLocaleString()}`}</h2>
         <div className="rule-chips">
-          <span>{t.modes[mode].name}</span>
-          <span>{t.targetLbl} {room.rules.target}</span>
+          {room.rules.ruleset === 'arcade' ? <>
+            <span className="arcade-chip">⚡ {t.arcade.name}</span>
+            <span>{t.arcade.goal}</span>
+          </> : <>
+            <span>{t.modes[mode].name}</span>
+            <span>{t.targetLbl} {room.rules.target}</span>
+          </>}
           <span>{room.stake ? `🪙 ${room.stake.toLocaleString()}` : t.free}</span>
           <span>⏱ {room.turn_seconds}s</span>
-          {room.rules.capicuaBonus === 0 && <span className="off">{t.capicuaBonusLbl}</span>}
-          {room.rules.paseCorridoBonus === 0 && <span className="off">{t.paseBonusLbl}</span>}
+          {room.rules.ruleset !== 'arcade' && room.rules.capicuaBonus === 0 && <span className="off">{t.capicuaBonusLbl}</span>}
+          {room.rules.ruleset !== 'arcade' && room.rules.paseCorridoBonus === 0 && <span className="off">{t.paseBonusLbl}</span>}
         </div>
       </header>
 
@@ -526,7 +531,9 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
 
   const onPlay = (move: Move) => {
     setError(null);
-    api('move', { gameId: game.id, move }).catch((e) => {
+    // Arcade: an id per action (a retry never repeats it) and the state I saw (an older one is refused).
+    const arcade = game.public_state.arcade ? { actionId: crypto.randomUUID(), version: game.version } : {};
+    api('move', { gameId: game.id, move, ...arcade }).catch((e) => {
       setError(errText(e));
       r.reload();
     });

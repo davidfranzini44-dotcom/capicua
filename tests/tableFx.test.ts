@@ -24,7 +24,7 @@ const result = (over: Partial<HandResult> = {}): HandResult => ({
 describe('table sounds and bonus pop-ups', () => {
   it('stays quiet the first time a table is shown (a reload replays nothing)', () => {
     const v = view({ events: [play(0), play(1)], handResult: result({ capicua: true, bonus: 25 }) });
-    expect(tableFx(null, v, 0)).toEqual({ moves: [], fanfare: null, bonus: null, ending: null });
+    expect(tableFx(null, v, 0)).toEqual({ moves: [], fanfare: null, bonus: null, ending: null, powerEvent: null });
   });
 
   it('clacks for a tile, knocks for a pass, slides for a draw', () => {

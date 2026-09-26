@@ -1,0 +1,136 @@
+/* Capicúa Arcade at the table: a violet/cyan accent over the usual felt. */
+.ruleset-arcade { --arcade: #b48cff; --arcade-2: #4fd8ff; --arcade-bg: #1c1238; }
+.ruleset-arcade .table-wordmark::after { background: linear-gradient(90deg, var(--arcade), var(--arcade-2)); }
+
+/* ---------- score bar: stars ---------- */
+.stars { display: inline-flex; gap: 2px; font-size: 18px; line-height: 1; letter-spacing: 0; }
+.stars i { font-style: normal; color: #3f5a4f; text-shadow: 0 1px 0 #0006; }
+.stars i.on { color: #ffd23f; text-shadow: 0 0 8px #ffd23f88, 0 1px 0 #7a5600; }
+.scores.arcade .score { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.scores.arcade .target { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.arcade-label {
+  font-family: var(--display); font-size: 13px; letter-spacing: .06em;
+  background: linear-gradient(90deg, var(--arcade), var(--arcade-2)); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* ---------- charges and the lock by each portrait ---------- */
+.charge-pill {
+  display: inline-flex; align-items: center; margin-left: 5px; padding: 1px 6px; border-radius: 99px;
+  font: 800 11px/1.3 var(--font); color: #1c1238; background: linear-gradient(90deg, var(--arcade), var(--arcade-2));
+  vertical-align: 1px; white-space: nowrap;
+}
+.charge-pill.empty { background: #2d3b36; color: #8aa396; }
+.seat-info .charge-pill { margin: 1px 0 0; }
+.lock-tag { color: #ffd9a8 !important; font-weight: 700; }
+
+/* ---------- board: the locked end, previews, the Comodín star ---------- */
+.board-end.locked { opacity: 1; border: 2px solid #ffb35c; background: #3a2408; color: #ffd9a8; width: 38px; height: 38px; border-radius: 12px; }
+.board-end.locked b { font-size: 13px; }
+.end-lock { position: absolute; top: -12px; font-style: normal; font-size: 15px; filter: drop-shadow(0 1px 1px #000a); }
+.board .placed.ghost { opacity: .72; }
+.board .placed.ghost .tile-face { stroke: var(--arcade-2, #4fd8ff); stroke-width: .07; stroke-dasharray: .12 .08; }
+.wild-bg { fill: #6d3fd6; stroke: #fff4c9; stroke-width: .025; }
+.wild-star { fill: #ffe27a; font-size: .2px; font-weight: 700; }
+
+/* ---------- powers button and menu ---------- */
+.table-powers-button {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  min-width: 84px; height: 54px; padding: 0 10px; font-size: 12px; color: #efe6ff;
+  border: 1px solid #6e56a8; border-radius: 16px; background: #221447;
+}
+.table-powers-button b { font-size: 18px; line-height: 1; }
+.table-powers-button.on { border-color: var(--arcade-2); color: var(--arcade-2); }
+.table-powers-button.ready { box-shadow: 0 0 0 2px var(--arcade), 0 0 14px #b48cff88; animation: powers-glow 1.6s ease-in-out infinite; }
+@keyframes powers-glow { 50% { box-shadow: 0 0 0 2px var(--arcade-2), 0 0 20px #4fd8ff88; } }
+.powers-panel {
+  position: absolute; bottom: 78px; left: 14px; right: 14px; z-index: 6; display: flex; flex-direction: column; gap: 6px;
+  padding: 10px; max-height: min(430px, 65dvh); overflow-y: auto; background: #170f30; border: 1px solid #6e56a8;
+  border-radius: 20px; box-shadow: 0 12px 40px #0009;
+}
+.powers-head { display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px; color: #efe6ff; }
+.powers-head b { flex: 1; font-size: 15px; }
+.powers-head span { font-size: 12px; color: #c9b8f5; }
+.table-icon.small { width: 36px; height: 36px; }
+.power-row {
+  display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 10px; text-align: left;
+  color: #f3eeff; background: #251a4a; border: 1px solid #4a3a82; border-radius: 14px;
+}
+.power-row:not(.off):hover, .power-row:not(.off):focus-visible { border-color: var(--arcade-2); background: #2c2058; }
+.power-row.off { opacity: .55; }
+.power-icon { width: 34px; font-size: 22px; text-align: center; flex: none; }
+.power-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.power-text b { font-size: 14px; }
+.power-text small { font-size: 12px; color: #c9b8f5; line-height: 1.3; }
+
+/* ---------- choosing a power (under the hand, never over the board) ---------- */
+.power-bar {
+  display: flex; flex-direction: column; gap: 8px; margin: 6px 0; padding: 9px 10px; border-radius: 16px;
+  background: #1a1136; border: 1px solid #6e56a8;
+}
+.power-prompt { margin: 0; font-size: 13px; line-height: 1.3; color: #efe6ff; text-align: center; }
+.power-prompt b { color: #d9c7ff; }
+.power-choices { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.power-choices .btn { min-height: 44px; padding: 8px 14px; }
+.half-choice { display: flex; align-items: center; gap: 8px; }
+.half-choice svg.mini { width: 20px; height: auto; }
+.power-actions { display: flex; gap: 8px; justify-content: center; }
+.power-actions .btn { min-height: 44px; min-width: 110px; }
+.table-pass { min-height: 40px; padding: 6px 14px; margin-left: 4px; }
+
+/* ---------- hand result and the guide ---------- */
+.arcade-gain b { color: #ffd23f; }
+.arcade-running { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.arcade-running .stars { font-size: 14px; }
+.go-scores .stars { font-size: 20px; }
+.arcade-intro { gap: 10px; text-align: left; }
+.arcade-intro h2 { text-align: center; margin: 0 0 4px; }
+.intro-lines { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.intro-powers { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 6px; }
+.intro-powers li { display: grid; grid-template-columns: 28px 1fr; column-gap: 8px; align-items: center; padding: 8px; border-radius: 12px; background: rgba(180, 140, 255, .1); }
+.intro-powers li span { grid-row: span 2; font-size: 20px; text-align: center; }
+.intro-powers li small { color: var(--muted); font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .table-powers-button.ready { animation: none; }
+}
+
+/* ---------- home: the Arcade button and sheet ---------- */
+.mode-stack.with-arcade { gap: 12px; transform: translateY(-54%); }
+.mode-btn.mode-arcade { height: 58px; font-size: 1.3rem; background: linear-gradient(#c7a4ff, #6a3fe0 70%); --sh: #3f2296; }
+.mode-btn.mode-arcade .mode-text > span { display: flex; align-items: center; gap: 6px; }
+.mode-icon.arcade-icon { width: 64px; height: 64px; left: -20px; font-size: 32px; background: radial-gradient(circle at 40% 35%, #ffffff, #eadfff 70%); }
+.new-badge {
+  font-style: normal; font-family: var(--font); font-size: .5rem; font-weight: 900; letter-spacing: .04em;
+  padding: 3px 6px; border-radius: 99px; background: #ffd23f; color: #3a2600; text-shadow: none;
+}
+.arcade-sheet-icon { font-size: 44px; line-height: 1; }
+.arcade-powers-mini { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 0; margin: 0 0 8px; }
+.arcade-powers-mini li {
+  padding: 4px 10px; border-radius: 99px; font-size: .8rem; font-weight: 700;
+  background: rgba(180, 140, 255, .15); border: 1px solid rgba(180, 140, 255, .45);
+}
+.rule-chips .arcade-chip { background: linear-gradient(90deg, #c7a4ff, #4fd8ff); color: #1c1238; font-weight: 800; }
+.btn.arcade-invite { background: linear-gradient(#c7a4ff, #6a3fe0); color: #fff; }
+
+/* Short phones: voice | status | ⚡n | chat on one row; a power being chosen gets the row below. */
+@media (max-height: 740px) and (max-width: 699px) {
+  .table-redesign.ruleset-arcade .my-area { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  .table-redesign.ruleset-arcade .table-tools > .table-powers-button { grid-column: 3; grid-row: 2; min-width: 52px; padding: 0 8px; }
+  .table-redesign.ruleset-arcade .table-tools > .table-powers-button span { display: none; }
+  .table-redesign.ruleset-arcade .table-tools > :last-child { grid-column: 4; grid-row: 2; }
+  .table-redesign.ruleset-arcade .my-area > .power-bar { grid-column: 1 / -1; grid-row: 3; }
+}
+/* Wide screens: voice and chat float in the bottom corners, so ⚡ sits just above chat (never over the status line). */
+@media (min-width: 700px) and (min-height: 501px) {
+  .table-redesign.ruleset-arcade .table-tools > .table-powers-button { position: absolute; right: 4px; bottom: 62px; min-width: 66px; }
+  .table-redesign.ruleset-arcade .powers-panel { left: auto; width: 350px; }
+}
+/* Short phones: four mode buttons still fit the scene. */
+@media (max-height: 700px) {
+  .mode-stack.with-arcade { gap: 8px; transform: translateY(-50%); }
+  .mode-stack.with-arcade .mode-btn { height: 52px; font-size: 1.2rem; }
+  .mode-stack.with-arcade .mode-btn.mode-arcade { height: 50px; font-size: 1.1rem; }
+  .mode-stack.with-arcade .mode-icon { width: 60px; height: 60px; left: -18px; }
+  .mode-stack.with-arcade .mode-svg { width: 48px; height: 44px; }
+  .mode-stack.with-arcade .mode-text small { font-size: .55rem; }
+}

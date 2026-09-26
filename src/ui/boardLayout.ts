@@ -10,6 +10,10 @@ export interface LaidTile {
   first: number;
   second: number;
   seat: Seat;
+  /** Arcade Comodín: the half that was changed to connect. */
+  wild?: 'first' | 'second';
+  /** The physical ficha (a Comodín shows other numbers). */
+  phys: [number, number];
 }
 
 export interface ArmEnd {
@@ -55,7 +59,18 @@ export function bestLimit(width: number, height: number): number {
 const referenceChain = (n: number): Placed[] => Array.from({ length: n }, (_, i) => ({ a: i % 6, b: (i + 1) % 6, seat: (i % 4) as Seat }));
 const REFERENCE_CHAINS = [referenceChain(14), referenceChain(22)];
 
-const keyOf = (p: Placed) => `${Math.min(p.a, p.b)}-${Math.max(p.a, p.b)}`;
+/** A ficha's identity on the board: the physical tile, so a Comodín never collides with the real one. */
+const keyOf = (p: Placed) => (p.phys ? `${p.phys[0]}-${p.phys[1]}` : `${Math.min(p.a, p.b)}-${Math.max(p.a, p.b)}`);
+const physOf = (p: Placed): [number, number] => p.phys ?? [Math.min(p.a, p.b), Math.max(p.a, p.b)];
+
+/** Which drawn half is the changed one, given whether `first` shows the tile's `a` side. */
+const wildOf = (p: Placed, firstIsA: boolean): LaidTile['wild'] =>
+  !p.wild ? undefined : (p.wild === 'a') === firstIsA ? 'first' : 'second';
+
+/** A laid tile, with its identity and any Comodín mark. */
+function laid(p: Placed, x: number, y: number, vertical: boolean, first: number, second: number, firstIsA: boolean): LaidTile {
+  return { key: keyOf(p), x, y, vertical, first, second, seat: p.seat, wild: wildOf(p, firstIsA), phys: physOf(p) };
+}
 
 /**
  * Lays the line out as the classic snake: the first tile in the middle, the
@@ -74,8 +89,8 @@ export function layoutBoard(line: Placed[], origin: number, limit = DEFAULT_LIMI
   const centerDouble = center.a === center.b;
   const half = centerDouble ? 0.5 : 1;
   tiles.push(centerDouble
-    ? { key: keyOf(center), x: -0.5, y: -1, vertical: true, first: center.a, second: center.b, seat: center.seat }
-    : { key: keyOf(center), x: -1, y: -0.5, vertical: false, first: center.a, second: center.b, seat: center.seat });
+    ? laid(center, -0.5, -1, true, center.a, center.b, true)
+    : laid(center, -1, -0.5, false, center.a, center.b, true));
 
   const right = line.slice(origin + 1).map((p) => ({ near: p.a, far: p.b, p }));
   const left = line.slice(0, origin).reverse().map((p) => ({ near: p.b, far: p.a, p }));
@@ -120,6 +135,8 @@ function layArm(
   ends: ArmEnd[],
   limit: number,
 ) {
+  // The right arm meets the chain with each tile's `a` side; the left arm with its `b` side.
+  const nearIsA = side === 'R';
   let cx = startX;
   let cy = 0;
   let d = dir;
@@ -133,15 +150,8 @@ function layArm(
 
     if (!justTurned && Math.abs(nx) > limit) {
       // Corner: the tile stands upright and the snake heads back the other way.
-      out.push({
-        key: keyOf(p),
-        x: d === 'E' ? cx : cx - 1,
-        y: turn === 'S' ? cy - 0.5 : cy - 1.5,
-        vertical: true,
-        first: turn === 'S' ? near : far,
-        second: turn === 'S' ? far : near,
-        seat: p.seat,
-      });
+      out.push(laid(p, d === 'E' ? cx : cx - 1, turn === 'S' ? cy - 0.5 : cy - 1.5, true,
+        turn === 'S' ? near : far, turn === 'S' ? far : near, (turn === 'S') === nearIsA));
       cy = turn === 'S' ? cy + 2 : cy - 2;
       cx = d === 'E' ? cx + 1 : cx - 1;
       d = d === 'E' ? 'W' : 'E';
@@ -150,17 +160,9 @@ function layArm(
     }
 
     if (crosswise) {
-      out.push({ key: keyOf(p), x: d === 'E' ? cx : cx - 1, y: cy - 1, vertical: true, first: near, second: far, seat: p.seat });
+      out.push(laid(p, d === 'E' ? cx : cx - 1, cy - 1, true, near, far, nearIsA));
     } else {
-      out.push({
-        key: keyOf(p),
-        x: d === 'E' ? cx : cx - 2,
-        y: cy - 0.5,
-        vertical: false,
-        first: d === 'E' ? near : far,
-        second: d === 'E' ? far : near,
-        seat: p.seat,
-      });
+      out.push(laid(p, d === 'E' ? cx : cx - 2, cy - 0.5, false, d === 'E' ? near : far, d === 'E' ? far : near, (d === 'E') === nearIsA));
     }
     cx = nx;
     justTurned = false;

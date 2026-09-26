@@ -31,10 +31,14 @@ function Half({ value, ox, oy, rotate }: { value: number; ox: number; oy: number
  * player, plus a light inner ring so the tile can still be read at a glance.
  */
 export function TileShape({
-  x, y, vertical, first, second, className, owner, ownerName,
+  x, y, vertical, first, second, className, owner, ownerName, wild, wildNote,
 }: {
   x: number; y: number; vertical: boolean; first: number; second: number; className?: string;
   owner?: OwnerRole; ownerName?: string;
+  /** Arcade Comodín: this half was changed to connect — it keeps a small star. */
+  wild?: 'first' | 'second';
+  /** Explains the change (original ficha → values in play), on hover / long press. */
+  wildNote?: string;
 }) {
   const w = vertical ? 1 : 2;
   const h = vertical ? 2 : 1;
@@ -51,6 +55,18 @@ export function TileShape({
       )}
       <Half value={first} ox={x} oy={y} rotate={!vertical} />
       <Half value={second} ox={vertical ? x : x + 1} oy={vertical ? y + 1 : y} rotate={!vertical} />
+      {wild && (() => {
+        // Top-right corner of the changed half (first = left/top, second = right/bottom).
+        const hx = x + (!vertical && wild === 'second' ? 1 : 0);
+        const hy = y + (vertical && wild === 'second' ? 1 : 0);
+        return (
+          <g className="wild-mark">
+            {wildNote && <title>{wildNote}</title>}
+            <circle cx={hx + 0.84} cy={hy + 0.16} r={0.13} className="wild-bg" />
+            <text x={hx + 0.84} y={hy + 0.215} textAnchor="middle" className="wild-star">★</text>
+          </g>
+        );
+      })()}
       {owner && (
         <g className={`owner owner-${owner}`}>
           {ownerName && <title>{`${Math.min(first, second)}-${Math.max(first, second)} · ${ownerName}`}</title>}

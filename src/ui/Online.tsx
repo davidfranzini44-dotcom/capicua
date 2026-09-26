@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Mode } from '../../supabase/functions/_shared/domino.ts';
+import type { Mode, Ruleset } from '../../supabase/functions/_shared/domino.ts';
 import { botsAllowed, CHIPS, levelFromXp, MODES, TURN_SECONDS, xpForLevel, type CustomSettings } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { forgetTable, lastTable } from '../lib/lastTable';
@@ -10,7 +10,7 @@ import { Avatar, ChipBalance, LevelBadge, useErrorText } from './common';
 import { useChests } from '../lib/useChests';
 import { ChestSlots } from './Chests';
 import { useInstall } from '../lib/install';
-import { GameShell, HomeTab, InstallSheet, ModeSheet, SettingsSheet, Sheet, TopBar, type Tab } from './MainScreen';
+import { ArcadeSheet, GameShell, HomeTab, InstallSheet, ModeSheet, SettingsSheet, Sheet, TopBar, type Tab } from './MainScreen';
 import { PracticeTable } from './PracticeTable';
 import { ShopTab } from './Shop';
 import { TournamentForm, TournamentScreen, TournamentsSection } from './Tournament';
@@ -34,10 +34,10 @@ export const inviteCodeFromUrl = () => new URLSearchParams(location.search).get(
 
 type View =
   | { kind: 'main'; tab: Tab; notice?: string }
-  | { kind: 'queue'; stake: number; mode: Mode; notice?: string }
+  | { kind: 'queue'; stake: number; mode: Mode; ruleset?: Ruleset; notice?: string }
   | { kind: 'room'; roomId: string }
   | { kind: 'custom'; inviteFriend?: string }
-  | { kind: 'practice'; mode: Mode }
+  | { kind: 'practice'; mode: Mode; ruleset?: Ruleset }
   | { kind: 'signin' }
   | { kind: 'admin' }
   | { kind: 'tournament'; id?: string; code?: string }
@@ -113,8 +113,8 @@ export function Online() {
       if (old?.phase === 'finished' && old.current_game) return setView({ kind: 'room', roomId: last });
       forgetTable();
     }
-    const { data: q } = await supabase.from('queue').select('stake, mode').eq('user_id', uid!).maybeSingle();
-    if (q) return setView({ kind: 'queue', stake: q.stake, mode: q.mode as Mode, notice });
+    const { data: q } = await supabase.from('queue').select('stake, mode, ruleset').eq('user_id', uid!).maybeSingle();
+    if (q) return setView({ kind: 'queue', stake: q.stake, mode: q.mode as Mode, ruleset: (q.ruleset ?? 'traditional') as Ruleset, notice });
     setView({ kind: 'main', tab: 'home', notice });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
@@ -126,10 +126,10 @@ export function Online() {
   }, [uid, profile, resolved, resolve]);
   useEffect(() => { if (!uid) setResolved(false); }, [uid]);
 
-  const joinQueue = async (stake: number, mode: Mode) => {
+  const joinQueue = async (stake: number, mode: Mode, ruleset: Ruleset = 'traditional') => {
     try {
-      const res = await api<{ roomId?: string }>('queue_join', { stake, mode });
-      setView(res.roomId ? { kind: 'room', roomId: res.roomId } : { kind: 'queue', stake, mode });
+      const res = await api<{ roomId?: string }>('queue_join', { stake, mode, ruleset });
+      setView(res.roomId ? { kind: 'room', roomId: res.roomId } : { kind: 'queue', stake, mode, ruleset });
     } catch (e) {
       setView({ kind: 'main', tab: 'home', notice: errText(e) });
     }
@@ -137,7 +137,7 @@ export function Online() {
 
   const screen = ((): ReactNode => {
     if (loading) return <Loading />;
-    if (view.kind === 'practice') return <PracticeTable key={view.mode} mode={view.mode} onExit={() => setView(home)} />;
+    if (view.kind === 'practice') return <PracticeTable key={`${view.mode}${view.ruleset}`} mode={view.mode} ruleset={view.ruleset} onExit={() => setView(home)} />;
 
     if (!session) {
       if (view.kind === 'signin') return <SignIn onBack={() => setView(home)} />;
@@ -146,7 +146,7 @@ export function Online() {
           profile={null} guest={false} online
           tab={view.kind === 'main' ? view.tab : 'home'}
           onTab={(tab) => setView({ kind: 'main', tab })}
-          onPractice={(mode) => setView({ kind: 'practice', mode })}
+          onPractice={(mode, ruleset) => setView({ kind: 'practice', mode, ruleset })}
           onSignIn={() => setView({ kind: 'signin' })}
         />
       );
@@ -212,7 +212,7 @@ export function Online() {
             tab={view.kind === 'main' ? view.tab : 'home'}
             notice={view.kind === 'main' ? view.notice : undefined}
             onTab={(tab) => setView({ kind: 'main', tab })}
-            onPractice={(mode) => setView({ kind: 'practice', mode })}
+            onPractice={(mode, ruleset) => setView({ kind: 'practice', mode, ruleset })}
             onQueue={joinQueue}
             onRoom={(roomId) => setView({ kind: 'room', roomId })}
             onCustom={(inviteFriend) => setView({ kind: 'custom', inviteFriend })}
@@ -240,14 +240,14 @@ export function Online() {
 
 /** Online play not configured yet: the same main screen, practice only. */
 export function OfflineApp() {
-  const [view, setView] = useState<{ tab: Tab } | { practice: Mode }>({ tab: 'home' });
-  if ('practice' in view) return <PracticeTable key={view.practice} mode={view.practice} onExit={() => setView({ tab: 'home' })} />;
+  const [view, setView] = useState<{ tab: Tab } | { practice: Mode; ruleset?: Ruleset }>({ tab: 'home' });
+  if ('practice' in view) return <PracticeTable key={`${view.practice}${view.ruleset}`} mode={view.practice} ruleset={view.ruleset} onExit={() => setView({ tab: 'home' })} />;
   return (
     <MainScreen
       profile={null} guest={false} online={false}
       tab={view.tab}
       onTab={(tab) => setView({ tab })}
-      onPractice={(mode) => setView({ practice: mode })}
+      onPractice={(mode, ruleset) => setView({ practice: mode, ruleset })}
     />
   );
 }
@@ -266,9 +266,9 @@ interface MainProps {
   tab: Tab;
   notice?: string;
   onTab: (t: Tab) => void;
-  onPractice: (mode: Mode) => void;
+  onPractice: (mode: Mode, ruleset?: Ruleset) => void;
   onSignIn?: () => void;
-  onQueue?: (stake: number, mode: Mode) => void;
+  onQueue?: (stake: number, mode: Mode, ruleset?: Ruleset) => void;
   onRoom?: (roomId: string) => void;
   onCustom?: (inviteFriend?: string) => void;
   onAdmin?: () => void;
@@ -278,7 +278,7 @@ interface MainProps {
   onWatch?: (friend: Friend) => void;
 }
 
-type SheetState = null | 'settings' | 'coins' | 'code' | 'install' | 'missions' | { mode: Mode };
+type SheetState = null | 'settings' | 'coins' | 'code' | 'install' | 'missions' | 'arcade' | { mode: Mode };
 
 /** How long someone looks at the home screen before we suggest installing. */
 const INSTALL_NUDGE_MS = 8000;
@@ -334,6 +334,7 @@ export function MainScreen(p: MainProps) {
         onDaily={signInOr(() => setSheet('coins'))}
         onAvatar={signInOr(() => p.onTab('profile'))}
         onMode={(mode) => setSheet({ mode })}
+        onArcade={() => setSheet('arcade')}
         onLinkGoogle={p.guest ? linkGoogle : undefined}
         missions={signedIn && missions.missions.length
           ? { done: missions.done, total: missions.missions.length, claimable: missions.claimable, onOpen: () => setSheet('missions') }
@@ -403,6 +404,18 @@ export function MainScreen(p: MainProps) {
       )}
       {sheet === 'code' && <CodeSheet onClose={() => setSheet(null)} onJoined={(id) => p.onRoom?.(id)} onTournament={(code) => p.onTournamentCode?.(code)} />}
       {sheet === 'install' && <InstallSheet install={install} onClose={() => setSheet(null)} />}
+      {sheet === 'arcade' && (
+        <ArcadeSheet
+          profile={p.profile} online={p.online} onSignIn={p.onSignIn} onClose={() => setSheet(null)}
+          onPractice={() => p.onPractice('2v2', 'arcade')}
+          onOnline={() => { setSheet(null); p.onQueue?.(0, '2v2', 'arcade'); }}
+          onPrivate={() => run(async () => {
+            const { roomId } = await api<{ roomId: string }>('create_custom', { settings: { ruleset: 'arcade', turnSeconds: 15, visibility: 'private' } });
+            setSheet(null);
+            p.onRoom?.(roomId);
+          })}
+        />
+      )}
       {modeSheet && (
         <ModeSheet
           mode={modeSheet.mode} profile={p.profile} guest={p.guest} online={p.online}
@@ -681,7 +694,7 @@ function NamePrompt() {
   );
 }
 
-interface OpenTable { id: string; code: string; mode: Mode; stake: number; rules: { target: number }; seated: number; host: string }
+interface OpenTable { id: string; code: string; mode: Mode; stake: number; rules: { target: number; ruleset?: Ruleset }; seated: number; host: string }
 
 function OpenTables({ guest, onJoin }: { guest: boolean; onJoin: (roomId: string) => void }) {
   const { t } = useI18n();
@@ -712,7 +725,7 @@ function OpenTables({ guest, onJoin }: { guest: boolean; onJoin: (roomId: string
       {tables?.length === 0 && <p className="fine">{t.noOpenTables}</p>}
       {tables?.map((r) => (
         <button key={r.id} className={`open-table ${guest && r.stake ? 'locked' : ''}`} disabled={guest && r.stake > 0} onClick={() => onJoin(r.id)}>
-          <span><b>{t.modes[r.mode].name}</b> · {t.targetLbl} {r.rules.target}</span>
+          <span>{r.rules.ruleset === 'arcade' ? <b>⚡ {t.arcade.name} · {t.arcade.goal}</b> : <><b>{t.modes[r.mode].name}</b> · {t.targetLbl} {r.rules.target}</>}</span>
           <span className="fine">{r.host} · {r.seated}/{r.mode === '1v1' ? 2 : 4} {t.players}</span>
           <span className="ot-stake">{r.stake ? `${guest ? '🔒' : '🪙'} ${r.stake.toLocaleString()}` : t.free}</span>
         </button>
@@ -721,8 +734,8 @@ function OpenTables({ guest, onJoin }: { guest: boolean; onJoin: (roomId: string
   );
 }
 
-export function QueueScreen({ stake, mode, notice, onMatched, onCancel }: {
-  stake: number; mode: Mode; notice?: string; onMatched: (roomId: string) => void; onCancel: () => void;
+export function QueueScreen({ stake, mode, ruleset = 'traditional', notice, onMatched, onCancel }: {
+  stake: number; mode: Mode; ruleset?: Ruleset; notice?: string; onMatched: (roomId: string) => void; onCancel: () => void;
 }) {
   const { t } = useI18n();
   const [waiting, setWaiting] = useState(1);
@@ -751,7 +764,7 @@ export function QueueScreen({ stake, mode, notice, onMatched, onCancel }: {
     <div className="screen center queue-screen">
       <div className="searching-tiles" aria-hidden><span /><span /><span /></div>
       <h2 className="screen-title">{t.searching}</h2>
-      <p className="queue-meta">{stake === 0 ? `🤝 ${t.friendly}` : `${t.sala} ${stake.toLocaleString()}`} · {t.modes[mode].name}</p>
+      <p className="queue-meta">{ruleset === 'arcade' ? `⚡ ${t.arcade.name} · ${t.arcade.goal}` : `${stake === 0 ? `🤝 ${t.friendly}` : `${t.sala} ${stake.toLocaleString()}`} · ${t.modes[mode].name}`}</p>
       <p className="queue-clock">{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}</p>
       <p className="fine">{waiting} {t.inQueue}</p>
       {botsAllowed(mode, stake) && <p className="fine">{t.botsSoon}</p>}
@@ -765,9 +778,10 @@ export function CustomForm({ profile, guest = false, onBack, onCreated }: { prof
   const { t } = useI18n();
   const errText = useErrorText();
   const [c, setC] = useState<CustomSettings>({
-    mode: '2v2', stake: guest ? 0 : 500, target: 200, capicuaBonus: true, paseCorridoBonus: true,
+    ruleset: 'traditional', mode: '2v2', stake: guest ? 0 : 500, target: 200, capicuaBonus: true, paseCorridoBonus: true,
     turnSeconds: TURN_SECONDS.customDefault, visibility: 'private',
   });
+  const arcade = c.ruleset === 'arcade';
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof CustomSettings>(k: K, v: CustomSettings[K]) => setC((x) => ({ ...x, [k]: v }));
@@ -797,6 +811,9 @@ export function CustomForm({ profile, guest = false, onBack, onCreated }: { prof
       </div>
       <h2 className="screen-title">{t.createCustom}</h2>
       <section className="card form">
+        <label className="label">{t.arcade.ruleset}</label>
+        <Seg value={c.ruleset ?? 'traditional'} options={[['traditional', t.arcade.traditional], ['arcade', `⚡ ${t.arcade.name}`]]} onChange={(v) => set('ruleset', v)} />
+        {arcade ? <p className="fine left">{t.arcade.tagline}</p> : <>
         <label className="label">{t.modeLbl}</label>
         <Seg value={c.mode} options={MODES.map((m) => [m, t.modes[m].name])} onChange={(v) => set('mode', v)} />
         <label className="label">{t.stakePerPlayer}</label>
@@ -818,14 +835,15 @@ export function CustomForm({ profile, guest = false, onBack, onCreated }: { prof
           <button className={c.capicuaBonus ? 'on' : ''} onClick={() => set('capicuaBonus', !c.capicuaBonus)}>{c.capicuaBonus ? '✓ ' : ''}{t.capicuaBonusLbl}</button>
           <button className={c.paseCorridoBonus ? 'on' : ''} onClick={() => set('paseCorridoBonus', !c.paseCorridoBonus)}>{c.paseCorridoBonus ? '✓ ' : ''}{t.paseBonusLbl}</button>
         </div>
+        </>}
         <label className="label">{t.turnTimerLbl}</label>
         <Seg value={c.turnSeconds} options={[[15, '15s'], [25, '25s'], [40, '40s']]} onChange={(v) => set('turnSeconds', v)} />
         <label className="label">{t.visibilityLbl}</label>
         <Seg value={c.visibility} options={[['private', t.privateLbl], ['public', t.publicLbl]]} onChange={(v) => set('visibility', v)} />
-        {c.stake > 0 && <p className="fine left people-only">{botsAllowed(c.mode, c.stake) ? t.ffaMinTwo : t.peopleOnly}</p>}
+        {!arcade && c.stake > 0 && <p className="fine left people-only">{botsAllowed(c.mode, c.stake) ? t.ffaMinTwo : t.peopleOnly}</p>}
       </section>
       {error && <p className="error">{error}</p>}
-      <button className="btn primary wide" disabled={busy || c.stake > profile.chips} onClick={create}>{t.create}</button>
+      <button className="btn primary wide" disabled={busy || (!arcade && c.stake > profile.chips)} onClick={create}>{t.create}</button>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { bestLimit, layoutBoard } from './boardLayout';
 import type { OwnerRole } from './owners';
 import { TileShape } from './Tile';
 
-export function Board({ line, origin, newestKey, targets, selected, onPickSide, ownerOf, nameOf }: {
+export function Board({ line, origin, newestKey, targets, selected, onPickSide, ownerOf, nameOf, lockedSide, ghostKeys }: {
   line: Placed[];
   origin: number;
   newestKey: string | null;
@@ -16,6 +16,10 @@ export function Board({ line, origin, newestKey, targets, selected, onPickSide, 
   ownerOf?: ((seat: Seat) => OwnerRole) | null;
   /** Player names by seat, for the board's accessible description and the tile tooltips. */
   nameOf?: (seat: Seat) => string;
+  /** Arcade Candado: this end is closed for the next player (a padlock sits on it). */
+  lockedSide?: 'L' | 'R' | null;
+  /** Tiles shown as a preview of a power that hasn't been confirmed yet. */
+  ghostKeys?: string[];
 }) {
   const { lang } = useI18n();
   const box = useRef<HTMLDivElement>(null);
@@ -39,15 +43,18 @@ export function Board({ line, origin, newestKey, targets, selected, onPickSide, 
   const offsetY = (size.height - vh * scale) / 2;
   const empty = line.length === 0;
   // Left to right along the chain, with who played each one.
-  const tilesText = line.map((p) => `${p.a}-${p.b}${nameOf ? ` (${nameOf(p.seat)})` : ''}`).join(', ');
+  const wildWord = lang === 'es' ? 'comodín, era' : 'wildcard, was';
+  const tilesText = line.map((p) => `${p.a}-${p.b}${p.phys ? ` (${wildWord} ${p.phys.join('-')})` : ''}${nameOf ? ` (${nameOf(p.seat)})` : ''}`).join(', ');
   const described = lang === 'es' ? `Mesa: ${tilesText || 'vacía'}` : `Board: ${tilesText || 'empty'}`;
   return (
     <div className="board-scene" ref={box}>
       <svg className="board" viewBox={`${vx} ${vy} ${vw} ${vh}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={described}>
         {layout.tiles.map((t) => (
           <TileShape key={t.key} x={t.x} y={t.y} vertical={t.vertical} first={t.first} second={t.second}
-            className={t.key === newestKey ? 'placed newest' : 'placed'}
-            owner={ownerOf ? ownerOf(t.seat) : undefined} ownerName={nameOf?.(t.seat)} />
+            className={`placed ${t.key === newestKey ? 'newest' : ''} ${ghostKeys?.includes(t.key) ? 'ghost' : ''}`}
+            owner={ownerOf ? ownerOf(t.seat) : undefined} ownerName={nameOf?.(t.seat)}
+            wild={t.wild}
+            wildNote={t.wild ? `${lang === 'es' ? 'Comodín' : 'Wildcard'}: ${t.phys.join('-')} → ${t.first}-${t.second}` : undefined} />
         ))}
       </svg>
       {empty && <div className="opening-move">
@@ -57,12 +64,14 @@ export function Board({ line, origin, newestKey, targets, selected, onPickSide, 
       </div>}
       {layout.ends.map((e) => {
         const value = e.side === 'L' ? line[0].a : line[line.length - 1].b;
-        const active = targets.includes(e.side);
+        const locked = lockedSide === e.side;
+        const active = targets.includes(e.side) && !locked;
         const side = e.side === 'L' ? (lang === 'es' ? 'izquierda' : 'left') : (lang === 'es' ? 'derecha' : 'right');
-        return <button key={e.side} className={`board-end ${active ? 'available' : ''}`}
+        return <button key={e.side} className={`board-end ${active ? 'available' : ''} ${locked ? 'locked' : ''}`}
           style={{ left: offsetX + (e.x - vx) * scale, top: offsetY + (e.y - vy) * scale }}
           disabled={!active} onClick={() => onPickSide(e.side)}
-          aria-label={`${lang === 'es' ? 'Colocar' : 'Play'} ${selected?.join('–') ?? ''} · ${side} · ${value}`}>
+          aria-label={`${locked ? (lang === 'es' ? 'Bloqueado' : 'Locked') : `${lang === 'es' ? 'Colocar' : 'Play'} ${selected?.join('–') ?? ''}`} · ${side} · ${value}`}>
+          {locked && <i className="end-lock" aria-hidden>🔒</i>}
           <b>{value}</b>{active && <small>{lang === 'es' ? 'Aquí' : 'Here'}</small>}
         </button>;
       })}

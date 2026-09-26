@@ -1,12 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import {
-  isPollona, legalMoves, playerCount, sameTile, sideOf, standings,
-  type GameEvent, type GameState, type Move, type Seat, type Tile,
+  canRescue, isPollona, legalMoves, lockedFor, playerCount, sameTile, sideOf, standings,
+  type GameEvent, type GameState, type Move, type Power, type Seat, type Tile,
 } from '../../supabase/functions/_shared/domino.ts';
 import { gameXp, type PublicState } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { useTableLook } from '../lib/look';
 import { playSfx, useSfxPref } from '../lib/sfx';
+import { playPowerSfx } from '../lib/arcadeSfx';
+import { draftPickSide, draftTapTile, draftView, startDraft, type Draft } from '../lib/powerDraft';
+import { ArcadeIntro, Charges, PowerBar, PowersPanel, Stars, useArcadeIntro } from './Arcade';
 import { snapshotOf, tableFx, type Bonus, type FxSnapshot } from '../lib/tableFx';
 import { BUBBLE_MS, PHRASE_IDS, PHRASES, type PhraseId } from '../quickchat';
 import { Board } from './Board';
@@ -148,15 +151,31 @@ export function TableView(props: TableViewProps) {
   const bottomTurn = view.turn === mySeat && playing;
   const myTurn = bottomTurn && !watching;
 
-  const myMoves = useMemo(() => {
-    if (!myTurn) return [];
-    const hands: Tile[][] = Array.from({ length: n }, () => []);
-    hands[mySeat] = myHand;
-    return legalMoves({ ...view, hands, boneyard: [] } as GameState, mySeat);
-  }, [view, myHand, mySeat, myTurn, n]);
+  /** The game as I can see it: my own hand, and only how many fichas the others hold. */
+  const mine = useMemo(() => {
+    const hands: Tile[][] = Array.from({ length: n }, (_, i) => (i === mySeat ? myHand : Array.from({ length: view.handCounts[i] ?? 0 }, () => [0, 0] as Tile)));
+    return { ...view, hands, boneyard: [] } as GameState;
+  }, [view, myHand, mySeat, n]);
+  const myMoves = useMemo(() => (myTurn ? legalMoves(mine, mySeat) : []), [mine, mySeat, myTurn]);
+
+  // Arcade: powers menu, the power being chosen, the first-time guide.
+  const arcade = view.arcade ?? null;
+  const [powersOpen, setPowersOpen] = useState(false);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [introOpen, setIntroOpen] = useArcadeIntro(!!arcade && !watching);
+  const [arcadeNotice, setArcadeNotice] = useState<string | null>(null);
+  const dv = draft && myTurn ? draftView(mine, mySeat, draft) : null;
+  const stuck = !!arcade && myTurn && myMoves.length === 0 && canRescue(mine, mySeat);
+  /** Autoplay would take the choice away while a power could still be used. */
+  const powersReady = !!arcade && myTurn && (arcade.charges[mySeat] ?? 0) > 0 && !arcade.powerUsed;
 
   // A new state from the server can make a half-finished selection stale.
   useEffect(() => setPending(null), [view.line.length, view.turn]);
+  // …and a power being chosen (the turn moved on, or a timeout played for me). Cancelling is always free.
+  useEffect(() => {
+    setDraft(null);
+    setPowersOpen(false);
+  }, [view.handNo, view.events.length, view.turn]);
 
   // One move per turn: a tap plus autoplay (or a double tap) before the server's answer
   // arrives would send it twice, and the second one comes back as "not your turn".
@@ -166,11 +185,11 @@ export function TableView(props: TableViewProps) {
   // Only one thing you can do? Do it (after a beat, so you see it happen).
   const single = myMoves.length === 1 ? myMoves[0] : null;
   useEffect(() => {
-    if (!autoplay || !single) return;
+    if (!autoplay || !single || draft || powersOpen || powersReady) return;
     const id = setTimeout(() => play(single), 650);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoplay, single && JSON.stringify(single), view.line.length, view.handNo]);
+  }, [autoplay, single && JSON.stringify(single), view.line.length, view.handNo, draft, powersOpen, powersReady]);
 
   // The hand's summary waits for the last tile to land — and for a capicúa pop-up to finish.
   const resultDelay = view.handResult?.capicua ? RESULT_AFTER_BONUS_MS : RESULT_MS;
@@ -187,11 +206,20 @@ export function TableView(props: TableViewProps) {
   const fxPrev = useRef<FxSnapshot | null>(null);
   /** When I last laid a tile myself: its sound already played on the tap. */
   const myTileAt = useRef(0);
+  /** Same for a power I just confirmed. */
+  const myPowerAt = useRef(0);
   const fxKey = `${view.handNo}:${view.events.length}:${view.handResult ? 1 : 0}:${view.winner}`;
   useEffect(() => {
     const fx = tableFx(fxPrev.current, view, mySeat);
     fxPrev.current = snapshotOf(view);
     let delay = 0;
+    const pe = fx.powerEvent;
+    if (pe) {
+      if (!(pe.seat === mySeat && Date.now() - myPowerAt.current < 2500)) playPowerSfx(pe.power);
+      myPowerAt.current = 0;
+      delay += 160;
+      if (!watching && pe.power === 'cambio' && pe.target === mySeat) flashArcade(t.arcade.swappedYou.replace('{name}', name(pe.seat)));
+    }
     for (const m of fx.moves) {
       if (m.sound === 'tile' && m.seat === mySeat && Date.now() - myTileAt.current < 2500) {
         myTileAt.current = 0;
@@ -219,14 +247,40 @@ export function TableView(props: TableViewProps) {
     const last = sent.current;
     if (last && last.key === moveKey && Date.now() - last.at < 3000) return; // already sent for this turn
     sent.current = { key: moveKey, at: Date.now() };
-    if (m.type === 'play') {
-      playSfx('tile'); // right away, not when the server answers
+    const power: Power | null = m.type === 'play' ? (m.lock ? 'candado' : null) : m.type === 'pass' || m.type === 'draw' ? null : m.type;
+    if (power) {
+      playPowerSfx(power); // right away, not when the server answers
+      myPowerAt.current = Date.now();
+    } else if (m.type === 'play') {
+      playSfx('tile');
       myTileAt.current = Date.now();
     }
     onPlay(m);
   };
 
+  /** A short Arcade message in the status line (it clears itself). */
+  const flashArcade = (text: string) => {
+    setArcadeNotice(text);
+    setTimeout(() => setArcadeNotice((cur) => (cur === text ? null : cur)), 3500);
+  };
+
+  const pickPower = (p: Power) => {
+    setPowersOpen(false);
+    setPending(null);
+    setDraft(startDraft(p));
+  };
+  const confirmDraft = () => {
+    if (!dv?.move) return;
+    const move = dv.move;
+    setDraft(null);
+    play(move);
+  };
+
   const onTileTap = (tile: Tile) => {
+    if (draft) {
+      setDraft(draftTapTile(mine, mySeat, draft, tile));
+      return;
+    }
     const options = myMoves.filter((m): m is Extract<Move, { type: 'play' }> => m.type === 'play' && sameTile(m.tile, tile));
     if (options.length === 0) return;
     // Fits only one end: play it straight away. Fits both: pick the end on the board.
@@ -242,9 +296,13 @@ export function TableView(props: TableViewProps) {
   const newestKey = newestPlay ? `${newestPlay.tile[0]}-${newestPlay.tile[1]}` : null;
 
   const recent = view.events.filter((e) => e.kind !== 'paseCorrido').slice(-3);
+  // A power stays announced by its player until three more things happen at the table.
+  const recentPowers = view.events.slice(-4).filter((e): e is Extract<GameEvent, { kind: 'power' }> => e.kind === 'power');
   const bubble = (s: Seat): { text: string; chat: boolean } | null => {
     const c = chat[s];
     if (c && now - c.at < BUBBLE_MS) return { text: PHRASES[c.id].es, chat: true };
+    const pw = [...recentPowers].reverse().find((ev) => ev.seat === s);
+    if (pw) return { text: `${t.arcade.bubble[pw.power].replace('{name}', pw.target !== undefined ? name(pw.target as Seat) : '')}`, chat: true };
     const e = [...recent].reverse().find((ev) => ev.seat === s);
     if (e?.kind === 'pass') return { text: t.passed, chat: false };
     if (e?.kind === 'draw') return { text: t.drew, chat: false };
@@ -256,11 +314,15 @@ export function TableView(props: TableViewProps) {
   let status: string;
   if (!playing) status = '';
   else if (myTurn) {
-    if (myMoves.length === 0) status = view.boneyardCount > 0 ? t.drawing : t.noPlay;
+    if (myMoves.length === 0) status = stuck ? t.arcade.stuck : view.boneyardCount > 0 ? t.drawing : t.noPlay;
     else if (pending) status = t.chooseSide;
     else if (view.mustOpen) status = `${t.openWith} ${view.mustOpen[0]}-${view.mustOpen[1]}`;
     else status = t.yourTurn;
   } else status = away?.has(view.turn) ? `${t.serverPlaysFor} ${name(view.turn)}` : `${name(view.turn)} ${t.thinking}`;
+
+  // Arcade: a Candado closed one of my ends for this turn — say so in front of whatever the line says.
+  const closedEnd = myTurn ? lockedFor(view, mySeat) : null;
+  const lockNote = closedEnd ? `${t.arcade.lockedYou.replace('{end}', closedEnd === 'L' ? t.arcade.left : t.arcade.right)} · ` : '';
 
   /** Marker spot for a seat when "who played each tile" is on. */
   const ownerOf = showOwners ? (s: Seat) => ownerRole(mode, mySeat, s) : null;
@@ -283,6 +345,8 @@ export function TableView(props: TableViewProps) {
     onTap: onSeatTap ? () => onSeatTap(s) : undefined,
     seconds: view.turn === s ? secondsLeft : null,
     owner: ownerOf?.(s),
+    charges: arcade ? arcade.charges[s] ?? 0 : null,
+    locked: !!arcade && playing && lockedFor(view, s) !== null,
   });
 
   const myBubble = bubble(mySeat);
@@ -296,8 +360,8 @@ export function TableView(props: TableViewProps) {
   }, [menuOpen]);
 
   return (
-    <div className={`table-screen table-redesign mode-${mode} ${look.className}`} style={look.style} onKeyDown={(e) => {
-      if (e.key === 'Escape') { setPending(null); setChatOpen(false); }
+    <div className={`table-screen table-redesign mode-${mode} ${arcade ? 'ruleset-arcade' : ''} ${look.className}`} style={look.style} onKeyDown={(e) => {
+      if (e.key === 'Escape') { setPending(null); setChatOpen(false); setDraft(null); setPowersOpen(false); }
     }}>
       <header className="table-header">
         <div className="table-topbar">
@@ -327,11 +391,18 @@ export function TableView(props: TableViewProps) {
         )}
 
         <div className="board-wrap">
-          <Board line={view.line} origin={view.origin} newestKey={newestKey} targets={targets} selected={pending}
-            ownerOf={ownerOf} nameOf={name} onPickSide={(side) => {
-            const move = myMoves.find((m) => m.type === 'play' && pending && sameTile(m.tile, pending) && m.side === side);
-            if (move) play(move);
-          }} />
+          {dv ? (
+            <Board line={dv.line} origin={dv.origin} newestKey={null} targets={dv.sides} selected={dv.selected}
+              ghostKeys={dv.ghosts} ownerOf={ownerOf} nameOf={name}
+              lockedSide={dv.move?.type === 'play' && dv.move.lock ? dv.move.lock : arcade?.lock?.side ?? null}
+              onPickSide={(side) => setDraft(draftPickSide(mine, mySeat, draft!, side))} />
+          ) : (
+            <Board line={view.line} origin={view.origin} newestKey={newestKey} targets={targets} selected={pending}
+              ownerOf={ownerOf} nameOf={name} lockedSide={playing ? arcade?.lock?.side ?? null : null} onPickSide={(side) => {
+              const move = myMoves.find((m) => m.type === 'play' && pending && sameTile(m.tile, pending) && m.side === side);
+              if (move) play(move);
+            }} />
+          )}
         </div>
 
         {bonus && (
@@ -350,13 +421,16 @@ export function TableView(props: TableViewProps) {
             <Avatar name={name(mySeat)} url={avatars?.[mySeat]} />
             {bottomTurn && <TurnArrow />}
           </div>
-          <b>{ownerOf && <OwnerChip role="me" />}{name(mySeat)}</b>
+          <b>{ownerOf && <OwnerChip role="me" />}{name(mySeat)}{arcade && <Charges n={arcade.charges[mySeat] ?? 0} label={t.arcade.charges} />}</b>
           {myBubble && <span className="self-bubble">{myBubble.text}</span>}
         </div>
 
       </div></div>
 
       <footer className="my-area">
+        {powersOpen && arcade && (
+          <PowersPanel state={mine} seat={mySeat} onPick={pickPower} onClose={() => setPowersOpen(false)} />
+        )}
         {chatOpen && (
           <div className="chat-panel" id="table-chat">
             <button className="chat-close table-icon" onClick={() => setChatOpen(false)} aria-label={t.cancel}><XIcon size={20} /></button>
@@ -379,8 +453,8 @@ export function TableView(props: TableViewProps) {
           style={{ '--per-row': hand.perRow, '--tile-w': `${hand.tile}px` } as CSSProperties}>
           <div className="hand-rows">
             {myHand.map((tile) => {
-              const playable = myMoves.some((m) => m.type === 'play' && sameTile(m.tile, tile));
-              const selected = pending !== null && sameTile(pending, tile);
+              const playable = dv ? dv.tiles.some((x) => sameTile(x, tile)) : myMoves.some((m) => m.type === 'play' && sameTile(m.tile, tile));
+              const selected = dv ? dv.selected !== null && sameTile(dv.selected, tile) : pending !== null && sameTile(pending, tile);
               return (
                 <button
                   key={`${tile[0]}-${tile[1]}`}
@@ -396,11 +470,20 @@ export function TableView(props: TableViewProps) {
             })}
           </div>
         </div>
-        <div className={`table-instruction ${notice ? 'notice' : ''}`} role="status" aria-live="polite">
-          {notice || (pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status)}
+        {dv && draft ? (
+          <PowerBar draft={draft} view={dv} nameOf={name} nextName={name(((mySeat + 1) % n) as Seat)} busy={false}
+            onTarget={(target) => setDraft({ ...(draft as Extract<Draft, { power: 'cambio' }>), target })}
+            onHalf={(half) => setDraft({ ...(draft as Extract<Draft, { power: 'comodin' }>), half })}
+            onLock={(lock) => setDraft({ ...(draft as Extract<Draft, { power: 'candado' }>), lock })}
+            onConfirm={confirmDraft} onCancel={() => setDraft(null)} />
+        ) : (
+        <div className={`table-instruction ${notice || arcadeNotice ? 'notice' : ''}`} role="status" aria-live="polite">
+          {notice || arcadeNotice || lockNote + (pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status)}
           {!notice && playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
           {pending && <button className="table-cancel" onClick={() => setPending(null)} aria-label={t.cancel}><XIcon size={17} /></button>}
+          {stuck && <button className="btn ghost table-pass" onClick={() => play({ type: 'pass' })}>{t.arcade.pass}</button>}
         </div>
+        )}
         {watching ? (
           <div className="table-tools watch-tools">
             <button className="btn ghost" onClick={watching.onLeave}>{t.watch.stop}</button>
@@ -408,7 +491,14 @@ export function TableView(props: TableViewProps) {
         ) : (
           <div className="table-tools">
             {voice ?? <span className="practice-voice" title={copy.practice}><MicrophoneSlashIcon size={25} /><small>{lang === 'es' ? 'Sin voz' : 'No voice'}</small></span>}
-            <button className={`table-chat-button ${chatOpen ? 'on' : ''}`} onClick={() => setChatOpen((o) => !o)} aria-expanded={chatOpen} aria-controls="table-chat"><ChatCircleDotsIcon size={28} weight="fill" /><span>{copy.chat}</span></button>
+            {arcade && (
+              <button className={`table-powers-button ${powersOpen ? 'on' : ''} ${stuck || (powersReady && !powersOpen) ? 'ready' : ''}`}
+                onClick={() => { setChatOpen(false); setDraft(null); setPowersOpen((o) => !o); }} aria-expanded={powersOpen} aria-controls="powers-panel"
+                aria-label={`${t.arcade.powersBtn} · ${arcade.charges[mySeat] ?? 0}`}>
+                <b aria-hidden>⚡{arcade.charges[mySeat] ?? 0}</b><span aria-hidden>{t.arcade.powersBtn}</span>
+              </button>
+            )}
+            <button className={`table-chat-button ${chatOpen ? 'on' : ''}`} onClick={() => { setPowersOpen(false); setChatOpen((o) => !o); }} aria-expanded={chatOpen} aria-controls="table-chat"><ChatCircleDotsIcon size={28} weight="fill" /><span>{copy.chat}</span></button>
           </div>
         )}
       </footer>
@@ -419,6 +509,7 @@ export function TableView(props: TableViewProps) {
         <label><span>{t.auto}<small>{t.autoplayHint}</small></span><input type="checkbox" checked={autoplay} onChange={(e) => setAutoplay(e.target.checked)} /></label>
         <label><span>{t.showOwners}<small>{t.showOwnersHint}</small></span><input type="checkbox" checked={showOwners} onChange={(e) => setShowOwners(e.target.checked)} /></label>
         <label><span>{t.sfx}<small>{t.sfxHint}</small></span><input type="checkbox" checked={sfx} onChange={(e) => setSfx(e.target.checked)} /></label>
+        {arcade && <button className="btn ghost" onClick={() => { setMenuOpen(false); setIntroOpen(true); }}>⚡ {t.arcade.intro.again}</button>}
         <LookPicker compact />
         <button className="btn primary" onClick={() => setMenuOpen(false)}>{copy.done}</button>
       </dialog>
@@ -427,8 +518,9 @@ export function TableView(props: TableViewProps) {
         <ResultSheet view={view} mySeat={mySeat} name={name} onNext={onNextHand} endActions={props.endActions} note={resultNote} />
       )}
       {showResult && view.winner !== null && (
-        <GameOver view={view} mySeat={mySeat} name={name} endActions={props.endActions} note={resultNote} showXp={props.showXp} />
+        <GameOver view={view} mySeat={mySeat} name={name} endActions={props.endActions} note={resultNote} showXp={props.showXp && !arcade} />
       )}
+      {introOpen && <ArcadeIntro onClose={() => setIntroOpen(false)} />}
     </div>
   );
 }
@@ -459,9 +551,19 @@ function Scores({ view, mySeat, name, colorOf, pot, watchers, watching }: {
   }
   const other = mySide === 0 ? 1 : 0;
   const theirLabel = mode === '1v1' ? name(((mySeat + 1) % 2) as Seat) : t.them;
+  const ourLabel = mode === '1v1' ? name(mySeat) : watching ? name(mySeat) : t.us;
+  if (view.arcade) {
+    return (
+      <div className="scores arcade">
+        <div className="score us"><span>{ourLabel}</span><Stars n={view.scores[mySide]} label={ourLabel} /></div>
+        <div className="target"><span className="arcade-label">⚡ ARCADE</span><small>{t.hand} {view.handNo}</small></div>
+        <div className="score them"><span>{theirLabel}</span><Stars n={view.scores[other]} label={theirLabel} /></div>
+      </div>
+    );
+  }
   return (
     <div className="scores">
-      <div className="score us"><span>{mode === '1v1' ? name(mySeat) : watching ? name(mySeat) : t.us}</span><b>{view.scores[mySide]}</b></div>
+      <div className="score us"><span>{ourLabel}</span><b>{view.scores[mySide]}</b></div>
       {middle}
       <div className="score them"><span>{theirLabel}</span><b>{view.scores[other]}</b></div>
     </div>
@@ -534,11 +636,16 @@ function OwnerChip({ role }: { role: OwnerRole }) {
 
 function SeatBadge({
   name, avatar, level, color, count, active, bubble, pos, partnerLabel, speaking, away, offline, outOfApp, muted, onTap, seconds, owner,
+  charges, locked,
 }: {
   name: string; avatar?: string | null; level: number | null; color: string; count: number; active: boolean;
   bubble: { text: string; chat: boolean } | null; pos: 'top' | 'left' | 'right'; partnerLabel?: string;
   speaking: boolean; away: boolean; offline: boolean; outOfApp: boolean; muted: boolean; onTap?: () => void; seconds: number | null;
   owner?: OwnerRole;
+  /** Arcade: power uses left (null outside Arcade). */
+  charges?: number | null;
+  /** Arcade: one end is closed for this player's turn. */
+  locked?: boolean;
 }) {
   const { t, lang } = useI18n();
   return (
@@ -552,7 +659,8 @@ function SeatBadge({
         {active && <TurnArrow />}
       </button>
       <div className="seat-info">
-        <span className="seat-name">{owner && <OwnerChip role={owner} />}{name}{partnerLabel && <small> · {partnerLabel}</small>}</span>
+        <span className="seat-name">{owner && <OwnerChip role={owner} />}{name}{charges != null && <Charges n={charges} label={t.arcade.charges} />}{partnerLabel && <small> · {partnerLabel}</small>}</span>
+        {locked && <span className="offline-tag lock-tag">🔒 {t.arcade.lockTag}</span>}
         {outOfApp ? <span className="offline-tag out-of-app">📵 {t.fair.outTag}</span> : offline && <span className="offline-tag">📵 {t.offline}</span>}
         <span className="seat-tiles" aria-label={`${count} ${count === 1 ? (lang === 'es' ? 'ficha' : 'tile') : (lang === 'es' ? 'fichas' : 'tiles')}`}>
           <span className="backs" aria-hidden>{Array.from({ length: Math.min(count, 7) }, (_, i) => <TileBack key={i} />)}</span>
@@ -606,11 +714,21 @@ function ResultSheet({
             {r.tieToMano && <p className="note">{t.tieToMano}</p>}
           </>
         )}
-        <div className="gain">
-          <span>{winnerLabel}</span>
-          <b>+{r.total}</b>
-          {r.bonus > 0 && <small>{r.points} {t.points} + {r.bonus} {t.bonus}</small>}
-        </div>
+        {view.arcade ? (
+          <div className="gain arcade-gain">
+            <span>{winnerLabel}</span>
+            <b>⭐ {t.arcade.star}</b>
+            <small className="arcade-running">
+              {t.us} <Stars n={view.scores[mySide]} label={t.us} /> · {t.them} <Stars n={view.scores[mySide === 0 ? 1 : 0]} label={t.them} />
+            </small>
+          </div>
+        ) : (
+          <div className="gain">
+            <span>{winnerLabel}</span>
+            <b>+{r.total}</b>
+            {r.bonus > 0 && <small>{r.points} {t.points} + {r.bonus} {t.bonus}</small>}
+          </div>
+        )}
         {note}
         <ul className="reveal">
           {seats.map((s) => (
@@ -661,7 +779,7 @@ function GameOver({ view, mySeat, name, endActions, note, showXp }: {
             <li key={x.side} className={x.side === mySide ? 'me' : ''}>
               <span className="go-place">{i + 1}</span>
               <span className="go-name">{sideName(x.side)}</span>
-              <b>{x.score}</b>
+              {view.arcade ? <Stars n={x.score} label={sideName(x.side)} /> : <b>{x.score}</b>}
             </li>
           ))}
         </ol>

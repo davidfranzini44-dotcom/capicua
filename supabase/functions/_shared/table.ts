@@ -2,10 +2,10 @@
 // when the server moves for someone, chip payouts, side bets, levels and
 // matchmaking. Pure functions — the edge function does the I/O.
 
-import { chooseMove } from './bot.ts';
+import { chooseArcadeMove, chooseMove } from './bot.ts';
 import {
-  forcedMove, isPollona, legalMoves, playerCount, sideOf, standings,
-  type GameState, type Mode, type Move, type Rules, type Seat,
+  arcadeRules, canRescue, forcedMove, isPollona, legalMoves, playerCount, sideOf, standings,
+  type GameState, type Mode, type Move, type Rules, type Ruleset, type Seat,
 } from './domino.ts';
 
 export interface SeatInfo {
@@ -24,7 +24,10 @@ export type PublicState = Omit<GameState, 'hands' | 'boneyard'> & { handCounts: 
 
 export function publicState(s: GameState): PublicState {
   const { hands, boneyard, ...rest } = s;
-  return { ...rest, handCounts: hands.map((h) => h.length), boneyardCount: boneyard.length };
+  const pub: PublicState = { ...rest, handCounts: hands.map((h) => h.length), boneyardCount: boneyard.length };
+  // Arcade power state is public, except the server's list of recent request ids.
+  if (s.arcade) pub.arcade = { charges: s.arcade.charges, lock: s.arcade.lock, powerUsed: s.arcade.powerUsed, passes: s.arcade.passes };
+  return pub;
 }
 
 // ---------- timing ----------
@@ -49,9 +52,11 @@ export const MAX_STRIKES = 3;
 export function autoDelay(s: GameState, seats: SeatInfo[], turnMs: number): number | null {
   if (s.winner !== null) return null;
   if (s.handResult) return TIMING.nextHandMs;
-  const forced = forcedMove(s, s.turn);
-  if (forced) return forced.type === 'draw' ? TIMING.drawMs : TIMING.autoPassMs;
   const seat = seats.find((x) => x.seat === s.turn)!;
+  const forced = forcedMove(s, s.turn);
+  // Arcade: stuck but a power could still help — a person gets the whole turn to decide.
+  if (forced && canRescue(s, s.turn)) return seat.isBot ? TIMING.botMs : seat.away ? TIMING.awayMs : turnMs;
+  if (forced) return forced.type === 'draw' ? TIMING.drawMs : TIMING.autoPassMs;
   return seat.isBot ? TIMING.botMs : seat.away ? TIMING.awayMs : turnMs;
 }
 
@@ -60,14 +65,20 @@ export type AutoAction =
   | { kind: 'nextHand' }
   | null;
 
-/** What the server should do on its own at `now`, or null if nothing is due. */
-export function autoAction(s: GameState, seats: SeatInfo[], turnMs: number, lastMoveAt: number, now: number): AutoAction {
-  const delay = autoDelay(s, seats, turnMs);
+/**
+ * What the server should do on its own at `now`, or null if nothing is due.
+ * `storedDelay` (Arcade) is the delay saved with the game: a Cambio keeps the
+ * turn's original deadline instead of starting a new one.
+ */
+export function autoAction(s: GameState, seats: SeatInfo[], turnMs: number, lastMoveAt: number, now: number, storedDelay?: number | null): AutoAction {
+  const delay = storedDelay !== undefined ? storedDelay : autoDelay(s, seats, turnMs);
   if (delay === null || now - lastMoveAt < delay) return null;
   if (s.handResult) return { kind: 'nextHand' };
+  const seat = seats.find((x) => x.seat === s.turn)!;
+  // Bots use their powers; the server never spends a person's charge for them.
+  if (s.arcade && seat.isBot) return { kind: 'move', move: chooseArcadeMove(s, s.turn), strike: false };
   const forced = forcedMove(s, s.turn);
   if (forced) return { kind: 'move', move: forced, strike: false };
-  const seat = seats.find((x) => x.seat === s.turn)!;
   return { kind: 'move', move: chooseMove(s, s.turn), strike: !seat.isBot && !seat.away };
 }
 
@@ -92,8 +103,17 @@ export const TARGETS = [100, 150, 200] as const;
 
 export const publicRules = (mode: Mode): Rules => ({ mode, target: 100, capicuaBonus: 25, paseCorridoBonus: 25 });
 
+/** Arcade is free, 2v2 only: no stakes, side bets or tournaments (yet). */
+export const RULESETS: Ruleset[] = ['traditional', 'arcade'];
+export const arcadeAllowed = (mode: Mode, stake: number) => mode === '2v2' && stake === 0;
+export const rulesetOf = (r: Pick<Rules, 'ruleset'> | null | undefined): Ruleset => (r?.ruleset === 'arcade' ? 'arcade' : 'traditional');
+/** Rules for a public table (matchmaking). */
+export const matchRules = (mode: Mode, ruleset: Ruleset): Rules => (ruleset === 'arcade' ? arcadeRules() : publicRules(mode));
+
 /** Custom-room settings a host can pick. Anything else is rejected. */
 export interface CustomSettings {
+  /** Arcade forces 2v2, free, three stars, no bonuses. */
+  ruleset?: Ruleset;
   mode: Mode;
   stake: number;
   target: number;
@@ -106,6 +126,15 @@ export interface CustomSettings {
 export const CUSTOM_LIMITS = { maxStake: 100_000, turnSeconds: [15, 25, 40] };
 
 export function validateCustom(c: Partial<CustomSettings>): CustomSettings | null {
+  if (c.ruleset === 'arcade') {
+    if (!CUSTOM_LIMITS.turnSeconds.includes(c.turnSeconds!)) return null;
+    if (c.visibility !== 'public' && c.visibility !== 'private') return null;
+    return {
+      ruleset: 'arcade', mode: '2v2', stake: 0, target: arcadeRules().target, turnSeconds: c.turnSeconds!, visibility: c.visibility,
+      capicuaBonus: false, paseCorridoBonus: false,
+    };
+  }
+  if (c.ruleset !== undefined && c.ruleset !== 'traditional') return null;
   if (!c.mode || !MODES.includes(c.mode)) return null;
   if (!Number.isInteger(c.stake) || c.stake! < 0 || c.stake! > CUSTOM_LIMITS.maxStake) return null;
   if (!TARGETS.includes(c.target as 100)) return null;
@@ -117,7 +146,7 @@ export function validateCustom(c: Partial<CustomSettings>): CustomSettings | nul
   };
 }
 
-export const customRules = (c: CustomSettings): Rules => ({
+export const customRules = (c: CustomSettings): Rules => c.ruleset === 'arcade' ? arcadeRules() : ({
   mode: c.mode, target: c.target,
   capicuaBonus: c.capicuaBonus ? 25 : 0,
   paseCorridoBonus: c.paseCorridoBonus ? 25 : 0,

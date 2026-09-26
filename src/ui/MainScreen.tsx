@@ -88,6 +88,8 @@ export interface HomeProps {
   onDaily: () => void;
   onAvatar: () => void;
   onMode: (mode: Mode) => void;
+  /** Capicúa Arcade (2v2 with powers). */
+  onArcade?: () => void;
   onLinkGoogle?: () => void;
   /** The chest slots row (needs the signed-in player's chests). */
   chests: ReactNode;
@@ -137,7 +139,7 @@ export function HomeTab(p: HomeProps) {
 
       <section className="stage">
         <HeroArt />
-        <div className="mode-stack">
+        <div className={`mode-stack ${p.onArcade ? 'with-arcade' : ''}`}>
           {p.activeRoom && (
             <button className="resume-btn" onClick={p.onResume}>▶ {t.resumeGame}</button>
           )}
@@ -150,6 +152,15 @@ export function HomeTab(p: HomeProps) {
               </span>
             </button>
           ))}
+          {p.onArcade && (
+            <button className="mode-btn mode-arcade" onClick={p.onArcade}>
+              <span className="mode-icon arcade-icon" aria-hidden>⚡</span>
+              <span className="mode-text">
+                <span>{t.arcade.name} <em className="new-badge">{t.arcade.badge}</em></span>
+                <small>{t.arcade.tagline}</small>
+              </span>
+            </button>
+          )}
         </div>
       </section>
 
@@ -218,6 +229,45 @@ export function ModeSheet({ mode, profile, guest, online, onSala, onPractice, on
       <button className="btn ghost wide practice-row" onClick={onPractice}>
         🤖 {t.practiceFree}
         <small>{t.practiceFreeSub}</small>
+      </button>
+    </Sheet>
+  );
+}
+
+/** Arcade: 2v2 with powers — practice, online matchmaking, or a private table. */
+export function ArcadeSheet({ profile, online, onPractice, onOnline, onPrivate, onSignIn, onClose }: {
+  profile: Profile | null; online: boolean;
+  onPractice: () => void; onOnline: () => void; onPrivate: () => void; onSignIn?: () => void; onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const a = t.arcade;
+  const lock = !online ? t.soon : !profile ? t.signInToBet : null;
+  const needAccount = lock === t.signInToBet && !!onSignIn;
+  return (
+    <Sheet onClose={onClose} className="mode-sheet arcade-sheet">
+      <div className="sheet-icon arcade-sheet-icon" aria-hidden>⚡</div>
+      <h2>{a.name}</h2>
+      <p className="fine">{a.tagline}</p>
+      <ul className="arcade-powers-mini">
+        {(['cambio', 'doble', 'comodin', 'candado'] as const).map((p) => <li key={p}>{a.powers[p].name}</li>)}
+      </ul>
+      <div className="sala-list">
+        <button className={`sala-row friendly ${lock ? 'locked' : ''}`} disabled={!!lock && !needAccount}
+          onClick={() => (needAccount ? onSignIn!() : onOnline())}>
+          <span className="sr-name">🌐 {a.online}</span>
+          <span className="sr-meta">{lock ? `🔒 ${lock}` : a.onlineSub}</span>
+          <span className="sr-pot">{t.free}</span>
+        </button>
+        <button className={`sala-row friendly ${lock ? 'locked' : ''}`} disabled={!!lock && !needAccount}
+          onClick={() => (needAccount ? onSignIn!() : onPrivate())}>
+          <span className="sr-name">🔐 {a.private}</span>
+          <span className="sr-meta">{lock ? `🔒 ${lock}` : a.privateSub}</span>
+          <span className="sr-pot">{t.free}</span>
+        </button>
+      </div>
+      <button className="btn ghost wide practice-row" onClick={onPractice}>
+        🤖 {a.practice}
+        <small>{a.practiceSub}</small>
       </button>
     </Sheet>
   );

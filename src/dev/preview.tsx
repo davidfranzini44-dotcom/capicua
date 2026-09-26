@@ -22,6 +22,7 @@ import { TournamentInvite, TournamentView } from '../ui/Tournament';
 import type { EntryRow, MatchRow, TournamentRow } from '../lib/useTournament';
 import type { GameState } from '../../supabase/functions/_shared/domino.ts';
 import { BoardDesignPreview } from './BoardDesignPreview';
+import { ArcadePreview } from './arcadePreview';
 import { LookContext, type LookState } from '../lib/look';
 import { SocialContext, type Friend, type Invite, type Social } from '../lib/social';
 import { FriendsSection, InviteFriendsSheet, InviteToast, PushRow, QuickInviteSheet } from '../ui/Friends';
@@ -161,6 +162,7 @@ function FxDemo({ end }: { end: 'win' | 'lose' | null }) {
 function Screen({ s }: { s: string }) {
   const noop = () => {};
   if (s === 'board-design') return <BoardDesignPreview />;
+  if (s.startsWith('arcade')) return <ArcadePreview s={s} />;
   if (s.startsWith('main')) {
     // main | main-guest | main-out (signed out) | main-offline (no Supabase) | main-<tab>
     const signedOut = s === 'main-out' || s === 'main-offline';

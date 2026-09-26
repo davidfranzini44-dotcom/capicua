@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  applyMove, forcedMove, isPollona, newGame, nextHand, playerCount, sideOf,
-  type GameState, type Mode, type Seat,
+  applyMove, arcadeRules, canRescue, forcedMove, isPollona, newGame, nextHand, playerCount, sideOf,
+  type GameState, type Mode, type Ruleset, type Seat,
 } from '../../supabase/functions/_shared/domino.ts';
-import { chooseMove } from '../../supabase/functions/_shared/bot.ts';
+import { chooseArcadeMove, chooseMove } from '../../supabase/functions/_shared/bot.ts';
 import { publicRules, publicState, TIMING } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { COOLDOWN_MS, playPhrase, type PhraseId } from '../quickchat';
@@ -13,10 +13,11 @@ const ME: Seat = 0;
 const NAMES = ['', 'Chelo', 'Yuly', 'Papo'];
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
 
-/** Offline game against bots, played entirely in the browser. */
-export function PracticeTable({ mode, onExit }: { mode: Mode; onExit: () => void }) {
+/** Offline game against bots, played entirely in the browser (Arcade: the bots use their powers too). */
+export function PracticeTable({ mode, ruleset = 'traditional', onExit }: { mode: Mode; ruleset?: Ruleset; onExit: () => void }) {
   const { t } = useI18n();
-  const fresh = useCallback(() => newGame(Math.random, publicRules(mode)), [mode]);
+  const arcade = ruleset === 'arcade';
+  const fresh = useCallback(() => newGame(Math.random, arcade ? arcadeRules() : publicRules(mode)), [mode, arcade]);
   const [game, setGame] = useState<GameState>(fresh);
   const [chat, setChat] = useState<ChatBubbles>({});
   const lastSaid = useRef(0);
@@ -37,12 +38,13 @@ export function PracticeTable({ mode, onExit }: { mode: Mode; onExit: () => void
     if (game.handResult) return;
     if (game.turn === ME) {
       const forced = forcedMove(game, ME);
-      if (!forced) return;
+      // Arcade: stuck but a power could still help — you decide (use it or press Pasar).
+      if (!forced || canRescue(game, ME)) return;
       const id = setTimeout(() => setGame((g) => applyMove(g, forced)), forced.type === 'draw' ? TIMING.drawMs : 1400);
       return () => clearTimeout(id);
     }
     const forced = forcedMove(game, game.turn);
-    const id = setTimeout(() => setGame((g) => applyMove(g, chooseMove(g, g.turn))), forced?.type === 'draw' ? TIMING.drawMs : TIMING.botMs);
+    const id = setTimeout(() => setGame((g) => applyMove(g, (g.arcade ? chooseArcadeMove : chooseMove)(g, g.turn))), forced?.type === 'draw' ? TIMING.drawMs : TIMING.botMs);
     return () => clearTimeout(id);
   }, [game]);
 

@@ -24,6 +24,8 @@ export interface InviteDetails {
   stake: number;
   code: string;
   target?: number;
+  /** 'arcade' for a Capicúa Arcade table (older invites have none: Traditional). */
+  ruleset?: string;
   name?: string;
 }
 

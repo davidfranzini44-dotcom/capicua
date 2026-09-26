@@ -11,12 +11,12 @@ import type postgres from 'npm:postgres@3.4.5';
 import { AccessToken } from 'npm:livekit-server-sdk@2';
 import { chooseMove } from '../_shared/bot.ts';
 import {
-  applyMove, forcedMove, isPollona, newGame, nextHand, seatsOf, sideOf, standings,
-  type GameState, type Mode, type Move, type Rules, type Seat,
+  applyMove, forcedMove, isArcade, isPollona, newGame, nextHand, seatsOf, sideOf, standings,
+  type GameState, type Mode, type Move, type Rules, type Ruleset, type Seat,
 } from '../_shared/domino.ts';
 import {
-  autoAction, autoDelay, botsAllowed, CHEST_SLOTS, chestReward, CHESTS, CHIPS, customRules, effectiveStake, rollChest, rushCost, gameXp, LEAVER_XP, levelFromXp, LOBBY, MAX_STRIKES,
-  MIN_PEOPLE_FOR_BOT_FILL, minHumans, MODES, needsReadyCheck, payouts, publicRules, publicState, roomCode, salaFor, seatsNeeded, SIDE_BET_KINDS,
+  arcadeAllowed, autoAction, autoDelay, botsAllowed, CHEST_SLOTS, chestReward, CHESTS, CHIPS, customRules, effectiveStake, rollChest, rushCost, gameXp, LEAVER_XP, levelFromXp, LOBBY, matchRules, MAX_STRIKES,
+  MIN_PEOPLE_FOR_BOT_FILL, minHumans, MODES, needsReadyCheck, payouts, publicState, roomCode, rulesetOf, RULESETS, salaFor, seatsNeeded, SIDE_BET_KINDS,
   sideBetLimit, sideBetMultiplier, sideBetWon, TURN_SECONDS, validateCustom, voiceRoomFor,
   type ChestKind, type SeatInfo, type SideBetKind,
 } from '../_shared/table.ts';
@@ -73,7 +73,10 @@ interface PairStats {
   u1: string; u2: string; name1: string; name2: string; games: number; public_games: number; partners: number;
   partner_wins: number; wins1: number; wins2: number; staked: string | number; friends: boolean; same_net: boolean;
 }
-interface GameDb { id: string; room_id: string; stake: number; pot: number; turn_ms: number; settled: boolean; state: GameState; last_ms: number }
+interface GameDb {
+  id: string; room_id: string; stake: number; pot: number; turn_ms: number; settled: boolean; state: GameState; last_ms: number;
+  version: number; auto_delay_ms: number | null;
+}
 
 const toSeatInfo = (r: SeatRow): SeatInfo => ({ seat: r.seat as Seat, userId: r.user_id, name: r.name, isBot: r.is_bot, away: r.away });
 const humansOf = (seats: SeatRow[]) => seats.filter((s) => !s.is_bot && s.user_id);
@@ -210,13 +213,13 @@ async function knownPairs(tx: Tx, ids: string[]): Promise<Set<string>> {
   return new Set(rows.map((r) => pairKey(r.a, r.b)));
 }
 
-/** Try to seat a full table (or a bot-filled one after a long wait) from the queue. */
-async function tryMatch(tx: Tx, stake: number, mode: Mode): Promise<string | null> {
+/** Try to seat a full table (or a bot-filled one after a long wait) from the queue. Arcade and Traditional never mix. */
+async function tryMatch(tx: Tx, stake: number, mode: Mode, ruleset: Ruleset): Promise<string | null> {
   const need = seatsNeeded(mode);
   const pool = await tx`
     select q.*, p.display_name, extract(epoch from now() - q.joined_at) * 1000 as waited_ms
     from queue q join profiles p on p.id = q.user_id
-    where q.stake = ${stake} and q.mode = ${mode} and (p.banned_until is null or p.banned_until <= now())
+    where q.stake = ${stake} and q.mode = ${mode} and q.ruleset = ${ruleset} and (p.banned_until is null or p.banned_until <= now())
     order by q.joined_at for update of q skip locked limit ${MATCH_POOL}`;
   // Chip tables never seat people who know each other: they could pass each other their tiles.
   const known = stake > 0 ? await knownPairs(tx, pool.map((r) => r.user_id)) : new Set<string>();
@@ -231,7 +234,7 @@ async function tryMatch(tx: Tx, stake: number, mode: Mode): Promise<string | nul
   const levels = humans.map((h) => h.level as number);
   const ready = needsReadyCheck(levels);
   const room = await insertRoom(tx, {
-    kind: 'public', mode, rules: publicRules(mode), stake, turnSeconds: TURN_SECONDS.public,
+    kind: 'public', mode, rules: matchRules(mode, ruleset), stake, turnSeconds: TURN_SECONDS.public,
     visibility: 'private', host: null, phase: ready ? 'ready' : 'countdown',
     phaseMs: ready ? LOBBY.readyMs : LOBBY.countdownMs,
   });
@@ -268,8 +271,8 @@ async function breakUpTable(tx: Tx, room: RoomDb, seats: SeatRow[], decliners: s
   for (const s of humansOf(seats)) {
     if (decliners.includes(s.user_id!)) continue;
     await tx`
-      insert into queue (user_id, stake, mode, level, joined_at)
-      values (${s.user_id}, ${room.stake}, ${room.mode}, ${s.level}, now() - interval '10 minutes')
+      insert into queue (user_id, stake, mode, level, ruleset, joined_at)
+      values (${s.user_id}, ${room.stake}, ${room.mode}, ${s.level}, ${rulesetOf(room.rules)}, now() - interval '10 minutes')
       on conflict (user_id) do nothing`;
   }
   await tx`delete from rooms where id = ${room.id}`;
@@ -332,12 +335,13 @@ async function lockGame(tx: Tx, gameId: string, uid: string) {
   return { game, room, state: game.state as GameState, seats };
 }
 
-async function saveGame(tx: Tx, room: RoomDb, game: GameDb, next: GameState, seats: SeatRow[], dealt = false) {
+/** `delayMs` replaces the usual delay (Arcade Cambio: the rest of the same turn, not a new one). */
+async function saveGame(tx: Tx, room: RoomDb, game: GameDb, next: GameState, seats: SeatRow[], dealt = false, delayMs?: number) {
   const prev = game.state;
   const finished = next.winner !== null;
   await tx`
     update games set public_state = ${tx.json(publicState(next) as never)}, version = version + 1,
-      last_move_at = now(), auto_delay_ms = ${autoDelay(next, seats.map(toSeatInfo), game.turn_ms)},
+      last_move_at = now(), auto_delay_ms = ${delayMs ?? autoDelay(next, seats.map(toSeatInfo), game.turn_ms)},
       finished_at = case when ${finished} then now() end
     where id = ${game.id}`;
   await tx`update game_private set state = ${tx.json(next as never)} where game_id = ${game.id}`;
@@ -370,6 +374,16 @@ async function settle(tx: Tx, room: RoomDb, game: GameDb, end: GameState, seats:
   }
 
   const order = standings(end.scores);
+  if (isArcade(end.rules)) {
+    // Arcade results are kept apart: no XP, Traditional stats, missions or chests until Arcade has its own rewards.
+    for (const s of humansOf(seats)) {
+      const won = end.winner === sideOf(mode, s.seat);
+      await tx`update profiles set arcade_games = arcade_games + 1, arcade_wins = arcade_wins + ${won ? 1 : 0} where id = ${s.user_id}`;
+    }
+    await tx`update games set settled = true where id = ${game.id}`;
+    await tx`update rooms set phase = 'finished', updated_at = now() where id = ${room.id}`;
+    return;
+  }
   for (const s of humansOf(seats)) {
     const side = sideOf(mode, s.seat);
     const won = end.winner === side;
@@ -573,9 +587,10 @@ async function playOutAbandoned(tx: Tx, roomId: string) {
 export const handlers = {
   // --- public salas ---
 
-  async queue_join(uid: string, { stake, mode }: { stake: number; mode: Mode }) {
+  async queue_join(uid: string, { stake, mode, ruleset = 'traditional' }: { stake: number; mode: Mode; ruleset?: Ruleset }) {
     const sala = salaFor(stake);
-    if (!sala || !MODES.includes(mode)) throw new HttpError(400, 'bad_sala');
+    if (!sala || !MODES.includes(mode) || !RULESETS.includes(ruleset)) throw new HttpError(400, 'bad_sala');
+    if (ruleset === 'arcade' && !arcadeAllowed(mode, stake)) throw new HttpError(400, 'bad_sala');
     return await sql.begin(async (tx) => {
       const p = await me(tx, uid);
       const active = await activeRoomOf(tx, uid);
@@ -585,9 +600,9 @@ export const handlers = {
       if (p.queue_blocked_until && new Date(p.queue_blocked_until).getTime() > Date.now()) throw new HttpError(409, 'queue_blocked');
       if (p.chips < sala.minBalance) throw new HttpError(409, 'balance_too_low');
       await tx`
-        insert into queue (user_id, stake, mode, level) values (${uid}, ${stake}, ${mode}, ${p.level})
-        on conflict (user_id) do update set stake = excluded.stake, mode = excluded.mode, level = excluded.level, joined_at = now()`;
-      const roomId = await tryMatch(tx, stake, mode);
+        insert into queue (user_id, stake, mode, level, ruleset) values (${uid}, ${stake}, ${mode}, ${p.level}, ${ruleset})
+        on conflict (user_id) do update set stake = excluded.stake, mode = excluded.mode, level = excluded.level, ruleset = excluded.ruleset, joined_at = now()`;
+      const roomId = await tryMatch(tx, stake, mode, ruleset);
       return roomId ? { roomId } : { queued: true };
     });
   },
@@ -602,11 +617,11 @@ export const handlers = {
     return await sql.begin(async (tx) => {
       const active = await activeRoomOf(tx, uid);
       if (active) return { roomId: active };
-      const [q] = await tx`select stake, mode, extract(epoch from now() - joined_at) * 1000 as waited_ms from queue where user_id = ${uid}`;
+      const [q] = await tx`select stake, mode, ruleset, extract(epoch from now() - joined_at) * 1000 as waited_ms from queue where user_id = ${uid}`;
       if (!q) return { idle: true };
-      const roomId = await tryMatch(tx, q.stake, q.mode);
+      const roomId = await tryMatch(tx, q.stake, q.mode, q.ruleset);
       if (roomId) return { roomId };
-      const [{ n }] = await tx`select count(*)::int as n from queue where stake = ${q.stake} and mode = ${q.mode}`;
+      const [{ n }] = await tx`select count(*)::int as n from queue where stake = ${q.stake} and mode = ${q.mode} and ruleset = ${q.ruleset}`;
       return { queued: true, waitedMs: Math.round(Number(q.waited_ms)), waiting: n };
     });
   },
@@ -821,23 +836,45 @@ export const handlers = {
 
   // --- playing ---
 
-  async move(uid: string, { gameId, move }: { gameId: string; move: Move }) {
+  /**
+   * Play a move. Arcade requests also carry `actionId` (a retry of an action
+   * that already went through does nothing) and `version` (the state the
+   * player saw: anything older is refused, so a stale tap can't spend a charge).
+   */
+  async move(uid: string, { gameId, move, actionId, version }: { gameId: string; move: Move; actionId?: string; version?: number }) {
     return await sql.begin(async (tx) => {
       const { game, room, state, seats } = await lockGame(tx, gameId, uid);
       const mine = mySeat(seats, uid);
+      const arcade = state.arcade;
+      if (arcade && actionId && arcade.recent?.includes(actionId)) return { ok: true, duplicate: true };
+      if (!arcade && move?.type !== 'play' && move?.type !== 'pass' && move?.type !== 'draw') throw new HttpError(400, 'illegal_move');
       if (state.turn !== mine.seat || state.handResult) throw new HttpError(409, 'not_your_turn');
+      const elapsed = Date.now() - Number(game.last_ms);
+      if (arcade) {
+        if (version !== undefined && version !== game.version) throw new HttpError(409, 'stale_state');
+        if (!mine.away && game.auto_delay_ms !== null && elapsed > game.auto_delay_ms + 2500) throw new HttpError(409, 'too_late');
+      }
       let next: GameState;
       try {
         next = applyMove(state, move);
       } catch {
         throw new HttpError(400, 'illegal_move');
       }
+      let delayMs: number | undefined;
+      if (next.arcade) {
+        if (actionId) next.arcade.recent = [...(arcade?.recent ?? []), String(actionId).slice(0, 64)].slice(-40);
+        // Cambio doesn't end the turn, and it doesn't restart the clock either.
+        if (move.type === 'cambio' && game.auto_delay_ms !== null) {
+          const natural = autoDelay(next, seats.map(toSeatInfo), game.turn_ms);
+          delayMs = natural === game.turn_ms ? Math.max(1500, game.auto_delay_ms - elapsed) : natural ?? undefined;
+        }
+      }
       // Playing a tile means you're back: the server stops playing for you.
       if (mine.strikes > 0 || mine.away || mine.left_game) {
         await tx`update room_seats set strikes = 0, away = false, left_game = false where room_id = ${room.id} and seat = ${mine.seat}`;
         Object.assign(mine, { strikes: 0, away: false, left_game: false });
       }
-      await saveGame(tx, room, game, next, seats);
+      await saveGame(tx, room, game, next, seats, false, delayMs);
       return { ok: true };
     });
   },
@@ -846,7 +883,8 @@ export const handlers = {
   async tick(uid: string, { gameId }: { gameId: string }) {
     return await sql.begin(async (tx) => {
       const { game, room, state, seats } = await lockGame(tx, gameId, uid);
-      const action = autoAction(state, seats.map(toSeatInfo), game.turn_ms, Number(game.last_ms), Date.now());
+      // Arcade: the saved delay is the deadline (a Cambio keeps the turn's original one).
+      const action = autoAction(state, seats.map(toSeatInfo), game.turn_ms, Number(game.last_ms), Date.now(), state.arcade ? game.auto_delay_ms : undefined);
       if (!action) return { acted: false };
       if (action.kind === 'nextHand') {
         await saveGame(tx, room, game, nextHand(state), seats, true);
@@ -1465,7 +1503,7 @@ export const handlers = {
       if (!r) throw new HttpError(403, 'not_in_room');
       if (r.kind !== 'custom' || r.phase !== 'lobby') throw new HttpError(409, 'game_in_progress');
       if (r.seated >= seatsOf(r.mode as Mode).length) throw new HttpError(409, 'room_full');
-      details = { kind: 'room', from: from.display_name, mode: r.mode, stake: Number(r.stake), code: r.code, target: r.rules.target };
+      details = { kind: 'room', from: from.display_name, mode: r.mode, stake: Number(r.stake), code: r.code, target: r.rules.target, ruleset: rulesetOf(r.rules) };
     } else if (tournamentId) {
       const [t] = await sql<TournamentDb[]>`select * from tournaments where id = ${tournamentId}`;
       const member = t && (t.host === uid || (await sql`
