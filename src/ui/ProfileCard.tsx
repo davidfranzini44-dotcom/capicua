@@ -1,11 +1,13 @@
 // A player's card: photo, level and record, and adding them as a friend.
+// At the table it also carries actions for that player (mute, report).
+import type { ReactNode } from 'react';
 import { levelFromXp, xpForLevel } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import type { PlayerStats } from '../lib/useRoom';
 import { Avatar, LevelBadge } from './common';
 import { AddFriendButton } from './Friends';
 
-export function ProfileCard({ stats, onClose }: { stats: PlayerStats; onClose: () => void }) {
+export function ProfileCard({ stats, onClose, actions }: { stats: PlayerStats; onClose: () => void; actions?: ReactNode }) {
   const { t } = useI18n();
   const level = levelFromXp(stats.xp);
   const from = xpForLevel(level);
@@ -18,6 +20,7 @@ export function ProfileCard({ stats, onClose }: { stats: PlayerStats; onClose: (
         <h2>{stats.display_name}</h2>
         <LevelBadge xp={stats.xp} big />
         <AddFriendButton userId={stats.id} />
+        {actions && <div className="card-actions">{actions}</div>}
         <div className="xp-bar wide"><span style={{ width: `${(100 * (stats.xp - from)) / (to - from)}%` }} /></div>
         <div className="stat-grid">
           <div><b>{stats.games}</b><small>{t.stats.games}</small></div>

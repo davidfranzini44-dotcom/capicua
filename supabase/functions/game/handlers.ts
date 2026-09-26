@@ -25,6 +25,7 @@ import {
   type TournamentMode,
 } from '../_shared/tournament.ts';
 import { canUse, chipPrice, lookById } from '../_shared/cosmetics.ts';
+import { networkOf, pairKey, pickGroup, shuffled } from '../_shared/fairplay.ts';
 import { db } from './db.ts';
 import { createCheckout, ShopError } from './purchases.ts';
 
@@ -38,6 +39,8 @@ type Tx = postgres.TransactionSql;
 const BOT_NAMES = ['Chelo', 'Yuly', 'Papo', 'Nando', 'Kirsy', 'Toño'];
 /** A half-full public table fills its empty chairs with bots after this long in the queue (only where bots are allowed). */
 const BOT_FILL_MS = 40_000;
+/** How many of the longest-waiting players are looked at when picking a table. */
+const MATCH_POOL = 40;
 
 export class HttpError extends Error {
   constructor(public status: number, public code: string) {
@@ -65,6 +68,10 @@ interface MatchDb {
 interface SeatRow {
   seat: number; user_id: string | null; is_bot: boolean; name: string; level: number;
   ready: boolean; away: boolean; left_game: boolean; strikes: number;
+}
+interface PairStats {
+  u1: string; u2: string; name1: string; name2: string; games: number; public_games: number; partners: number;
+  partner_wins: number; wins1: number; wins2: number; staked: string | number; friends: boolean; same_net: boolean;
 }
 interface GameDb { id: string; room_id: string; stake: number; pot: number; turn_ms: number; settled: boolean; state: GameState; last_ms: number }
 
@@ -127,6 +134,24 @@ async function adminOnly(uid: string) {
   if (!(await isAdmin(sql, uid))) throw new HttpError(403, 'admin_only');
 }
 
+let netPepper: string | undefined;
+
+/**
+ * Note which network a player is playing from — hashed, never the address —
+ * so chip tables keep people on the same home Wi-Fi apart.
+ */
+export async function recordNetwork(uid: string, ip: string | null) {
+  const network = networkOf(ip);
+  if (!network) return;
+  netPepper ??= (await sql`select value from app_secrets where key = 'net_pepper'`)[0]?.value ?? '';
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${netPepper}|${network}`));
+  const net = [...new Uint8Array(digest).slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  await sql`
+    insert into user_networks (user_id, net) values (${uid}, ${net})
+    on conflict (user_id, net) do update set last_seen = now(), hits = user_networks.hits + 1
+      where user_networks.last_seen < now() - interval '10 minutes'`;
+}
+
 /**
  * The table this player belongs at right now, if any. A game in progress
  * counts even if they walked out — their stake is in it and the server is
@@ -168,21 +193,41 @@ async function refundSideBets(tx: Tx, roomId: string, uid?: string) {
 
 // ---------- matchmaking ----------
 
+/**
+ * Pairs among these queued players who must not share a chip table: friends
+ * (or a pending request) and players seen on the same home network lately.
+ */
+async function knownPairs(tx: Tx, ids: string[]): Promise<Set<string>> {
+  if (ids.length < 2) return new Set();
+  const rows = await tx`
+    select a.user_id as a, b.user_id as b
+    from queue a join queue b on a.user_id < b.user_id
+    where a.user_id in ${tx(ids)} and b.user_id in ${tx(ids)}
+      and (
+        exists (select 1 from friendships f where f.user_a = least(a.user_id, b.user_id) and f.user_b = greatest(a.user_id, b.user_id))
+        or same_network(a.user_id, b.user_id)
+      )`;
+  return new Set(rows.map((r) => pairKey(r.a, r.b)));
+}
+
 /** Try to seat a full table (or a bot-filled one after a long wait) from the queue. */
 async function tryMatch(tx: Tx, stake: number, mode: Mode): Promise<string | null> {
   const need = seatsNeeded(mode);
-  const rows = await tx`
+  const pool = await tx`
     select q.*, p.display_name, extract(epoch from now() - q.joined_at) * 1000 as waited_ms
     from queue q join profiles p on p.id = q.user_id
-    where q.stake = ${stake} and q.mode = ${mode}
-    order by q.joined_at for update of q skip locked limit ${need}`;
+    where q.stake = ${stake} and q.mode = ${mode} and (p.banned_until is null or p.banned_until <= now())
+    order by q.joined_at for update of q skip locked limit ${MATCH_POOL}`;
+  // Chip tables never seat people who know each other: they could pass each other their tiles.
+  const known = stake > 0 ? await knownPairs(tx, pool.map((r) => r.user_id)) : new Set<string>();
+  const rows = pickGroup(pool, need, (a, b) => known.has(pairKey(a.user_id, b.user_id)));
   const canFill = botsAllowed(mode, stake)
     && rows.length >= Math.max(MIN_PEOPLE_FOR_BOT_FILL, minHumans(mode, stake))
-    && Number(rows[0]?.waited_ms) >= BOT_FILL_MS;
+    && Math.max(0, ...rows.map((r) => Number(r.waited_ms))) >= BOT_FILL_MS;
   if (rows.length < need && !canFill) return null;
 
-  // Shuffle so friends who queue together don't land in predictable seats.
-  const humans = [...rows].sort(() => Math.random() - 0.5);
+  // Shuffle so people who queue together don't land in predictable seats.
+  const humans = shuffled(rows);
   const levels = humans.map((h) => h.level as number);
   const ready = needsReadyCheck(levels);
   const room = await insertRoom(tx, {
@@ -1149,7 +1194,115 @@ export const handlers = {
     if (!user) throw new HttpError(404, 'no_user');
     const ledger = await sql`select delta, reason, note, created_at from chip_ledger where user_id = ${id} order by created_at desc limit 40`;
     const purchases = await sql`select pack, chips, amount_cents, status, created_at from purchases where user_id = ${id} order by created_at desc limit 20`;
-    return { user, ledger, purchases };
+    const [fair] = await sql`
+      select
+        (select count(*) from reports where reported = ${id})::int as reports,
+        (select count(*) from reports where reported = ${id} and status = 'open')::int as open_reports,
+        (select count(*) from table_alerts where user_id = ${id} and kind = 'left' and created_at > now() - interval '7 days')::int as left_7d,
+        (select count(*) from table_alerts where user_id = ${id} and kind = 'screenshot' and created_at > now() - interval '7 days')::int as screenshots_7d,
+        (select count(distinct h.game_id) from game_hands h join games g on g.id = h.game_id
+          where h.user_id = ${id} and g.created_at > now() - interval '7 days')::int as games_7d`;
+    const reports = await sql`
+      select r.reason, r.note, r.status, r.created_at, p.display_name as reporter
+      from reports r join profiles p on p.id = r.reporter
+      where r.reported = ${id} order by r.created_at desc limit 10`;
+    // Other accounts seen on the same network in the last 30 days (a second account, or someone at home).
+    const sameNetwork = await sql`
+      select distinct p.id, p.display_name
+      from user_networks a join user_networks b on b.net = a.net and b.user_id <> a.user_id
+      join profiles p on p.id = b.user_id
+      where a.user_id = ${id} and same_network(a.user_id, b.user_id, 30)
+      limit 20`;
+    return { user, ledger, purchases, fair, reports, sameNetwork };
+  },
+
+  /**
+   * Cheat alerts: open reports by player, pairs who play together suspiciously
+   * (last 30 days), and who leaves the app or takes screenshots most (7 days).
+   */
+  async admin_fairplay(uid: string) {
+    await adminOnly(uid);
+    const reports = await sql`
+      select r.reported as id, p.display_name as name, p.banned_until,
+             count(*)::int as reports,
+             count(distinct r.reporter)::int as reporters,
+             count(distinct r.reporter) filter (where r.created_at > now() - interval '7 days')::int as reporters_7d,
+             array_agg(distinct r.reason) as reasons,
+             (array_agg(r.note order by r.created_at desc) filter (where r.note is not null))[1] as last_note,
+             max(r.created_at) as last_at
+      from reports r join profiles p on p.id = r.reported
+      where r.status = 'open'
+      group by r.reported, p.display_name, p.banned_until
+      order by reporters_7d desc, reports desc, last_at desc
+      limit 50`;
+    const pairs = await sql<PairStats[]>`
+      with g as (
+        select id, kind, mode, stake, (public_state->>'winner')::int as winner
+        from games
+        where settled and created_at > now() - interval '30 days' and (stake > 0 or kind = 'public')
+      ), together as (
+        select a.user_id as u1, b.user_id as u2, g.kind, g.stake,
+               case when g.mode = '2v2' then a.seat % 2 else a.seat end as side1,
+               case when g.mode = '2v2' then b.seat % 2 else b.seat end as side2,
+               g.winner
+        from g
+        join game_hands a on a.game_id = g.id and a.user_id is not null
+        join game_hands b on b.game_id = g.id and b.user_id is not null and a.user_id < b.user_id
+      ), stats as (
+        select u1, u2,
+               count(*)::int as games,
+               count(*) filter (where kind = 'public')::int as public_games,
+               count(*) filter (where side1 = side2)::int as partners,
+               count(*) filter (where side1 = side2 and winner = side1)::int as partner_wins,
+               count(*) filter (where side1 <> side2 and winner = side1)::int as wins1,
+               count(*) filter (where side1 <> side2 and winner = side2)::int as wins2,
+               coalesce(sum(stake), 0)::bigint as staked
+        from together group by u1, u2
+      )
+      select s.*, x.display_name as name1, y.display_name as name2,
+             exists (select 1 from friendships f where f.user_a = least(s.u1, s.u2) and f.user_b = greatest(s.u1, s.u2)) as friends,
+             same_network(s.u1, s.u2, 30) as same_net
+      from stats s join profiles x on x.id = s.u1 join profiles y on y.id = s.u2`;
+    const suspects = pairs
+      .map((p) => {
+        const flags: string[] = [];
+        if (p.same_net) flags.push('same_net');
+        if (p.friends && p.public_games > 0) flags.push('friends');
+        // With few players online the same faces meet a lot, so only a real habit counts.
+        if (p.public_games >= 10) flags.push('often');
+        if (p.partners >= 5 && p.partner_wins / p.partners >= 0.7) flags.push('partners_win');
+        const vs = p.wins1 + p.wins2;
+        if (vs >= 5 && Math.max(p.wins1, p.wins2) / vs >= 0.8) flags.push('lopsided');
+        const score = (p.same_net ? 4 : 0) + (flags.includes('friends') ? 3 : 0) + (flags.includes('partners_win') ? 3 : 0)
+          + (flags.includes('lopsided') ? 3 : 0) + Math.min(3, p.public_games / 10);
+        return { ...p, staked: Number(p.staked), flags, score };
+      })
+      .filter((p) => p.flags.length > 0)
+      .sort((a, b) => b.score - a.score || b.games - a.games)
+      .slice(0, 30);
+    const leavers = await sql`
+      select t.user_id as id, p.display_name as name,
+             count(*) filter (where t.kind = 'left')::int as left_app,
+             count(*) filter (where t.kind = 'screenshot')::int as screenshots,
+             coalesce(sum(t.seconds) filter (where t.kind = 'back'), 0)::int as seconds_away,
+             (select count(distinct h.game_id) from game_hands h join games g on g.id = h.game_id
+               where h.user_id = t.user_id and g.created_at > now() - interval '7 days')::int as games
+      from table_alerts t join profiles p on p.id = t.user_id
+      where t.created_at > now() - interval '7 days'
+      group by t.user_id, p.display_name
+      order by count(*) filter (where t.kind = 'screenshot') * 3 + count(*) filter (where t.kind = 'left') desc
+      limit 30`;
+    return { reports, suspects, leavers };
+  },
+
+  /** Close a player's open reports: 'dismissed' (nothing found) or 'actioned' (sanctioned). */
+  async admin_report_resolve(uid: string, { userId, status }: { userId: string; status: 'dismissed' | 'actioned' }) {
+    await adminOnly(uid);
+    if (!['dismissed', 'actioned'].includes(status)) throw new HttpError(400, 'bad_status');
+    const done = await sql`
+      update reports set status = ${status}, reviewed_at = now()
+      where reported = ${userId} and status = 'open' returning id`;
+    return { closed: done.length };
   },
 
   /** Give or take chips (support, refunds, fixing mistakes). Always leaves a ledger line with a note. */

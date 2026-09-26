@@ -2,13 +2,17 @@
 // rooms, seats, dealing, moves, bots, chips, and LiveKit voice tokens.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { handlers, HttpError, ready } from './handlers.ts';
+import { clientIp } from '../_shared/fairplay.ts';
+import { handlers, HttpError, ready, recordNetwork } from './handlers.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+
+/** Actions that seat someone: note their network so chip tables keep people at one home apart. */
+const NOTES_NETWORK = new Set(['queue_join', 'queue_status', 'join_room', 'create_custom', 'tournament_join']);
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -31,6 +35,9 @@ Deno.serve(async (req) => {
     const handler = handlers[body?.action as keyof typeof handlers];
     if (!handler) throw new HttpError(400, 'unknown_action');
     await ready();
+    if (NOTES_NETWORK.has(body.action)) {
+      await recordNetwork(uid, clientIp(req.headers)).catch((e) => console.error('recordNetwork', e));
+    }
     return json(await handler(uid, body));
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.code }, e.status);

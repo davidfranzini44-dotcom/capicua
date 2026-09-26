@@ -6,7 +6,7 @@ import { useI18n } from '../i18n';
 import { api, supabase } from '../lib/supabase';
 import { Avatar, useErrorText } from './common';
 
-type Section = 'stats' | 'users' | 'tables' | 'ledger' | 'purchases';
+type Section = 'stats' | 'users' | 'fair' | 'tables' | 'ledger' | 'purchases';
 
 interface Stats {
   players: number; guests: number; new_today: number; games_today: number; live_tables: number; in_queue: number;
@@ -20,6 +20,20 @@ interface UserRow {
 interface TableRow { id: string; code: string; kind: string; mode: string; stake: number; phase: string; created_at: string; seats: { seat: number; name: string; bot: boolean; away: boolean }[] }
 interface LedgerRow { delta: number; reason: string; note: string | null; created_at: string; display_name?: string }
 interface PurchaseRow { pack: string; chips: number; amount_cents: number; status: string; created_at: string; display_name?: string; email?: string }
+interface FairReport {
+  id: string; name: string; banned_until: string | null; reports: number; reporters: number; reporters_7d: number;
+  reasons: string[]; last_note: string | null; last_at: string;
+}
+interface FairPair {
+  u1: string; u2: string; name1: string; name2: string; games: number; public_games: number; partners: number; partner_wins: number;
+  wins1: number; wins2: number; staked: number; flags: string[];
+}
+interface FairLeaver { id: string; name: string; left_app: number; screenshots: number; seconds_away: number; games: number }
+interface FairUser {
+  fair: { reports: number; open_reports: number; left_7d: number; screenshots_7d: number; games_7d: number };
+  reports: { reason: string; note: string | null; status: string; created_at: string; reporter: string }[];
+  sameNetwork: { id: string; display_name: string }[];
+}
 
 const money = (cents: number) => `US$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
@@ -29,7 +43,7 @@ export function AdminScreen({ onExit }: { onExit: () => void }) {
   const [section, setSection] = useState<Section>('stats');
   const [openUser, setOpenUser] = useState<string | null>(null);
   const tabs: [Section, string][] = [
-    ['stats', t.admin.stats], ['users', t.admin.users], ['tables', t.admin.tables], ['ledger', t.admin.ledger], ['purchases', t.admin.purchases],
+    ['stats', t.admin.stats], ['users', t.admin.users], ['fair', t.admin.fair], ['tables', t.admin.tables], ['ledger', t.admin.ledger], ['purchases', t.admin.purchases],
   ];
   return (
     <div className="admin">
@@ -43,9 +57,10 @@ export function AdminScreen({ onExit }: { onExit: () => void }) {
         ))}
       </nav>
       <main className="admin-body">
-        {openUser ? <UserDetail id={openUser} onBack={() => setOpenUser(null)} />
+        {openUser ? <UserDetail key={openUser} id={openUser} onBack={() => setOpenUser(null)} onOpen={setOpenUser} />
           : section === 'stats' ? <StatsView />
           : section === 'users' ? <UsersView onOpen={setOpenUser} />
+          : section === 'fair' ? <FairPlayView onOpen={setOpenUser} />
           : section === 'tables' ? <TablesView />
           : section === 'ledger' ? <LedgerView />
           : <PurchasesView />}
@@ -134,10 +149,67 @@ function UsersView({ onOpen }: { onOpen: (id: string) => void }) {
   );
 }
 
-function UserDetail({ id, onBack }: { id: string; onBack: () => void }) {
+/** Cheat alerts: reports by player, pairs that play together suspiciously, who leaves the app. */
+function FairPlayView({ onOpen }: { onOpen: (id: string) => void }) {
+  const { t } = useI18n();
+  const { data, error, reload } = useAdmin<{ reports: FairReport[]; suspects: FairPair[]; leavers: FairLeaver[] }>('admin_fairplay');
+  if (error) return <p className="error">{error}</p>;
+  if (!data) return <p className="fine">{t.loading}</p>;
+  const who = (id: string, name: string) => <button className="link-btn fair-name" onClick={() => onOpen(id)}>{name}</button>;
+  return (
+    <div className="fair-admin">
+      <button className="btn ghost" onClick={reload}>↻ {t.refresh}</button>
+
+      <h3 className="section-title">⚑ {t.admin.reports}</h3>
+      {data.reports.length === 0 && <p className="fine">{t.admin.noReports}</p>}
+      {data.reports.map((r) => (
+        <div key={r.id} className={`admin-card fair-row ${r.reporters_7d >= 3 ? 'hot' : ''}`}>
+          <div>
+            {who(r.id, r.name)}{r.banned_until && new Date(r.banned_until).getTime() > Date.now() && ' ⛔'}
+            {' '}· <b>{r.reports}</b> ({r.reporters} {t.admin.reporters})
+            <small>{r.reasons.map((x) => t.fair.reasons[x] ?? x).join(', ')}{r.last_note && ` — “${r.last_note}”`}</small>
+            <small>{when(r.last_at)}</small>
+          </div>
+        </div>
+      ))}
+
+      <h3 className="section-title">🕵️ {t.admin.suspects}</h3>
+      {data.suspects.length === 0 && <p className="fine">{t.admin.noSuspects}</p>}
+      {data.suspects.map((p) => (
+        <div key={`${p.u1}${p.u2}`} className="admin-card fair-row">
+          <div>
+            {who(p.u1, p.name1)} + {who(p.u2, p.name2)}
+            <span className="fair-flags">{p.flags.map((f) => <em key={f} className={`fair-flag ${f}`}>{t.admin.flags[f] ?? f}</em>)}</span>
+            <small>
+              {p.games} {t.admin.together}
+              {p.partners > 0 && ` · ${p.partners} ${t.admin.asPartners} (${p.partner_wins} ${t.admin.partnerWins})`}
+              {p.wins1 + p.wins2 > 0 && ` · ${p.name1} ${p.wins1}–${p.wins2} ${p.name2}`}
+              {p.staked > 0 && ` · 🪙 ${p.staked.toLocaleString()} ${t.admin.staked}`}
+            </small>
+          </div>
+        </div>
+      ))}
+
+      <h3 className="section-title">📵 {t.admin.leavers}</h3>
+      {data.leavers.length === 0 && <p className="fine">{t.admin.noLeavers}</p>}
+      {data.leavers.map((l) => (
+        <div key={l.id} className="admin-card fair-row">
+          <div>
+            {who(l.id, l.name)}
+            <small>
+              {l.left_app} {t.admin.leftApp} · {l.screenshots} {t.admin.shots} · {Math.round(l.seconds_away / 60)} min {t.admin.away} · {l.games} {t.admin.gamesShort}
+            </small>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UserDetail({ id, onBack, onOpen }: { id: string; onBack: () => void; onOpen: (id: string) => void }) {
   const { t } = useI18n();
   const errText = useErrorText();
-  const { data, error, reload } = useAdmin<{ user: UserRow; ledger: LedgerRow[]; purchases: PurchaseRow[] }>('admin_user', { id });
+  const { data, error, reload } = useAdmin<{ user: UserRow; ledger: LedgerRow[]; purchases: PurchaseRow[] } & Partial<FairUser>>('admin_user', { id });
   const [delta, setDelta] = useState('');
   const [note, setNote] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
@@ -188,6 +260,35 @@ function UserDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </div>
       </section>
       {msg && <p className="note-ok">{msg}</p>}
+
+      {data.fair && (
+        <section className="card fair-user">
+          <h3>🛡️ {t.admin.fairBlock}</h3>
+          <p className="fine left">
+            ⚑ {data.fair.reports} ({data.fair.open_reports} {t.admin.openReports}) · 📵 {data.fair.left_7d} {t.admin.leftApp}
+            {' '}· 📸 {data.fair.screenshots_7d} {t.admin.shots} · {data.fair.games_7d} {t.admin.gamesShort}
+          </p>
+          {!!data.sameNetwork?.length && (
+            <p className="fine left">
+              🏠 {t.admin.sameNetwork}:{' '}
+              {data.sameNetwork.map((o, i) => (
+                <span key={o.id}>{i > 0 && ', '}<button className="link-btn fair-name" onClick={() => onOpen(o.id)}>{o.display_name}</button></span>
+              ))}
+            </p>
+          )}
+          {data.reports?.map((r, i) => (
+            <p key={i} className={`fine left fair-report ${r.status}`}>
+              {when(r.created_at)} · <b>{r.reporter}</b>: {t.fair.reasons[r.reason] ?? r.reason}{r.note && ` — “${r.note}”`}
+            </p>
+          ))}
+          {data.fair.open_reports > 0 && (
+            <div className="seg">
+              <button onClick={() => act(() => api('admin_report_resolve', { userId: u.id, status: 'dismissed' }), t.admin.done)}>{t.admin.dismiss}</button>
+              <button onClick={() => act(() => api('admin_report_resolve', { userId: u.id, status: 'actioned' }), t.admin.done)}>{t.admin.actioned}</button>
+            </div>
+          )}
+        </section>
+      )}
 
       <h3 className="section-title">{t.admin.ledger}</h3>
       <LedgerTable rows={data.ledger} />

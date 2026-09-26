@@ -1,4 +1,4 @@
-// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp
+// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report
 // Renders the online screens with sample data so layouts can be checked without a backend.
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -31,6 +31,8 @@ import type { Push } from '../lib/push';
 import { HomeTab, SettingsSheet } from '../ui/MainScreen';
 import { LookPicker } from '../ui/LookPicker';
 import { TileShape } from '../ui/Tile';
+import { ReportButton } from '../ui/Report';
+import type { TableAlert } from '../lib/fairPlay';
 import { lookVars } from '../lib/look';
 import { feltById, tilesById } from '../../supabase/functions/_shared/cosmetics.ts';
 import '../ui/table.css';
@@ -92,7 +94,7 @@ const seat = (s: number, name: string, level: number, over: Partial<SeatRow> = {
 
 function data(over: Partial<RoomData>): RoomData {
   return {
-    room: room({}), seats: [], game: null, hand: [], bets: [], chat: {}, gone: false, online: new Set<string>(), receivedAt: Date.now(),
+    room: room({}), seats: [], game: null, hand: [], bets: [], chat: {}, gone: false, online: new Set<string>(), receivedAt: Date.now(), alerts: {}, lastAlert: null,
     sendChat: () => {}, reload: async () => {}, ...over,
   } as RoomData;
 }
@@ -402,6 +404,35 @@ function Screen({ s }: { s: string }) {
       seats: [seat(0, 'Wilfri', 4, { ready: true }), seat(1, 'Robert', 6, { ready: true }), seat(3, 'Kirsy', 2)],
     });
     return <Pregame r={r} uid="me" profile={profile} voice={null} onLeave={noop} />;
+  }
+  if (s === 'report') {
+    const who = { id: 'u-Robert', display_name: 'Robert', xp: 1_100, games: 88, wins: 41, capicuas: 12, pollonas: 1, biggest_pot: 3_000, tournaments_won: 0, avatar_url: null };
+    return (
+      <ProfileCard stats={who} onClose={noop} actions={(
+        <>
+          <button className="btn ghost wide">{strings('es').fair.mute}</button>
+          <ReportButton userId={who.id} gameId="g1" name={who.display_name} />
+        </>
+      )} />
+    );
+  }
+  if (s === 'fair-alerts' || s === 'fair-back') {
+    let g = newGame(Math.random, publicRules('2v2'));
+    for (let i = 0; i < 9 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
+    const alert = (user: string, seatNo: number, kind: TableAlert['kind'], seconds: number | null = null): TableAlert =>
+      ({ id: seatNo + 10, user_id: user, seat: seatNo, kind, seconds, at: Date.now() });
+    const left = alert('u-Yokasta', 1, 'left');
+    const r = data({
+      room: room({ phase: 'playing', current_game: 'g1' }),
+      seats: [seat(0, 'Wilfri', 4), seat(1, 'Yokasta', 13), seat(2, 'Robert', 6), seat(3, 'Kirsy', 5)],
+      online: new Set(['me', 'u-Yokasta', 'u-Robert', 'u-Kirsy']),
+      game: { id: 'g1', public_state: publicState(g), version: 3, stake: 1000, pot: 4000, turn_ms: 15000, auto_delay_ms: 15000, settled: false },
+      hand: g.hands[0],
+      receivedAt: Date.now() - 4000,
+      alerts: { 'u-Yokasta': left },
+      lastAlert: s === 'fair-back' ? alert('me', 0, 'back', 12) : alert('u-Robert', 2, 'screenshot'),
+    });
+    return <OnlineTable r={r} uid="me" voice={null} onLeave={noop} onPlayAnother={noop} />;
   }
   if (s === 'table' || s === 'away') {
     let g = newGame(Math.random, publicRules('2v2'));

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Mode, Rules, Seat, Tile } from '../../supabase/functions/_shared/domino.ts';
 import type { PublicState, SideBetKind } from '../../supabase/functions/_shared/table.ts';
 import { playPhrase, type PhraseId } from '../quickchat';
+import { OUT_OF_APP_MS, type TableAlert } from './fairPlay';
 import type { ChatBubbles } from '../ui/TableView';
 import { onlineEnabled, supabase } from './supabase';
 
@@ -79,6 +80,9 @@ export function useRoom(roomId: string, uid: string) {
   const myVoice = useRef(false);
   /** Local time the current game row arrived — turn timers count from here (no clock skew). */
   const [receivedAt, setReceivedAt] = useState(0);
+  /** Fair play: each player's latest "left the app / came back / screenshot", and the newest one to announce. */
+  const [alerts, setAlerts] = useState<Record<string, TableAlert>>({});
+  const [lastAlert, setLastAlert] = useState<TableAlert | null>(null);
 
   const gameId = useRef<string | null>(null);
   const version = useRef(-1);
@@ -106,6 +110,15 @@ export function useRoom(roomId: string, uid: string) {
     if (data) setSeats(data as SeatRow[]);
   }, [roomId]);
 
+  /** After a reload: who is still out of the app (no announcement for old news). */
+  const loadAlerts = useCallback(async (id: string) => {
+    const { data } = await supabase.from('table_alerts').select('id, user_id, seat, kind, seconds, created_at')
+      .eq('game_id', id).gte('created_at', new Date(Date.now() - OUT_OF_APP_MS).toISOString()).order('id');
+    const latest: Record<string, TableAlert> = {};
+    for (const a of data ?? []) latest[a.user_id] = { ...a, at: Date.parse(a.created_at) } as TableAlert;
+    setAlerts(latest);
+  }, []);
+
   const loadBets = useCallback(async () => {
     const { data } = await supabase.from('side_bets').select('kind, amount, multiplier, status, payout, game_id').eq('room_id', roomId).eq('user_id', uid);
     if (data) setBets(data.map((b) => ({ ...b, multiplier: Number(b.multiplier), payout: Number(b.payout) })) as SideBetRow[]);
@@ -121,13 +134,13 @@ export function useRoom(roomId: string, uid: string) {
     await Promise.all([loadSeats(), loadBets()]);
     if (data.current_game) {
       if (data.current_game !== gameId.current) version.current = -1;
-      await loadGame(data.current_game);
+      await Promise.all([loadGame(data.current_game), loadAlerts(data.current_game)]);
     } else {
       gameId.current = null;
       setGame(null);
       setHand([]);
     }
-  }, [roomId, loadSeats, loadBets, loadGame]);
+  }, [roomId, loadSeats, loadBets, loadGame, loadAlerts]);
 
   useEffect(() => {
     const ch = supabase
@@ -153,6 +166,11 @@ export function useRoom(roomId: string, uid: string) {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_hands', filter: `user_id=eq.${uid}` }, (p) => {
         const row = p.new as { game_id: string; tiles: Tile[] };
         if (row.game_id === gameId.current && row.tiles) setHand(row.tiles);
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'table_alerts', filter: `room_id=eq.${roomId}` }, (p) => {
+        const a = { ...(p.new as Omit<TableAlert, 'at'>), at: Date.now() };
+        setAlerts((all) => ({ ...all, [a.user_id]: a }));
+        setLastAlert(a);
       })
       .on('broadcast', { event: 'chat' }, ({ payload }) => {
         const { seat, id } = payload as { seat: Seat; id: PhraseId };
@@ -187,7 +205,7 @@ export function useRoom(roomId: string, uid: string) {
     channel.current?.track({ at: Date.now(), voice: on });
   }, []);
 
-  return { room, seats, game, hand, bets, chat, gone, online, inVoice, receivedAt, sendChat, setVoicePresence, reload: loadAll };
+  return { room, seats, game, hand, bets, chat, gone, online, inVoice, receivedAt, alerts, lastAlert, sendChat, setVoicePresence, reload: loadAll };
 }
 
 export type RoomData = ReturnType<typeof useRoom>;

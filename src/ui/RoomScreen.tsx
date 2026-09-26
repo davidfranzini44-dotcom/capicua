@@ -4,6 +4,7 @@ import {
   botsAllowed, minHumans, SIDE_BET_KINDS, sideBetLimit, sideBetMultiplier, voiceRoomFor, type SideBetKind,
 } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
+import { OUT_OF_APP_MS, useFairPlay, type TableAlert } from '../lib/fairPlay';
 import { forgetTable, rememberTable } from '../lib/lastTable';
 import { api, ApiError, supabase, type Profile } from '../lib/supabase';
 import { usePlayerStats, useRoom, type PlayerStats, type RoomData, type SeatRow } from '../lib/useRoom';
@@ -16,10 +17,13 @@ import { ChestArt } from './Chests';
 import { Avatar, ChipBalance, LevelBadge, useErrorText } from './common';
 import { InviteFriendsSheet } from './Friends';
 import { ProfileCard } from './ProfileCard';
+import { ReportButton } from './Report';
 import { TableView } from './TableView';
 import { VoiceButton } from './VoiceButton';
 
 const SIDE_COLORS = ['var(--us)', '#6fb7ff', 'var(--them)', '#c79bff'];
+/** Games whose "fair play" reminder this device already showed. */
+const fairReminded = new Set<string>();
 
 export function RoomScreen({ roomId, uid, profile, onLeave, onBrokeUp, onRequeue, onTournament }: {
   roomId: string; uid: string; profile: Profile;
@@ -436,6 +440,39 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
     return (id && stats[id]?.avatar_url) || null;
   });
   const toSeats = (ids: Set<string>) => new Set([...ids].map((id) => seatOf.get(id)).filter((s): s is Seat => s !== undefined));
+
+  // Fair play: my app tells the table when I leave it mid-game; theirs tell me.
+  useFairPlay(room.id, !!me && room.phase === 'playing' && !game.settled && view.winner === null);
+  const outOfApp = new Set(Object.values(r.alerts)
+    .filter((a) => a.kind === 'left' && a.user_id !== uid && Date.now() - a.at < OUT_OF_APP_MS)
+    .map((a) => a.seat as Seat));
+  const [shownAlert, setShownAlert] = useState<TableAlert | null>(null);
+  useEffect(() => {
+    if (!r.lastAlert) return;
+    setShownAlert(r.lastAlert);
+    const id = setTimeout(() => setShownAlert(null), 4000);
+    return () => clearTimeout(id);
+  }, [r.lastAlert]);
+  const [reminder, setReminder] = useState(false);
+  useEffect(() => {
+    if (game.settled || fairReminded.has(game.id)) return;
+    fairReminded.add(game.id);
+    setReminder(true);
+    setTimeout(() => setReminder(false), 5000);
+  }, [game.id, game.settled]);
+  const fairNotice = (() => {
+    const a = shownAlert;
+    if (!a) return reminder ? t.fair.start : null;
+    const mine = a.user_id === uid;
+    const who = names[a.seat] || '?';
+    const secs = String(a.seconds ?? 0);
+    if (a.kind === 'left') return mine ? null : t.fair.left.replace('{name}', who);
+    if (a.kind === 'back') return (mine ? t.fair.youLeft : t.fair.back.replace('{name}', who)).replace('{s}', secs);
+    return mine ? t.fair.youShot : t.fair.screenshot.replace('{name}', who);
+  })();
+  // Tapping a player opens their card: mute them on voice, add them, report them.
+  const [card, setCard] = useState<string | null>(null);
+  const cardStats = card ? stats[card] : undefined;
   const speaking = voice ? toSeats(voice.speaking) : undefined;
   const mutedSeats = voice ? toSeats(voice.mutedPeers) : undefined;
   const away = new Set(r.seats.filter((s) => s.away).map((s) => s.seat));
@@ -557,10 +594,10 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
         onChat={onChat}
         speaking={speaking}
         mutedSeats={mutedSeats}
-        onSeatTap={voice ? (s) => {
-          const peer = r.seats.find((x) => x.seat === s)?.user_id;
-          if (peer && voice.status === 'on') voice.togglePeer(peer);
-        } : undefined}
+        onSeatTap={(s) => {
+          const peer = r.seats.find((x) => x.seat === s);
+          if (peer?.user_id && !peer.is_bot) setCard(peer.user_id);
+        }}
         away={away}
         pot={game.pot || undefined}
         voice={voiceControl ?? undefined}
@@ -568,11 +605,28 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
         resultNote={resultNote}
         endActions={endActions}
         offline={offline}
+        outOfApp={outOfApp}
         exitConfirm={t.exitConfirmOnline}
-        notice={error}
+        notice={error ?? fairNotice}
         watchers={watchers}
         showXp
       />
+      {card && cardStats && (
+        <ProfileCard
+          stats={cardStats}
+          onClose={() => setCard(null)}
+          actions={(
+            <>
+              {voice?.status === 'on' && (
+                <button className="btn ghost wide" onClick={() => voice.togglePeer(card)}>
+                  {voice.mutedPeers.has(card) ? t.fair.unmute : t.fair.mute}
+                </button>
+              )}
+              <ReportButton key={card} userId={card} gameId={game.id} name={cardStats.display_name} />
+            </>
+          )}
+        />
+      )}
       {me?.away && room.phase === 'playing' && (
         <div className="away-banner">
           <span>{t.awayBanner}<small>{t.tapToReturn}</small></span>

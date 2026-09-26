@@ -45,7 +45,7 @@ export interface TableViewProps {
   pot?: number;
   /** Seats that left and are being played by the server. */
   away?: Set<Seat>;
-  /** Tap another player's avatar (used to mute them on voice). */
+  /** Tap another player's avatar (online: opens their card to mute or report them). */
   onSeatTap?: (seat: Seat) => void;
   /** Seats I've muted on voice. */
   mutedSeats?: Set<Seat>;
@@ -55,6 +55,8 @@ export interface TableViewProps {
   resultNote?: ReactNode;
   /** Human seats whose owner doesn't have the table open right now. */
   offline?: Set<Seat>;
+  /** Seats whose player left the app mid-hand (fair play) and hasn't come back yet. */
+  outOfApp?: Set<Seat>;
   /** Text for the leave confirmation (online games explain the server keeps playing). */
   exitConfirm?: string;
   /** Online games earn XP; practice doesn't. */
@@ -108,7 +110,7 @@ const FFA_COLORS = ['var(--us)', 'var(--them)', '#6fb7ff', '#c79bff'];
 export function TableView(props: TableViewProps) {
   const {
     view, myHand, mySeat, names, levels, avatars, onPlay, onNextHand, onExit, chat, onChat,
-    speaking, voice, pot, away, onSeatTap, mutedSeats, turnDeadline, resultNote, offline, exitConfirm, notice,
+    speaking, voice, pot, away, onSeatTap, mutedSeats, turnDeadline, resultNote, offline, outOfApp, exitConfirm, notice,
     watching, watchers,
   } = props;
   const { t, lang, setLang } = useI18n();
@@ -253,6 +255,7 @@ export function TableView(props: TableViewProps) {
     speaking: speaking?.has(s) ?? false,
     away: away?.has(s) ?? false,
     offline: offline?.has(s) ?? false,
+    outOfApp: outOfApp?.has(s) ?? false,
     muted: mutedSeats?.has(s) ?? false,
     onTap: onSeatTap ? () => onSeatTap(s) : undefined,
     seconds: view.turn === s ? secondsLeft : null,
@@ -473,16 +476,16 @@ function OwnerChip({ role }: { role: OwnerRole }) {
 }
 
 function SeatBadge({
-  name, avatar, level, color, count, active, bubble, pos, partnerLabel, speaking, away, offline, muted, onTap, seconds, owner,
+  name, avatar, level, color, count, active, bubble, pos, partnerLabel, speaking, away, offline, outOfApp, muted, onTap, seconds, owner,
 }: {
   name: string; avatar?: string | null; level: number | null; color: string; count: number; active: boolean;
   bubble: { text: string; chat: boolean } | null; pos: 'top' | 'left' | 'right'; partnerLabel?: string;
-  speaking: boolean; away: boolean; offline: boolean; muted: boolean; onTap?: () => void; seconds: number | null;
+  speaking: boolean; away: boolean; offline: boolean; outOfApp: boolean; muted: boolean; onTap?: () => void; seconds: number | null;
   owner?: OwnerRole;
 }) {
   const { t, lang } = useI18n();
   return (
-    <div className={`seat seat-${pos} ${active ? 'active' : ''} ${speaking ? 'speaking' : ''} ${away ? 'away' : ''} ${offline ? 'offline' : ''}`} style={{ '--seat-color': color } as CSSProperties}>
+    <div className={`seat seat-${pos} ${active ? 'active' : ''} ${speaking ? 'speaking' : ''} ${away ? 'away' : ''} ${offline || outOfApp ? 'offline' : ''}`} style={{ '--seat-color': color } as CSSProperties}>
       <button className={`avatar ${onTap ? 'tappable' : ''}`} onClick={onTap} disabled={!onTap} aria-label={onTap ? `${name} · ${muted ? t.voice.muted : t.voice.live}` : name} aria-pressed={onTap ? muted : undefined}>
         {speaking && <span className="talk-ring" aria-hidden />}
         <Avatar name={name} url={avatar} />
@@ -493,7 +496,7 @@ function SeatBadge({
       </button>
       <div className="seat-info">
         <span className="seat-name">{owner && <OwnerChip role={owner} />}{name}{partnerLabel && <small> · {partnerLabel}</small>}</span>
-        {offline && <span className="offline-tag">📵 {t.offline}</span>}
+        {outOfApp ? <span className="offline-tag out-of-app">📵 {t.fair.outTag}</span> : offline && <span className="offline-tag">📵 {t.offline}</span>}
         <span className="seat-tiles" aria-label={`${count} ${count === 1 ? (lang === 'es' ? 'ficha' : 'tile') : (lang === 'es' ? 'fichas' : 'tiles')}`}>
           <span className="backs" aria-hidden>{Array.from({ length: Math.min(count, 7) }, (_, i) => <TileBack key={i} />)}</span>
           <b className="tile-count" aria-hidden>{count}</b>
