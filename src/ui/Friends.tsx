@@ -1,6 +1,6 @@
 // Saved friends: the list (with who's online), adding by code or from a
 // player's card, inviting to a table or tournament, and the invite pop-up.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { levelFromXp } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { api, type Profile } from '../lib/supabase';
@@ -8,7 +8,7 @@ import type { Push } from '../lib/push';
 import { useSocial, type Friend, type Invite, type InviteTarget, type Social } from '../lib/social';
 import { Avatar, useErrorText } from './common';
 import { Sheet } from './MainScreen';
-import { BellIcon, CheckIcon, EyeIcon, ShareNetworkIcon, UserPlusIcon, UsersThreeIcon, XIcon } from '@phosphor-icons/react';
+import { BellIcon, CheckIcon, EyeIcon, HandshakeIcon, ShareNetworkIcon, UserPlusIcon, UsersThreeIcon, XIcon } from '@phosphor-icons/react';
 import './social.css';
 
 /** Online friends first, then by name. */
@@ -48,6 +48,12 @@ export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const codeInput = useRef<HTMLInputElement>(null);
+  // Opening "add by code" puts the cursor in the box, so the keyboard comes straight up.
+  const toggleAdd = () => {
+    setAddOpen(!addOpen);
+    if (!addOpen) setTimeout(() => codeInput.current?.focus(), 0);
+  };
   if (!s) return null;
 
   const friends = sorted(s, s.friends.filter((f) => f.state === 'friend'));
@@ -101,9 +107,12 @@ export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
       <div className="friends-hero">
         <div className="friends-hero-title">
           <span className="friends-hero-icon"><UsersThreeIcon size={25} weight="fill" /></span>
-          <div><h3>{t.social.title}</h3><p><i aria-hidden /> <strong>{available.length}</strong> {t.social.readyNow}</p></div>
+          <div>
+            <h3>{t.social.title}</h3>
+            {friends.length > 0 && <p><i aria-hidden /> <strong>{available.length}</strong> {t.social.readyNow}</p>}
+          </div>
         </div>
-        <button className="friends-add-trigger" onClick={() => setAddOpen((open) => !open)} aria-expanded={addOpen} aria-controls="friends-add-panel">
+        <button className="friends-add-trigger" onClick={toggleAdd} aria-expanded={addOpen} aria-controls="friends-add-panel">
           {addOpen ? <XIcon size={18} weight="bold" /> : <UserPlusIcon size={19} weight="bold" />}{addOpen ? t.social.hideAdd : t.social.add}
         </button>
       </div>
@@ -111,7 +120,7 @@ export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
         <form className="friends-add-form" onSubmit={(e) => { e.preventDefault(); if (code.trim()) add(); }}>
           <label htmlFor="friends-code-input">{t.social.addByCode}</label>
           <div className="join-row">
-            <input id="friends-code-input" className="text-input code-input" placeholder={t.social.codePh} value={code} maxLength={8}
+            <input id="friends-code-input" ref={codeInput} className="text-input code-input" placeholder={t.social.codePh} value={code} maxLength={8}
               autoCapitalize="characters" autoComplete="off" spellCheck={false}
               onChange={(e) => setCode(e.target.value.toUpperCase())} />
             <button className="btn primary" disabled={code.trim().length < 6}>{t.social.add}</button>
@@ -134,12 +143,18 @@ export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
           <div key={f.id} className="friend-row pending">
             <FriendFace f={f} s={s} />
             <span className="friend-main"><b>{f.name}</b><small>{t.social.pending}</small></span>
-            <button className="link-btn" onClick={() => run(() => s.remove(f.id))}>{t.cancel}</button>
+            <button className="btn ghost small friend-action" onClick={() => run(() => s.remove(f.id))}>{t.cancel}</button>
           </div>
         ))}
       </div>}
 
-      {friends.length === 0 && incoming.length === 0 && outgoing.length === 0 && <p className="friends-empty">{t.social.empty}</p>}
+      {friends.length === 0 && incoming.length === 0 && outgoing.length === 0 && (
+        <div className="friends-empty">
+          <span className="friends-empty-icon"><HandshakeIcon size={30} weight="duotone" /></span>
+          <b>{t.social.emptyTitle}</b>
+          <p>{t.social.empty}</p>
+        </div>
+      )}
       {group(t.social.available, available, 'available')}
       {group(t.social.atTable, playing, 'playing')}
       {group(t.social.otherFriends, offlineFriends, 'offline')}
