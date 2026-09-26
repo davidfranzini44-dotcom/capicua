@@ -35,6 +35,96 @@
 .friend-code b { font-family: var(--display); font-weight: 400; font-size: 1.25rem; letter-spacing: .12em; color: var(--us); }
 .friends-card .join-row .text-input { min-width: 0; flex: 1; letter-spacing: .2em; }
 
+/* Amigos: scan people first, then use the code tools when needed. */
+.friends-card {
+  gap: 0; padding: 0; overflow: hidden; border-radius: 22px;
+  background: #09271e; border: 1px solid #42604d;
+  box-shadow: 0 18px 40px #00180f55, inset 0 1px #ffffff16;
+}
+.friends-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 20px 18px; border-bottom: 1px solid #ffffff1a;
+  background: radial-gradient(circle at 92% 5%, #24715080, transparent 48%), linear-gradient(135deg, #194a35, #103829 70%);
+}
+.friends-hero-title { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.friends-hero-icon {
+  display: grid; place-items: center; width: 44px; height: 44px; flex: none;
+  border-radius: 14px; background: #f5c54220; color: var(--us); border: 1px solid #f5c54250;
+}
+.friends-hero h3 { font: 400 1.42rem/1.05 var(--display); color: #fff1cf; }
+.friends-hero p { display: flex; align-items: center; gap: 4px; margin: 6px 0 0; color: #cce4d5; font-size: .8rem; }
+.friends-hero p i { width: 8px; height: 8px; border-radius: 50%; background: #60eaa0; box-shadow: 0 0 0 3px #60eaa02b; }
+.friends-hero p strong { color: #fff3c7; }
+.friends-add-trigger {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 42px; padding: 0 12px; flex: none;
+  border: 0; border-radius: 12px; background: var(--us); color: #2b1d00;
+  font: 800 .82rem/1 var(--font); box-shadow: 0 3px 0 #ad8017;
+}
+.friends-add-trigger:active { transform: translateY(2px); box-shadow: 0 1px 0 #ad8017; }
+.friends-add-panel { padding: 14px 16px; border-bottom: 1px solid #ffffff1a; background: #123d2d; }
+.friends-add-panel[hidden] { display: none; }
+.friends-group { padding: 17px 16px 0; }
+.friends-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.friends-group-head h4 { margin: 0; color: #bbd7c6; font-size: .71rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+.friends-group-head span { color: #d6e8d9; font-size: .71rem; font-weight: 800; }
+.friends-list { display: grid; gap: 7px; }
+.friends-card .friend-row {
+  min-height: 64px; gap: 10px; padding: 9px 10px; border: 1px solid #ffffff16;
+  border-radius: 14px; background: #ffffff0b;
+}
+.friends-card .friend-row:last-of-type { border-bottom: 1px solid #ffffff16; }
+.friends-card .friend-row.friend-item.online { border-color: #47d98a55; background: linear-gradient(90deg, #267d4e22, #ffffff08 48%); }
+.friends-card .friend-row.friend-item.playing { border-color: #f5c5424d; }
+.friends-card .friend-row.friend-item.offline { opacity: .82; }
+.friends-card .friend-face { width: 44px; height: 44px; border-width: 2px; }
+.friends-card .friend-main { gap: 4px; }
+.friends-card .friend-main b { color: #fff4db; font-size: .95rem; }
+.friends-card .friend-main > small { font-size: .73rem; }
+.friends-card .friend-level { display: inline-block; margin-left: 3px; color: #c9d9c9; font-size: .65rem; font-weight: 700; }
+.friends-card .friend-where { display: inline-flex; align-items: center; gap: 5px; }
+.friends-card .friend-where::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #93a69a; }
+.friends-card .friend-where.online::before { background: #54df94; }
+.friends-card .friend-where.playing::before { background: #f5c542; }
+.friends-card .friend-action { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 39px; padding: 8px 10px; }
+.friends-requests {
+  margin: 14px 14px 0; padding: 12px; border: 1px solid #f5c5425c;
+  border-radius: 17px; background: linear-gradient(135deg, #5b471929, #2a341829);
+}
+.friends-requests .friends-group-head { margin-bottom: 4px; }
+.friends-requests .friends-group-head h4, .friends-requests .friends-group-head span { color: #f5d37b; }
+.friends-card .friends-requests .friend-row { margin-top: 7px; background: #091c16a6; }
+.friends-card .friend-row.request { border-color: #f5c5424f; }
+.friends-card .friend-row.pending { opacity: .8; border-color: #ffffff12; }
+.friends-card .friend-decline { display: grid; place-items: center; min-width: 39px; width: 39px; height: 39px; border-radius: 11px; }
+.friends-edit { align-self: flex-end; margin: 11px 18px 0; font-size: .79rem; }
+.friends-empty { margin: 16px; padding: 20px; border: 1px dashed #78a28177; border-radius: 14px; color: #bfd4c4; line-height: 1.5; }
+.friends-connect {
+  margin: 16px; padding: 12px; border-radius: 16px;
+  background: #163d2f; border: 1px solid #6b906c66;
+}
+.friends-card .friend-code { margin: 0; padding: 0; border: 0; background: transparent; }
+.friends-card .friend-code span { display: flex; flex-direction: column; gap: 3px; font-size: .72rem; color: #bbd2bf; }
+.friends-card .friend-code b { color: #ffe08a; font-size: 1.27rem; letter-spacing: .13em; }
+.friends-card .friend-code .btn { display: inline-flex; align-items: center; gap: 6px; min-height: 39px; }
+.friends-add-form { display: grid; gap: 8px; }
+.friends-add-form label { color: #d9e9d8; font-size: .78rem; font-weight: 700; }
+.friends-add-form .join-row { display: flex; gap: 8px; }
+.friends-add-form .btn { min-height: 44px; }
+.friends-note { margin: 12px 16px 0; }
+.friends-push { margin: 0 16px 16px; padding: 10px 12px; border-radius: 13px; }
+.friends-push span { display: inline-flex; align-items: center; gap: 7px; }
+@media (max-width: 370px) {
+  .friends-hero { padding: 16px 12px; }
+  .friends-hero h3 { font-size: 1.17rem; }
+  .friends-hero-icon { width: 38px; height: 38px; }
+  .friends-group { padding-inline: 11px; }
+  .friends-requests { margin-inline: 10px; }
+  .friends-card .friend-row { gap: 7px; padding-inline: 7px; }
+  .friends-card .friend-face { width: 39px; height: 39px; }
+  .friends-card .friend-action { padding-inline: 7px; }
+}
+
 /* ---------- invites ---------- */
 .invite-friends-btn { margin-top: 4px; }
 .invite-friends .friend-list { display: flex; flex-direction: column; max-height: 50vh; overflow-y: auto; }

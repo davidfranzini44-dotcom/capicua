@@ -8,6 +8,7 @@ import type { Push } from '../lib/push';
 import { useSocial, type Friend, type Invite, type InviteTarget, type Social } from '../lib/social';
 import { Avatar, useErrorText } from './common';
 import { Sheet } from './MainScreen';
+import { BellIcon, CheckIcon, EyeIcon, ShareNetworkIcon, UserPlusIcon, UsersThreeIcon, XIcon } from '@phosphor-icons/react';
 import './social.css';
 
 /** Online friends first, then by name. */
@@ -46,12 +47,15 @@ export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   if (!s) return null;
 
   const friends = sorted(s, s.friends.filter((f) => f.state === 'friend'));
   const incoming = s.friends.filter((f) => f.state === 'incoming');
   const outgoing = s.friends.filter((f) => f.state === 'outgoing');
-  const onlineCount = friends.filter((f) => s.online.has(f.id)).length;
+  const available = friends.filter((f) => s.online.get(f.id) === 'online');
+  const playing = friends.filter((f) => s.online.get(f.id) === 'playing');
+  const offlineFriends = friends.filter((f) => !s.online.has(f.id));
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
     setNote(null);
     try { await fn(); if (ok) setNote({ ok: true, text: ok }); } catch (e) { setNote({ ok: false, text: errText(e) }); }
@@ -66,72 +70,95 @@ export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
     if (navigator.share) return navigator.share({ text }).catch(() => {});
     try { await navigator.clipboard.writeText(profile.friend_code ?? ''); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* blocked */ }
   };
+  const friendRow = (f: Friend) => {
+    const where = s.online.get(f.id);
+    return (
+      <div key={f.id} className={`friend-row friend-item ${where ?? 'offline'}`}>
+        <FriendFace f={f} s={s} />
+        <span className="friend-main">
+          <b>{f.name} <small className="friend-level">{t.looks.lvl} {levelFromXp(f.xp)}</small></b>
+          <small className={`friend-where ${where ?? 'offline'}`}>{whereText(s, f.id)}</small>
+        </span>
+        {editing
+          ? <button className="btn ghost small friend-action" onClick={() => confirm(`${t.social.removeConfirm} ${f.name}?`) && run(() => s.remove(f.id))}>{t.social.remove}</button>
+          : where === 'playing' && onWatch
+            ? <button className="btn ghost small friend-action" onClick={() => onWatch(f)}><EyeIcon size={17} />{t.watch.see}</button>
+            : where === 'playing'
+              ? null
+              : <button className={`btn ${where === 'online' ? 'primary' : 'ghost'} small friend-action`} onClick={() => onQuickInvite(f)}>{t.social.invite}</button>}
+      </div>
+    );
+  };
+  const group = (title: string, list: Friend[], kind: string) => list.length > 0 && (
+    <div className={`friends-group ${kind}`}>
+      <div className="friends-group-head"><h4>{title}</h4><span>{list.length}</span></div>
+      <div className="friends-list">{list.map(friendRow)}</div>
+    </div>
+  );
 
   return (
     <section className="card friends-card">
-      <div className="card-head">
-        <h3>👥 {t.social.title}</h3>
-        {friends.length > 0 && <small className="fine">{onlineCount} {t.social.onlineNow}</small>}
+      <div className="friends-hero">
+        <div className="friends-hero-title">
+          <span className="friends-hero-icon"><UsersThreeIcon size={25} weight="fill" /></span>
+          <div><h3>{t.social.title}</h3><p><i aria-hidden /> <strong>{available.length}</strong> {t.social.readyNow}</p></div>
+        </div>
+        <button className="friends-add-trigger" onClick={() => setAddOpen((open) => !open)} aria-expanded={addOpen} aria-controls="friends-add-panel">
+          {addOpen ? <XIcon size={18} weight="bold" /> : <UserPlusIcon size={19} weight="bold" />}{addOpen ? t.social.hideAdd : t.social.add}
+        </button>
       </div>
-
-      {push && (push.state === 'off' || push.state === 'install') && (
-        <div className="push-nudge">
-          <span>🔔 {push.state === 'install' ? t.push.install : t.push.nudge}</span>
-          {push.state === 'off' && <button className="btn primary small" disabled={push.busy} onClick={push.toggle}>{t.push.turnOn}</button>}
-        </div>
-      )}
-
-      {incoming.map((f) => (
-        <div key={f.id} className="friend-row request">
-          <FriendFace f={f} s={s} />
-          <span className="friend-main"><b>{f.name}</b><small>{t.social.wantsToBeFriends}</small></span>
-          <button className="btn primary small" onClick={() => run(() => s.respond(f.id, true))}>{t.social.accept}</button>
-          <button className="icon-btn small" aria-label={t.social.decline} onClick={() => run(() => s.respond(f.id, false))}>✕</button>
-        </div>
-      ))}
-
-      {friends.length === 0 && incoming.length === 0 && <p className="fine friends-empty">{t.social.empty}</p>}
-      {friends.map((f) => {
-        const where = s.online.get(f.id);
-        return (
-          <div key={f.id} className={`friend-row ${where ? 'is-online' : ''}`}>
-            <FriendFace f={f} s={s} />
-            <span className="friend-main">
-              <b>{f.name} <small className="friend-level">{t.looks.lvl} {levelFromXp(f.xp)}</small></b>
-              <small className={`friend-where ${where ?? ''}`}>{whereText(s, f.id)}</small>
-            </span>
-            {editing
-              ? <button className="btn ghost small" onClick={() => confirm(`${t.social.removeConfirm} ${f.name}?`) && run(() => s.remove(f.id))}>{t.social.remove}</button>
-              : where === 'playing' && onWatch
-                ? <button className="btn ghost small" onClick={() => onWatch(f)}>👁 {t.watch.see}</button>
-                : <button className="btn primary small" disabled={where === 'playing'} onClick={() => onQuickInvite(f)}>{t.social.invite}</button>}
+      <div className="friends-add-panel" id="friends-add-panel" hidden={!addOpen}>
+        <form className="friends-add-form" onSubmit={(e) => { e.preventDefault(); if (code.trim()) add(); }}>
+          <label htmlFor="friends-code-input">{t.social.addByCode}</label>
+          <div className="join-row">
+            <input id="friends-code-input" className="text-input code-input" placeholder={t.social.codePh} value={code} maxLength={8}
+              autoCapitalize="characters" autoComplete="off" spellCheck={false}
+              onChange={(e) => setCode(e.target.value.toUpperCase())} />
+            <button className="btn primary" disabled={code.trim().length < 6}>{t.social.add}</button>
           </div>
-        );
-      })}
+        </form>
+      </div>
+      {note && <p className={note.ok ? 'note-ok friends-note' : 'error friends-note'} role="status">{note.text}</p>}
 
-      {outgoing.map((f) => (
-        <div key={f.id} className="friend-row pending">
-          <FriendFace f={f} s={s} />
-          <span className="friend-main"><b>{f.name}</b><small>{t.social.pending}</small></span>
-          <button className="link-btn" onClick={() => run(() => s.remove(f.id))}>{t.cancel}</button>
-        </div>
-      ))}
+      {(incoming.length > 0 || outgoing.length > 0) && <div className="friends-group friends-requests">
+        <div className="friends-group-head"><h4>{t.social.requests}</h4><span>{incoming.length + outgoing.length}</span></div>
+        {incoming.map((f) => (
+          <div key={f.id} className="friend-row request">
+            <FriendFace f={f} s={s} />
+            <span className="friend-main"><b>{f.name}</b><small>{t.social.wantsToBeFriends}</small></span>
+            <button className="btn primary small friend-action" onClick={() => run(() => s.respond(f.id, true))}><CheckIcon size={16} weight="bold" />{t.social.accept}</button>
+            <button className="icon-btn small friend-decline" aria-label={t.social.decline} onClick={() => run(() => s.respond(f.id, false))}><XIcon size={17} /></button>
+          </div>
+        ))}
+        {outgoing.map((f) => (
+          <div key={f.id} className="friend-row pending">
+            <FriendFace f={f} s={s} />
+            <span className="friend-main"><b>{f.name}</b><small>{t.social.pending}</small></span>
+            <button className="link-btn" onClick={() => run(() => s.remove(f.id))}>{t.cancel}</button>
+          </div>
+        ))}
+      </div>}
+
+      {friends.length === 0 && incoming.length === 0 && outgoing.length === 0 && <p className="friends-empty">{t.social.empty}</p>}
+      {group(t.social.available, available, 'available')}
+      {group(t.social.atTable, playing, 'playing')}
+      {group(t.social.otherFriends, offlineFriends, 'offline')}
       {friends.length > 0 && (
         <button className="link-btn friends-edit" onClick={() => setEditing((e) => !e)}>{editing ? t.social.done : t.social.edit}</button>
       )}
 
-      <div className="friend-code">
-        <span>{t.social.myCode}</span>
-        <b>{profile.friend_code}</b>
-        <button className="btn ghost small" onClick={share}>{copied ? t.copied : t.social.shareMine}</button>
+      <div className="friends-connect">
+        <div className="friend-code">
+          <span>{t.social.myCode}<b>{profile.friend_code}</b></span>
+          <button className="btn ghost small" onClick={share}><ShareNetworkIcon size={17} />{copied ? t.copied : t.social.shareMine}</button>
+        </div>
       </div>
-      <form className="join-row" onSubmit={(e) => { e.preventDefault(); if (code.trim()) add(); }}>
-        <input className="text-input code-input" placeholder={t.social.codePh} value={code} maxLength={8}
-          autoCapitalize="characters" autoComplete="off" spellCheck={false}
-          onChange={(e) => setCode(e.target.value.toUpperCase())} />
-        <button className="btn primary" disabled={code.trim().length < 6}>{t.social.add}</button>
-      </form>
-      {note && <p className={note.ok ? 'note-ok' : 'error'}>{note.text}</p>}
+      {push && (push.state === 'off' || push.state === 'install') && (
+        <div className="push-nudge friends-push">
+          <span><BellIcon size={17} />{push.state === 'install' ? t.push.install : t.push.nudge}</span>
+          {push.state === 'off' && <button className="btn primary small" disabled={push.busy} onClick={push.toggle}>{t.push.turnOn}</button>}
+        </div>
+      )}
     </section>
   );
 }

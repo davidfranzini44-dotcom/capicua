@@ -334,6 +334,7 @@ const dict = {
     photo: { add: 'Poner foto', change: 'Cambiar foto', useGoogle: 'Usar foto de Google', remove: 'Quitar foto' },
     social: {
       title: 'Mis amigos', onlineNow: 'en línea', online: 'En línea', playing: 'En una mesa', offline: 'Desconectado',
+      readyNow: 'listos para jugar', requests: 'Solicitudes', available: 'Disponibles ahora', atTable: 'En una mesa', otherFriends: 'Otros amigos', addByCode: 'Agregar por código', hideAdd: 'Cerrar',
       wantsToBeFriends: 'quiere ser tu amigo', accept: 'Aceptar', decline: 'Rechazar',
       empty: 'Todavía no tienes amigos aquí. Comparte tu código, o toca a un jugador en la mesa y agrégalo.',
       invite: 'Invitar', pending: 'Solicitud enviada', edit: 'Editar amigos', done: 'Listo', remove: 'Quitar', removeConfirm: '¿Quitar a',
@@ -831,6 +832,7 @@ const dict = {
     photo: { add: 'Add photo', change: 'Change photo', useGoogle: 'Use Google photo', remove: 'Remove photo' },
     social: {
       title: 'My friends', onlineNow: 'online', online: 'Online', playing: 'At a table', offline: 'Offline',
+      readyNow: 'ready to play', requests: 'Requests', available: 'Available now', atTable: 'At a table', otherFriends: 'Other friends', addByCode: 'Add by code', hideAdd: 'Close',
       wantsToBeFriends: 'wants to be your friend', accept: 'Accept', decline: 'Decline',
       empty: "No friends here yet. Share your code, or tap a player at the table and add them.",
       invite: 'Invite', pending: 'Request sent', edit: 'Edit friends', done: 'Done', remove: 'Remove', removeConfirm: 'Remove',
