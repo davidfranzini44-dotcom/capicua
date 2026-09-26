@@ -1,0 +1,12 @@
+# Only the web app goes to Vercel. The browser imports supabase/functions/_shared,
+# so that folder stays; the server functions and database files don't.
+node_modules
+dist
+.claude
+tests
+*.local
+.env*
+supabase/migrations
+supabase/SETUP_DATABASE.sql
+supabase/functions/game
+supabase/functions/stripe-webhook
