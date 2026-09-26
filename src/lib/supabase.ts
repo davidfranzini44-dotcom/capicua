@@ -81,6 +81,11 @@ export interface Profile {
   last_daily: string | null;
   last_rescue: string | null;
   avatar_url: string | null;
+  /** Short code friends type to add you. */
+  friend_code?: string;
+  /** Board look (see _shared/cosmetics.ts). */
+  felt?: string;
+  tiles?: string;
 }
 
 /** profiles.avatar_url → an <img> src: Google photos are full URLs, uploads live in the public `avatars` bucket. */
@@ -92,7 +97,7 @@ export function useProfile(uid: string | undefined) {
   useEffect(() => {
     if (!uid) return;
     const load = () =>
-      supabase.from('profiles').select('id, display_name, chips, xp, last_daily, last_rescue, avatar_url').eq('id', uid).single()
+      supabase.from('profiles').select('id, display_name, chips, xp, last_daily, last_rescue, avatar_url, friend_code, felt, tiles').eq('id', uid).single()
         .then(({ data }) => data && setProfile({ ...data, chips: Number(data.chips) }));
     load();
     const ch = supabase

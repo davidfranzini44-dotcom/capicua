@@ -24,6 +24,7 @@ import {
   firstRound, minEntries, noShowWinner, placementFor, playersPerEntry, prizes, roundCount, TOURNAMENT, tournamentRules, validateTournament,
   type TournamentMode,
 } from '../_shared/tournament.ts';
+import { canUse, chipPrice, lookById } from '../_shared/cosmetics.ts';
 import { db } from './db.ts';
 import { createCheckout, ShopError } from './purchases.ts';
 
@@ -1242,4 +1243,150 @@ export const handlers = {
     at.addGrant({ room: voiceRoom, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: false });
     return { url, token: await at.toJwt() };
   },
+
+  // --- friends ---
+
+  /** Ask someone to be friends (by their friend code or from their card). If they already asked me, we're friends. */
+  async friend_request(uid: string, { code, userId }: { code?: string; userId?: string }) {
+    return await sql.begin(async (tx) => {
+      await notBanned(tx, uid);
+      const [other] = userId
+        ? await tx`select id, display_name from profiles where id = ${userId}`
+        : await tx`select id, display_name from profiles where friend_code = ${String(code ?? '').trim().toUpperCase()}`;
+      if (!other) throw new HttpError(404, 'friend_not_found');
+      if (other.id === uid) throw new HttpError(400, 'friend_self');
+      const [a, b] = pair(uid, other.id);
+      const [existing] = await tx`select 1 from friendships where user_a = ${a} and user_b = ${b}`;
+      if (!existing) {
+        const [{ n }] = await tx`select count(*)::int as n from friendships where ${uid} in (user_a, user_b)`;
+        if (n >= MAX_FRIENDS) throw new HttpError(409, 'friend_limit');
+      }
+      const [row] = await tx`
+        insert into friendships (user_a, user_b, requested_by) values (${a}, ${b}, ${uid})
+        on conflict (user_a, user_b) do update set
+          status = case when friendships.requested_by <> excluded.requested_by then 'accepted' else friendships.status end,
+          accepted_at = case when friendships.status = 'pending' and friendships.requested_by <> excluded.requested_by
+                             then now() else friendships.accepted_at end
+        returning status`;
+      return { status: row.status as 'pending' | 'accepted', userId: other.id, name: other.display_name };
+    });
+  },
+
+  /** Accept or turn down a request someone sent me. */
+  async friend_respond(uid: string, { userId, accept }: { userId: string; accept: boolean }) {
+    const [a, b] = pair(uid, userId);
+    if (accept) {
+      const [r] = await sql`
+        update friendships set status = 'accepted', accepted_at = now()
+        where user_a = ${a} and user_b = ${b} and status = 'pending' and requested_by <> ${uid} returning status`;
+      if (!r) throw new HttpError(404, 'no_request');
+      return { status: 'accepted' };
+    }
+    await sql`delete from friendships where user_a = ${a} and user_b = ${b} and status = 'pending' and requested_by <> ${uid}`;
+    return { status: 'none' };
+  },
+
+  /** Unfriend, or take back a request I sent. Pending invites between us go too. */
+  async friend_remove(uid: string, { userId }: { userId: string }) {
+    const [a, b] = pair(uid, userId);
+    await sql.begin(async (tx) => {
+      await tx`delete from friendships where user_a = ${a} and user_b = ${b}`;
+      await tx`delete from table_invites where (from_user = ${uid} and to_user = ${userId}) or (from_user = ${userId} and to_user = ${uid})`;
+    });
+    return { status: 'none' };
+  },
+
+  /** Invite a friend to the private table or tournament I'm in. It pops up on their screen if they're online. */
+  async friend_invite(uid: string, { userId, roomId, tournamentId }: { userId: string; roomId?: string; tournamentId?: string }) {
+    const [a, b] = pair(uid, userId);
+    const [f] = await sql`select status from friendships where user_a = ${a} and user_b = ${b}`;
+    if (f?.status !== 'accepted') throw new HttpError(403, 'not_friends');
+    const [from] = await sql`select display_name from profiles where id = ${uid}`;
+    let details: Record<string, unknown>;
+    if (roomId) {
+      const [r] = await sql`
+        select r.kind, r.mode, r.stake, r.code, r.phase, r.rules,
+               (select count(*)::int from room_seats x where x.room_id = r.id) as seated
+        from rooms r join room_seats s on s.room_id = r.id and s.user_id = ${uid} and not s.left_game
+        where r.id = ${roomId}`;
+      if (!r) throw new HttpError(403, 'not_in_room');
+      if (r.kind !== 'custom' || r.phase !== 'lobby') throw new HttpError(409, 'game_in_progress');
+      if (r.seated >= seatsOf(r.mode as Mode).length) throw new HttpError(409, 'room_full');
+      details = { kind: 'room', from: from.display_name, mode: r.mode, stake: Number(r.stake), code: r.code, target: r.rules.target };
+    } else if (tournamentId) {
+      const [t] = await sql<TournamentDb[]>`select * from tournaments where id = ${tournamentId}`;
+      const member = t && (t.host === uid || (await sql`
+        select 1 from tournament_entries where tournament_id = ${t.id} and ${uid} in (player1, player2)`).length > 0);
+      if (!t || !member) throw new HttpError(403, 'not_member');
+      if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
+      details = { kind: 'tournament', from: from.display_name, mode: t.mode, stake: t.buy_in, code: t.code, name: t.name };
+    } else {
+      throw new HttpError(400, 'bad_invite');
+    }
+    // One live invite per friend: sending again replaces it (and re-sending within 15 s does nothing).
+    const [inv] = await sql`
+      insert into table_invites (from_user, to_user, room_id, tournament_id, details)
+      values (${uid}, ${userId}, ${roomId ?? null}, ${roomId ? null : tournamentId!}, ${sql.json(details as never)})
+      on conflict (from_user, to_user) do update set
+        room_id = excluded.room_id, tournament_id = excluded.tournament_id, details = excluded.details,
+        status = 'sent', created_at = now(), expires_at = now() + interval '10 minutes'
+      where table_invites.status <> 'sent' or table_invites.created_at < now() - interval '15 seconds'
+         or table_invites.room_id is distinct from excluded.room_id
+         or table_invites.tournament_id is distinct from excluded.tournament_id
+      returning id`;
+    return { sent: !!inv };
+  },
+
+  /** Say yes or no to an invite. Yes hands back where to go; the app then joins as usual. */
+  async invite_respond(uid: string, { inviteId, accept }: { inviteId: string; accept: boolean }) {
+    const [inv] = await sql`
+      update table_invites set status = ${accept ? 'accepted' : 'declined'}
+      where id = ${inviteId} and to_user = ${uid} and status = 'sent'
+      returning room_id, tournament_id, expires_at < now() as expired`;
+    if (!inv) throw new HttpError(404, 'invite_gone');
+    if (accept && inv.expired) throw new HttpError(410, 'invite_gone');
+    return { roomId: inv.room_id as string | null, tournamentId: inv.tournament_id as string | null };
+  },
+
+  // --- board looks ---
+
+  /** Use a felt color or domino style I have (free, reached its level, or bought). */
+  async equip_look(uid: string, { look }: { look: string }) {
+    const l = lookById(String(look));
+    if (!l) throw new HttpError(404, 'no_look');
+    const [p] = await sql`select xp from profiles where id = ${uid}`;
+    const owned = new Set((await sql`select look from owned_looks where user_id = ${uid}`).map((r) => r.look as string));
+    if (!canUse(l, p.xp, owned)) throw new HttpError(403, 'look_locked');
+    if (l.kind === 'felt') await sql`update profiles set felt = ${l.id} where id = ${uid}`;
+    else await sql`update profiles set tiles = ${l.id} where id = ${uid}`;
+    return { felt: l.kind === 'felt' ? l.id : undefined, tiles: l.kind === 'tiles' ? l.id : undefined };
+  },
+
+  /** Buy a premium look with chips (once, forever) and put it on. */
+  async buy_look(uid: string, { look }: { look: string }) {
+    const l = lookById(String(look));
+    const price = l ? chipPrice(l) : null;
+    if (!l || price === null) throw new HttpError(404, 'no_look');
+    return await sql.begin(async (tx) => {
+      await noGuests(tx, uid);
+      await notBanned(tx, uid);
+      const [had] = await tx`select 1 from owned_looks where user_id = ${uid} and look = ${l.id}`;
+      if (!had) {
+        const [ok] = await tx`update profiles set chips = chips - ${price} where id = ${uid} and chips >= ${price} returning chips`;
+        if (!ok) throw new HttpError(409, 'balance_too_low');
+        await tx`insert into chip_ledger (user_id, delta, reason, note) values (${uid}, ${-price}, 'look', ${l.id})`;
+        await tx`insert into owned_looks (user_id, look) values (${uid}, ${l.id})`;
+      }
+      if (l.kind === 'felt') await tx`update profiles set felt = ${l.id} where id = ${uid}`;
+      else await tx`update profiles set tiles = ${l.id} where id = ${uid}`;
+      return { bought: !had, cost: had ? 0 : price };
+    });
+  },
+};
+
+const MAX_FRIENDS = 200;
+/** Friendship rows store each pair once, smaller id first. */
+const pair = (x: string, y: string): [string, string] => {
+  const [p, q] = [x.toLowerCase(), String(y).toLowerCase()];
+  return p < q ? [p, q] : [q, p];
 };

@@ -5,11 +5,13 @@ import {
 } from '../../supabase/functions/_shared/domino.ts';
 import { gameXp, type PublicState } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
+import { useTableLook } from '../lib/look';
 import { BUBBLE_MS, PHRASE_IDS, PHRASES, type PhraseId } from '../quickchat';
 import { Board } from './Board';
 import { Avatar } from './common';
 import { Confetti } from './Confetti';
 import { handLayout } from './handLayout';
+import { LookPicker } from './LookPicker';
 import { HandTile, TileBack } from './Tile';
 import { ListIcon, XIcon, ChatCircleDotsIcon, MicrophoneSlashIcon } from '@phosphor-icons/react';
 import './table.css';
@@ -86,6 +88,7 @@ export function TableView(props: TableViewProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDialogElement>(null);
   const [autoplay, setAutoplay] = useAutoplayPref();
+  const look = useTableLook();
   const [now, setNow] = useState(() => Date.now());
   const handRef = useRef<HTMLDivElement>(null);
   const handWidth = useWidth(handRef);
@@ -220,7 +223,7 @@ export function TableView(props: TableViewProps) {
   }, [menuOpen]);
 
   return (
-    <div className={`table-screen table-redesign mode-${mode}`} onKeyDown={(e) => {
+    <div className={`table-screen table-redesign mode-${mode} ${look.className}`} style={look.style} onKeyDown={(e) => {
       if (e.key === 'Escape') { setPending(null); setChatOpen(false); }
     }}>
       <header className="table-header">
@@ -314,6 +317,7 @@ export function TableView(props: TableViewProps) {
         <h2>{t.settings}</h2>
         <label>{t.language}<select value={lang} onChange={(e) => setLang(e.target.value as 'es' | 'en')}><option value="es">Español</option><option value="en">English</option></select></label>
         <label><span>{t.auto}<small>{t.autoplayHint}</small></span><input type="checkbox" checked={autoplay} onChange={(e) => setAutoplay(e.target.checked)} /></label>
+        <LookPicker compact />
         <button className="btn primary" onClick={() => setMenuOpen(false)}>{copy.done}</button>
       </dialog>
 

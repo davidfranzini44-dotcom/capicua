@@ -37,6 +37,8 @@
   background-blend-mode: soft-light;
   box-shadow: inset 0 0 0 2px #3d2b18, inset 0 4px 22px #001c16a6;
 }
+/* The player's felt color: same texture, blended over their color instead of green. */
+.table-redesign.felt-tint .felt { background-color: var(--felt-color); }
 .table-redesign .seat { top: 13px; gap: 3px; max-width: 110px; }
 .table-redesign .seat-left { top: 26%; left: 10px; }
 .table-redesign .seat-right { top: 26%; right: 10px; }
@@ -47,12 +49,12 @@
 .table-redesign .seat-info { gap: 3px; }
 .table-redesign .seat-name { font-size: 14px; line-height: 1.2; text-align: center; max-width: 104px; overflow: hidden; text-overflow: ellipsis; }
 .table-redesign .seat-name small { display: block; font-size: 11px; opacity: 1; color: #c0d1c1; margin: 2px 0; }
-.table-redesign .tile-back { width: 8px; height: 16px; background: var(--ivory); box-shadow: 0 2px 2px #0005; border: 1px solid #d3c7b0; }
+.table-redesign .tile-back { width: 8px; height: 16px; background: var(--tile-face, var(--ivory)); box-shadow: 0 2px 2px #0005; border: 1px solid var(--tile-edge, #d3c7b0); }
 .table-redesign .tile-count { color: #c5d6c9; font-size: 11px; }
 .table-redesign .board-wrap { inset: 43% 10px 18%; }
 .board-scene { position: relative; height: 100%; width: 100%; }
 .table-redesign .board { display: block; overflow: visible; }
-.table-redesign .newest .tile-face { stroke: #c9b994; stroke-width: .03; }
+.table-redesign .newest .tile-face { stroke: var(--tile-edge, #c9b994); stroke-width: .03; }
 .board-end {
   position: absolute; transform: translate(-50%, -50%); width: 44px; height: 52px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;

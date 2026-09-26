@@ -8,7 +8,9 @@ import { api, type Profile } from '../lib/supabase';
 import {
   useMyTournaments, useTournament, type EntryRow, type MatchRow, type TournamentPeek, type TournamentRow,
 } from '../lib/useTournament';
+import { useSocial } from '../lib/social';
 import { ChipBalance, useErrorText } from './common';
+import { InviteFriendsSheet } from './Friends';
 
 const inviteUrl = (code: string) => `${location.origin}${location.pathname}?torneo=${code}`;
 
@@ -248,7 +250,7 @@ export function TournamentView(p: TournamentViewProps) {
 
       {tour.phase === 'lobby' && (
         <>
-          <ShareBox code={tour.code} name={tour.name} />
+          <ShareBox id={tour.id} code={tour.code} name={tour.name} />
           <section className="card tour-entries">
             <div className="te-head"><span className="label">{t.tour.signedUp}</span><b>{people}/{capacity} {t.tour.people}</b></div>
             {entries.map((e) => (
@@ -370,9 +372,11 @@ function MatchCard({ m, mine, label, now, onPlay }: {
   );
 }
 
-function ShareBox({ code, name }: { code: string; name: string }) {
+function ShareBox({ id, code, name }: { id: string; code: string; name: string }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const social = useSocial();
   const url = inviteUrl(code);
   const wa = `https://wa.me/?text=${encodeURIComponent(`${t.tour.inviteText} «${name}» — ${t.tour.codeLbl}: ${code} 👉 ${url}`)}`;
   return (
@@ -385,6 +389,8 @@ function ShareBox({ code, name }: { code: string; name: string }) {
           try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* blocked */ }
         }}>{copied ? t.copied : t.copyLink}</button>
       </div>
+      {social && <button className="btn primary wide invite-friends-btn" onClick={() => setInviting(true)}>👥 {t.social.inviteFriends}</button>}
+      {inviting && <InviteFriendsSheet target={{ tournamentId: id }} onClose={() => setInviting(false)} />}
     </section>
   );
 }

@@ -14,6 +14,11 @@ import { GameShell, HomeTab, InstallSheet, ModeSheet, SettingsSheet, Sheet, TopB
 import { PracticeTable } from './PracticeTable';
 import { ShopTab } from './Shop';
 import { TournamentForm, TournamentScreen, TournamentsSection } from './Tournament';
+import { FriendsSection, InviteToast, QuickInviteSheet } from './Friends';
+import { LookPicker } from './LookPicker';
+import { ProfileCard } from './ProfileCard';
+import { LookContext, useLookState } from '../lib/look';
+import { SocialContext, useSocial, useSocialState, type Friend } from '../lib/social';
 
 const AdminScreen = lazy(() => import('./Admin').then((m) => ({ default: m.AdminScreen })));
 
@@ -27,7 +32,7 @@ type View =
   | { kind: 'main'; tab: Tab; notice?: string }
   | { kind: 'queue'; stake: number; mode: Mode; notice?: string }
   | { kind: 'room'; roomId: string }
-  | { kind: 'custom' }
+  | { kind: 'custom'; inviteFriend?: string }
   | { kind: 'practice'; mode: Mode }
   | { kind: 'signin' }
   | { kind: 'admin' }
@@ -47,6 +52,10 @@ export function Online() {
   const [resolved, setResolved] = useState(false);
   const errText = useErrorText();
   const { t } = useI18n();
+  const signedIn = !!session && !!profile && profile.display_name !== 'Jugador';
+  /** Friends see me as busy while I'm at a table. */
+  const social = useSocialState(signedIn ? uid : undefined, view.kind === 'room' ? 'playing' : 'online');
+  const look = useLookState(signedIn ? profile : null, guest);
 
   /** Where does this player belong right now? Seated → table, queued → queue, else the main screen. */
   const resolve = useCallback(async (notice?: string) => {
@@ -103,82 +112,100 @@ export function Online() {
     }
   };
 
-  if (loading) return <Loading />;
-  if (view.kind === 'practice') return <PracticeTable key={view.mode} mode={view.mode} onExit={() => setView(home)} />;
+  const screen = ((): ReactNode => {
+    if (loading) return <Loading />;
+    if (view.kind === 'practice') return <PracticeTable key={view.mode} mode={view.mode} onExit={() => setView(home)} />;
 
-  if (!session) {
-    if (view.kind === 'signin') return <SignIn onBack={() => setView(home)} />;
-    return (
-      <MainScreen
-        profile={null} guest={false} online
-        tab={view.kind === 'main' ? view.tab : 'home'}
-        onTab={(tab) => setView({ kind: 'main', tab })}
-        onPractice={(mode) => setView({ kind: 'practice', mode })}
-        onSignIn={() => setView({ kind: 'signin' })}
-      />
-    );
-  }
-  if (!profile) return <Loading />;
-  if (profile.display_name === 'Jugador') return <NamePrompt />;
-
-  switch (view.kind) {
-    case 'room':
-      return (
-        <Suspense fallback={<Loading />}>
-          <RoomScreen
-            key={view.roomId}
-            roomId={view.roomId}
-            uid={uid!}
-            profile={profile}
-            onLeave={() => setView(home)}
-            onBrokeUp={() => resolve(t.tableBroke)}
-            onRequeue={joinQueue}
-            onTournament={(id) => setView({ kind: 'tournament', id })}
-          />
-        </Suspense>
-      );
-    case 'tournament':
-      return (
-        <TournamentScreen
-          key={view.id ?? view.code}
-          id={view.id} code={view.code} uid={uid!} profile={profile}
-          onBack={() => setView({ kind: 'main', tab: 'tables' })}
-          onRoom={(roomId) => setView({ kind: 'room', roomId })}
-        />
-      );
-    case 'newTournament':
-      return (
-        <TournamentForm
-          profile={profile} guest={guest}
-          onBack={() => setView({ kind: 'main', tab: 'tables' })}
-          onCreated={(id) => setView({ kind: 'tournament', id })}
-        />
-      );
-    case 'queue':
-      return <QueueScreen {...view} onMatched={(roomId) => setView({ kind: 'room', roomId })} onCancel={() => setView(home)} />;
-    case 'admin':
-      return <Suspense fallback={<Loading />}><AdminScreen onExit={() => setView(home)} /></Suspense>;
-    case 'custom':
-      return <CustomForm profile={profile} guest={guest} onBack={() => setView({ kind: 'main', tab: 'tables' })} onCreated={(roomId) => setView({ kind: 'room', roomId })} />;
-    default:
+    if (!session) {
+      if (view.kind === 'signin') return <SignIn onBack={() => setView(home)} />;
       return (
         <MainScreen
-          key={view.kind === 'main' ? view.notice ?? '' : ''}
-          profile={profile} guest={guest} online
+          profile={null} guest={false} online
           tab={view.kind === 'main' ? view.tab : 'home'}
-          notice={view.kind === 'main' ? view.notice : undefined}
           onTab={(tab) => setView({ kind: 'main', tab })}
           onPractice={(mode) => setView({ kind: 'practice', mode })}
-          onQueue={joinQueue}
-          onRoom={(roomId) => setView({ kind: 'room', roomId })}
-          onCustom={() => setView({ kind: 'custom' })}
-          onAdmin={() => setView({ kind: 'admin' })}
-          onTournament={(id) => setView({ kind: 'tournament', id })}
-          onTournamentCode={(code) => setView({ kind: 'tournament', code })}
-          onNewTournament={() => setView({ kind: 'newTournament' })}
+          onSignIn={() => setView({ kind: 'signin' })}
         />
       );
-  }
+    }
+    if (!profile) return <Loading />;
+    if (profile.display_name === 'Jugador') return <NamePrompt />;
+
+    switch (view.kind) {
+      case 'room':
+        return (
+          <Suspense fallback={<Loading />}>
+            <RoomScreen
+              key={view.roomId}
+              roomId={view.roomId}
+              uid={uid!}
+              profile={profile}
+              onLeave={() => setView(home)}
+              onBrokeUp={() => resolve(t.tableBroke)}
+              onRequeue={joinQueue}
+              onTournament={(id) => setView({ kind: 'tournament', id })}
+            />
+          </Suspense>
+        );
+      case 'tournament':
+        return (
+          <TournamentScreen
+            key={view.id ?? view.code}
+            id={view.id} code={view.code} uid={uid!} profile={profile}
+            onBack={() => setView({ kind: 'main', tab: 'tables' })}
+            onRoom={(roomId) => setView({ kind: 'room', roomId })}
+          />
+        );
+      case 'newTournament':
+        return (
+          <TournamentForm
+            profile={profile} guest={guest}
+            onBack={() => setView({ kind: 'main', tab: 'tables' })}
+            onCreated={(id) => setView({ kind: 'tournament', id })}
+          />
+        );
+      case 'queue':
+        return <QueueScreen {...view} onMatched={(roomId) => setView({ kind: 'room', roomId })} onCancel={() => setView(home)} />;
+      case 'admin':
+        return <Suspense fallback={<Loading />}><AdminScreen onExit={() => setView(home)} /></Suspense>;
+      case 'custom':
+        return (
+          <CustomForm profile={profile} guest={guest} onBack={() => setView({ kind: 'main', tab: 'tables' })} onCreated={async (roomId) => {
+            if (view.inviteFriend) await social?.invite(view.inviteFriend, { roomId }).catch(() => {});
+            setView({ kind: 'room', roomId });
+          }} />
+        );
+      default:
+        return (
+          <MainScreen
+            key={view.kind === 'main' ? view.notice ?? '' : ''}
+            profile={profile} guest={guest} online
+            tab={view.kind === 'main' ? view.tab : 'home'}
+            notice={view.kind === 'main' ? view.notice : undefined}
+            onTab={(tab) => setView({ kind: 'main', tab })}
+            onPractice={(mode) => setView({ kind: 'practice', mode })}
+            onQueue={joinQueue}
+            onRoom={(roomId) => setView({ kind: 'room', roomId })}
+            onCustom={(inviteFriend) => setView({ kind: 'custom', inviteFriend })}
+            onAdmin={() => setView({ kind: 'admin' })}
+            onTournament={(id) => setView({ kind: 'tournament', id })}
+            onTournamentCode={(code) => setView({ kind: 'tournament', code })}
+            onNewTournament={() => setView({ kind: 'newTournament' })}
+          />
+        );
+    }
+  })();
+
+  return (
+    <LookContext.Provider value={look}>
+      <SocialContext.Provider value={social}>
+        {screen}
+        {view.kind !== 'room' && (
+          <InviteToast onRoom={(roomId) => setView({ kind: 'room', roomId })} onTournament={(id) => setView({ kind: 'tournament', id })} />
+        )}
+      </SocialContext.Provider>
+    </LookContext.Provider>
+  );
 }
 
 /** Online play not configured yet: the same main screen, practice only. */
@@ -213,7 +240,7 @@ interface MainProps {
   onSignIn?: () => void;
   onQueue?: (stake: number, mode: Mode) => void;
   onRoom?: (roomId: string) => void;
-  onCustom?: () => void;
+  onCustom?: (inviteFriend?: string) => void;
   onAdmin?: () => void;
   onTournament?: (id: string) => void;
   onTournamentCode?: (code: string) => void;
@@ -232,6 +259,8 @@ export function MainScreen(p: MainProps) {
   const [error, setError] = useState<string | null>(p.notice ?? null);
   const [activeRoom, setActiveRoom] = useState<string | null>(null);
   const [admin, setAdmin] = useState(false);
+  const [quickInvite, setQuickInvite] = useState<Friend | null>(null);
+  const social = useSocial();
   const signedIn = !!p.profile;
   const { chests, reload: reloadChests } = useChests(signedIn && !p.guest ? p.profile!.id : undefined);
   const install = useInstall();
@@ -294,6 +323,7 @@ export function MainScreen(p: MainProps) {
     body = (
       <TablesTab
         guest={p.guest} onCustom={() => p.onCustom?.()} onRoom={(id) => p.onRoom?.(id)} onCode={() => setSheet('code')}
+        friends={<FriendsSection profile={p.profile!} onQuickInvite={setQuickInvite} />}
         tournaments={<TournamentsSection uid={p.profile!.id} onCreate={() => p.onNewTournament?.()} onOpen={(id) => p.onTournament?.(id)} />}
       />
     );
@@ -311,6 +341,7 @@ export function MainScreen(p: MainProps) {
     <GameShell
       tab={p.tab}
       onTab={p.onTab}
+      badges={{ tables: social?.friends.filter((f) => f.state === 'incoming').length ?? 0 }}
       top={<TopBar profile={p.profile} onSettings={() => setSheet('settings')} onCoins={() => setSheet('coins')} onLevel={() => p.onTab('profile')} onSignIn={p.online ? p.onSignIn : undefined} />}
     >
       {body}
@@ -326,6 +357,11 @@ export function MainScreen(p: MainProps) {
       )}
       {sheet === 'coins' && p.profile && (
         <CoinsSheet profile={p.profile} guest={p.guest} onClose={() => setSheet(null)} onError={setError} onLinkGoogle={linkGoogle} />
+      )}
+      {quickInvite && (
+        <QuickInviteSheet friend={quickInvite} onClose={() => setQuickInvite(null)}
+          onRoom={(id) => { setQuickInvite(null); p.onRoom?.(id); }}
+          onCustom={(friendId) => { setQuickInvite(null); p.onCustom?.(friendId); }} />
       )}
       {sheet === 'code' && <CodeSheet onClose={() => setSheet(null)} onJoined={(id) => p.onRoom?.(id)} onTournament={(code) => p.onTournamentCode?.(code)} />}
       {sheet === 'install' && <InstallSheet install={install} onClose={() => setSheet(null)} />}
@@ -408,8 +444,8 @@ function CodeSheet({ onClose, onJoined, onTournament }: { onClose: () => void; o
 
 // ---------- tabs ----------
 
-function TablesTab({ guest, onCustom, onRoom, onCode, tournaments }: {
-  guest: boolean; onCustom: () => void; onRoom: (id: string) => void; onCode: () => void; tournaments: ReactNode;
+function TablesTab({ guest, onCustom, onRoom, onCode, tournaments, friends }: {
+  guest: boolean; onCustom: () => void; onRoom: (id: string) => void; onCode: () => void; tournaments: ReactNode; friends?: ReactNode;
 }) {
   const { t } = useI18n();
   const errText = useErrorText();
@@ -423,6 +459,7 @@ function TablesTab({ guest, onCustom, onRoom, onCode, tournaments }: {
     <div className="tab-page">
       <h2 className="tab-title">👥 {t.friendsTitle}</h2>
       <p className="fine">{t.friendsSub}</p>
+      {friends}
       <div className="tab-actions">
         <button className="btn primary" onClick={onCustom}>＋ {t.quick.private}</button>
         <button className="btn ghost" onClick={onCode}>🔑 {t.quick.code}</button>
@@ -460,6 +497,7 @@ function ProfileTab({ profile, guest, onLinkGoogle }: { profile: Profile; guest:
         <div><b>🏆 {stats?.tournaments_won ?? 0}</b><small>{t.tour.trophies}</small></div>
         <div><b>🪙 {(stats?.biggest_pot ?? 0).toLocaleString()}</b><small>{t.stats.biggestPot}</small></div>
       </div>
+      <LookPicker />
       {guest && (
         <section className="guest-card">
           <strong>👤 {t.guestBanner}</strong>
@@ -525,6 +563,8 @@ function RankingTab({ me }: { me: string }) {
   const { t } = useI18n();
   const [by, setBy] = useState<'xp' | 'chips' | 'wins'>('xp');
   const [rows, setRows] = useState<RankRow[] | null>(null);
+  const [card, setCard] = useState<string | null>(null);
+  const cardStats = usePlayerStats(card ? [card] : [])[card ?? ''];
   useEffect(() => {
     setRows(null);
     supabase.from('profiles').select('id, display_name, xp, chips, wins, avatar_url').order(by, { ascending: false }).limit(50)
@@ -541,7 +581,8 @@ function RankingTab({ me }: { me: string }) {
       </div>
       <ol className="rank-list">
         {rows?.map((r, i) => (
-          <li key={r.id} className={r.id === me ? 'me' : ''}>
+          <li key={r.id} className={r.id === me ? 'me' : ''} onClick={() => setCard(r.id)} role="button" tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && setCard(r.id)}>
             <span className="rank-pos">{medal(i)}</span>
             <span className="avatar"><Avatar name={r.display_name} url={r.avatar_url} /></span>
             <span className="rank-name">{r.display_name}<LevelBadge xp={r.xp} /></span>
@@ -550,6 +591,7 @@ function RankingTab({ me }: { me: string }) {
         ))}
       </ol>
       {rows === null && <p className="fine">{t.loading}</p>}
+      {card && cardStats && <ProfileCard stats={cardStats} onClose={() => setCard(null)} />}
     </div>
   );
 }

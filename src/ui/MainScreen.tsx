@@ -16,7 +16,11 @@ export type Tab = 'shop' | 'profile' | 'home' | 'tables' | 'ranking';
 
 // ---------- shell ----------
 
-export function GameShell({ tab, onTab, top, children }: { tab: Tab; onTab: (t: Tab) => void; top: ReactNode; children: ReactNode }) {
+export function GameShell({ tab, onTab, top, children, badges }: {
+  tab: Tab; onTab: (t: Tab) => void; top: ReactNode; children: ReactNode;
+  /** Little red counters on tabs (e.g. friend requests on Mesas). */
+  badges?: Partial<Record<Tab, number>>;
+}) {
   const { t } = useI18n();
   const tabs: [Tab, string, string][] = [
     ['shop', '🛒', t.nav.shop],
@@ -32,7 +36,7 @@ export function GameShell({ tab, onTab, top, children }: { tab: Tab; onTab: (t: 
       <nav className="bottom-nav">
         {tabs.map(([id, icon, label]) => (
           <button key={id} className={`nav-tab ${tab === id ? 'on' : ''}`} onClick={() => onTab(id)}>
-            <span className="nav-icon">{icon}</span>
+            <span className="nav-icon">{icon}{!!badges?.[id] && <b className="nav-badge">{badges[id]}</b>}</span>
             <span className="nav-label">{label}</span>
           </button>
         ))}

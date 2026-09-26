@@ -1,0 +1,106 @@
+/* Friends (list, requests, invites) and board looks (picker, preview). */
+
+.btn.small { padding: 8px 12px; font-size: .85rem; border-radius: 11px; flex: none; }
+.icon-btn.small { width: 34px; height: 34px; font-size: .85rem; flex: none; }
+
+/* ---------- friends card ---------- */
+.friends-card { gap: 8px; }
+.friends-card .card-head h3 { margin: 0; }
+.friends-empty { text-align: left; margin: 2px 0 4px; }
+.friend-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.friend-row:last-of-type { border-bottom: 0; }
+.friend-row.request { background: rgba(245,197,66,.08); border: 1px solid rgba(245,197,66,.35); border-radius: 12px; padding: 8px; }
+.friend-row.pending { opacity: .7; }
+.friend-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.friend-main b { font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.friend-main small { color: var(--muted); font-size: .75rem; }
+.friend-level { color: var(--muted); font-weight: 600; font-size: .7rem; margin-left: 4px; }
+.friend-where.online { color: #3ddc84; font-weight: 700; }
+.friend-where.playing { color: var(--us); }
+.friend-face { width: 42px; height: 42px; flex: none; font-size: 1.1rem; border-color: rgba(255,255,255,.25); }
+.friend-face.online { border-color: #3ddc84; }
+.friend-face.playing { border-color: var(--us); }
+.friend-face.offline { filter: saturate(.4); opacity: .8; }
+.online-dot {
+  position: absolute; right: -3px; bottom: -3px; width: 13px; height: 13px; border-radius: 50%;
+  background: #3ddc84; border: 2px solid #0b2a1e;
+}
+.friend-face.playing .online-dot { background: var(--us); }
+.friends-edit { align-self: flex-end; margin: 0; font-size: .8rem; }
+.friend-code {
+  display: flex; align-items: center; gap: 10px; margin-top: 4px; padding: 10px 12px; border-radius: 12px;
+  background: rgba(255,255,255,.05); border: 1px dashed rgba(255,255,255,.18);
+}
+.friend-code span { flex: 1; text-align: left; font-size: .8rem; color: var(--muted); }
+.friend-code b { font-family: var(--display); font-weight: 400; font-size: 1.25rem; letter-spacing: .12em; color: var(--us); }
+.friends-card .join-row .text-input { min-width: 0; flex: 1; letter-spacing: .2em; }
+
+/* ---------- invites ---------- */
+.invite-friends-btn { margin-top: 4px; }
+.invite-friends .friend-list { display: flex; flex-direction: column; max-height: 50vh; overflow-y: auto; }
+.invite-state { font-size: .8rem; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.invite-state.ok { color: #3ddc84; }
+.invite-state.no { color: var(--them); }
+.invite-toast {
+  position: fixed; z-index: 30; left: 12px; right: 12px; top: calc(10px + env(safe-area-inset-top));
+  max-width: 480px; margin: 0 auto;
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: 16px; background: #0f3a2c; border: 2px solid var(--us);
+  box-shadow: 0 12px 30px rgba(0,0,0,.5);
+  animation: invite-drop .35s cubic-bezier(.2,1.3,.4,1);
+}
+@keyframes invite-drop { from { transform: translateY(-120%); opacity: 0; } }
+.invite-toast .avatar { width: 44px; height: 44px; flex: none; border-color: var(--us); }
+.invite-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.invite-main b { font-size: .9rem; line-height: 1.2; }
+.invite-main small { color: var(--muted); font-size: .78rem; }
+.invite-main small.error { color: var(--them); }
+.invite-actions { display: flex; flex-direction: column; gap: 6px; }
+
+/* ---------- player card + nav badge ---------- */
+.friend-badge { font-weight: 700; color: #3ddc84; font-size: .9rem; }
+.profile-card .btn.wide { margin-top: 4px; }
+.nav-icon { position: relative; }
+.nav-badge {
+  position: absolute; top: -6px; right: -10px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  display: grid; place-items: center; font: 800 .65rem/1 var(--font); color: #fff;
+  background: #ff3b3b; border: 2px solid #0b2a1e; filter: none;
+}
+.rank-list li { cursor: pointer; }
+
+/* ---------- board looks ---------- */
+.look-picker { gap: 8px; }
+.look-picker h4 { margin: 6px 0 0; font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); text-align: left; }
+.look-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
+.look-swatch {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 8px 4px 6px; border-radius: 12px; border: 2px solid rgba(255,255,255,.1);
+  background: rgba(255,255,255,.04); color: var(--text);
+}
+.look-swatch small { font-size: .7rem; line-height: 1.1; text-align: center; }
+.look-swatch.on { border-color: var(--us); background: rgba(245,197,66,.12); }
+.look-swatch.locked { opacity: .75; }
+.look-swatch.locked .sw-felt, .look-swatch.locked .sw-tile { filter: saturate(.5) brightness(.8); }
+.sw-felt {
+  width: 44px; height: 30px; border-radius: 8px; border: 3px solid #6b3f22;
+  background: var(--sw) url('/images/table-felt.webp') center / 160px; background-blend-mode: soft-light;
+}
+.sw-tile { width: 54px; height: auto; display: block; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); }
+.look-lock {
+  position: absolute; top: -7px; right: -4px; font-style: normal; font-size: .62rem; font-weight: 800;
+  padding: 2px 6px; border-radius: 99px; background: #0b2a1e; border: 1px solid rgba(255,255,255,.25); white-space: nowrap;
+}
+.look-msg { margin: 0; }
+.look-preview {
+  border-radius: 16px; border: 8px solid #6b3f22; padding: 10px 12px;
+  background: var(--felt-swatch, #0b4934) url('/images/table-felt.webp') center / 300px; background-blend-mode: soft-light;
+  box-shadow: inset 0 0 0 2px #3d2b18, inset 0 4px 16px rgba(0,0,0,.45);
+}
+.look-preview svg { display: block; width: 100%; max-width: 260px; margin: 0 auto; filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
+/* In the table's menu: smaller and tighter. */
+.look-picker.compact { gap: 4px; }
+.look-picker.compact .look-row { grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
+.look-picker.compact .look-swatch small { font-size: .62rem; }
+.look-picker.compact .sw-felt { width: 36px; height: 24px; }
+.look-picker.compact .sw-tile { width: 44px; }
+.friends-card .code-input::placeholder { letter-spacing: normal; font-family: var(--font); text-transform: none; }

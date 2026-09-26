@@ -1,4 +1,4 @@
-// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|install-prompt|install-ios|install-ios-inapp
+// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp
 // Renders the online screens with sample data so layouts can be checked without a backend.
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -22,11 +22,49 @@ import { TournamentInvite, TournamentView } from '../ui/Tournament';
 import type { EntryRow, MatchRow, TournamentRow } from '../lib/useTournament';
 import type { GameState } from '../../supabase/functions/_shared/domino.ts';
 import { BoardDesignPreview } from './BoardDesignPreview';
+import { LookContext, type LookState } from '../lib/look';
+import { SocialContext, type Friend, type Invite, type Social } from '../lib/social';
+import { FriendsSection, InviteFriendsSheet, InviteToast, QuickInviteSheet } from '../ui/Friends';
+import { LookPicker } from '../ui/LookPicker';
 
 /** A stand-in profile photo (a coloured face) so avatar layouts can be checked offline. */
 const face = (bg: string) => `data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="${bg}"/><circle cx="32" cy="26" r="12" fill="#f3d2b3"/><path d="M10 64c2-14 12-20 22-20s20 6 22 20z" fill="#f3d2b3"/></svg>`)}`;
-const profile: Profile = { id: 'me', display_name: 'Wilfri', chips: 18_450, xp: 1_380, last_daily: null, last_rescue: null, avatar_url: face('#3b7dd8') };
+const profile: Profile = { id: 'me', display_name: 'Wilfri', chips: 18_450, xp: 1_380, last_daily: null, last_rescue: null, avatar_url: face('#3b7dd8'), friend_code: 'K7M4QX' };
+
+/** Sample friends: one asking, two online, one at a table, one offline, one request out. */
+const sampleFriends: Friend[] = [
+  { id: 'f-kirsy', name: 'Kirsy', avatar: null, xp: 2_900, state: 'incoming' },
+  { id: 'f-yoka', name: 'Yokasta', avatar: face('#c0487a'), xp: 6_200, state: 'friend' },
+  { id: 'f-robert', name: 'Robert', avatar: null, xp: 1_100, state: 'friend' },
+  { id: 'f-chelo', name: 'Chelo', avatar: face('#2d8a5f'), xp: 4_000, state: 'friend' },
+  { id: 'f-papo', name: 'Papo', avatar: null, xp: 300, state: 'friend' },
+  { id: 'f-nando', name: 'Nando', avatar: null, xp: 800, state: 'outgoing' },
+];
+const sampleInvite: Invite = {
+  id: 'i1', from_user: 'f-yoka', to_user: 'me', room_id: 'r9', tournament_id: null, status: 'sent',
+  expires_at: new Date(Date.now() + 600_000).toISOString(),
+  details: { kind: 'room', from: 'Yokasta', mode: '2v2', stake: 500, code: 'QWER', target: 150 },
+};
+const fakeSocial = (over: Partial<Social> = {}): Social => ({
+  uid: 'me', friends: sampleFriends, invites: [], sent: [{ ...sampleInvite, id: 'i2', from_user: 'me', to_user: 'f-robert', room_id: 'r1', status: 'sent' }],
+  online: new Map([['f-yoka', 'online'], ['f-robert', 'online'], ['f-chelo', 'playing'], ['f-kirsy', 'online']]),
+  stateOf: (id) => sampleFriends.find((f) => f.id === id)?.state ?? 'none',
+  request: async () => ({ status: 'pending', name: 'Toño' }), respond: async () => {}, remove: async () => {},
+  invite: async () => true, answer: async () => ({ roomId: null, tournamentId: null }), hide: () => {},
+  ...over,
+});
+/** A look state that remembers picks locally, for trying the picker. */
+function PreviewLook({ children, felt = 'verde', tiles = 'marfil', xp = 1_500 }: { children: React.ReactNode; felt?: string; tiles?: string; xp?: number }) {
+  const [look, setLook] = useState({ felt, tiles, owned: new Set(['jade']) });
+  const apply = (id: string) => setLook((l) => (['verde', 'azul', 'vino', 'morado', 'grafito', 'turquesa', 'atardecer'].includes(id) ? { ...l, felt: id } : { ...l, tiles: id }));
+  const value: LookState = {
+    felt: look.felt, tiles: look.tiles, xp, owned: look.owned, guest: false,
+    equip: async (id) => apply(id),
+    buy: async (id) => { setLook((l) => ({ ...l, owned: new Set([...l.owned, id]) })); apply(id); },
+  };
+  return <LookContext.Provider value={value}>{children}</LookContext.Provider>;
+}
 /** A pretend voice session in a given state, for the voice button previews. */
 const fakeVoice = (over: Partial<Voice>): Voice => ({
   status: 'off', micOn: false, micBlocked: false, speaking: new Set(), mutedPeers: new Set(), needsTap: false,
@@ -184,6 +222,38 @@ function Screen({ s }: { s: string }) {
           </div>
         ))}
       </div>
+    );
+  }
+  if (s === 'friends' || s === 'friends-invite') {
+    // Mesas tab's friend card; friends-invite adds Yokasta's invite on top.
+    return (
+      <SocialContext.Provider value={fakeSocial(s === 'friends-invite' ? { invites: [sampleInvite] } : {})}>
+        <div className="game-shell"><main className="game-body"><div className="tab-page">
+          <FriendsSection profile={profile} onQuickInvite={noop} />
+        </div></main></div>
+        <InviteToast onRoom={noop} onTournament={noop} />
+      </SocialContext.Provider>
+    );
+  }
+  if (s === 'invite-sheet') {
+    return <SocialContext.Provider value={fakeSocial()}><InviteFriendsSheet target={{ roomId: 'r1' }} onClose={noop} /></SocialContext.Provider>;
+  }
+  if (s === 'quick-invite') {
+    return <SocialContext.Provider value={fakeSocial()}><QuickInviteSheet friend={sampleFriends[1]} onClose={noop} onRoom={noop} onCustom={noop} /></SocialContext.Provider>;
+  }
+  if (s === 'looks') {
+    return <PreviewLook><div className="game-shell"><main className="game-body"><div className="tab-page"><LookPicker /></div></main></div></PreviewLook>;
+  }
+  if (s.startsWith('table-look')) {
+    // table-look-<felt>-<tiles>, e.g. table-look-vino-latino
+    const [, , felt = 'vino', tiles = 'latino'] = s.split('-').slice(0);
+    let g = newGame(Math.random, publicRules('2v2'));
+    for (let i = 0; i < 9 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
+    return (
+      <PreviewLook felt={felt} tiles={tiles}>
+        <TableView view={publicState(g)} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
+          chat={{}} onChat={noop} endActions={null} />
+      </PreviewLook>
     );
   }
   if (s === 'photo' || s === 'photo-none') {

@@ -17,7 +17,7 @@ function Half({ value, ox, oy, rotate }: { value: number; ox: number; oy: number
   return (
     <>
       {PIPS[value].map(([px, py], i) => (
-        <circle key={i} cx={ox + (rotate ? py : px)} cy={oy + (rotate ? px : py)} r={0.085} className="pip" />
+        <circle key={i} cx={ox + (rotate ? py : px)} cy={oy + (rotate ? px : py)} r={0.085} className={`pip v${value}`} />
       ))}
     </>
   );

@@ -102,10 +102,17 @@ button:disabled { cursor: default; }
 .board { width: 100%; height: 100%; overflow: visible; }
 
 /* Tiles (SVG) */
-.tile-face { fill: var(--ivory); stroke: #c9b994; stroke-width: .03; }
+/* Colors come from the player's domino style (lookVars), ivory by default. */
+.tile-face { fill: var(--tile-face, var(--ivory)); stroke: var(--tile-edge, #c9b994); stroke-width: .03; }
 .tile-shadow { fill: rgba(0,0,0,.35); }
-.tile-divider { stroke: #a8987a; stroke-width: .045; stroke-linecap: round; }
-.pip { fill: var(--ink); }
+.tile-divider { stroke: var(--tile-divider, #a8987a); stroke-width: .045; stroke-linecap: round; }
+.pip { fill: var(--pip, var(--ink)); }
+.pip.v1 { fill: var(--pip-1, var(--pip, var(--ink))); }
+.pip.v2 { fill: var(--pip-2, var(--pip, var(--ink))); }
+.pip.v3 { fill: var(--pip-3, var(--pip, var(--ink))); }
+.pip.v4 { fill: var(--pip-4, var(--pip, var(--ink))); }
+.pip.v5 { fill: var(--pip-5, var(--pip, var(--ink))); }
+.pip.v6 { fill: var(--pip-6, var(--pip, var(--ink))); }
 .placed { transform-box: fill-box; transform-origin: center; }
 .newest { animation: land .35s cubic-bezier(.2,1.4,.4,1); }
 .newest .tile-face { stroke: var(--us); stroke-width: .07; }

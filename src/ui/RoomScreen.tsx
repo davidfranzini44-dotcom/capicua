@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { seatsOf, type Mode, type Move, type Seat } from '../../supabase/functions/_shared/domino.ts';
 import {
-  botsAllowed, levelFromXp, minHumans, SIDE_BET_KINDS, sideBetLimit, sideBetMultiplier, voiceRoomFor, xpForLevel, type SideBetKind,
+  botsAllowed, minHumans, SIDE_BET_KINDS, sideBetLimit, sideBetMultiplier, voiceRoomFor, type SideBetKind,
 } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { forgetTable, rememberTable } from '../lib/lastTable';
 import { api, supabase, type Profile } from '../lib/supabase';
 import { usePlayerStats, useRoom, type PlayerStats, type RoomData, type SeatRow } from '../lib/useRoom';
+import { useSocial } from '../lib/social';
 import { useVoice, type Voice } from '../lib/useVoice';
 import { COOLDOWN_MS, type PhraseId } from '../quickchat';
 import type { ChestKind } from '../../supabase/functions/_shared/table.ts';
 import { ChestArt } from './Chests';
 import { Avatar, ChipBalance, LevelBadge, useErrorText } from './common';
+import { InviteFriendsSheet } from './Friends';
+import { ProfileCard } from './ProfileCard';
 import { TableView } from './TableView';
 import { VoiceButton } from './VoiceButton';
 
@@ -109,6 +112,8 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [card, setCard] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const social = useSocial();
   const room = r.room!;
   const mode = room.mode;
   const me = r.seats.find((s) => s.user_id === uid);
@@ -189,6 +194,7 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
               try { await navigator.clipboard.writeText(inviteUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* blocked */ }
             }}>{copied ? t.copied : t.copyLink}</button>
           </div>
+          {social && <button className="btn primary wide invite-friends-btn" onClick={() => setInviting(true)}>👥 {t.social.inviteFriends}</button>}
           <div className="lobby-actions">
             {voiceControl}
             {isHost ? (
@@ -212,6 +218,7 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
         : <SideBets r={r} mode={mode} profile={profile} onError={setError} />}
       {error && <p className="error">{error}</p>}
       {card && stats[card] && <ProfileCard stats={stats[card]} onClose={() => setCard(null)} />}
+      {inviting && <InviteFriendsSheet target={{ roomId: room.id }} onClose={() => setInviting(false)} />}
     </div>
   );
 }
@@ -317,31 +324,7 @@ function SideBets({ r, mode, profile, onError }: { r: RoomData; mode: Mode; prof
   );
 }
 
-export function ProfileCard({ stats, onClose }: { stats: PlayerStats; onClose: () => void }) {
-  const { t } = useI18n();
-  const level = levelFromXp(stats.xp);
-  const from = xpForLevel(level);
-  const to = xpForLevel(level + 1);
-  const winRate = stats.games ? Math.round((100 * stats.wins) / stats.games) : 0;
-  return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet profile-card" onClick={(e) => e.stopPropagation()}>
-        <div className="avatar big"><Avatar name={stats.display_name} url={stats.avatar_url} /></div>
-        <h2>{stats.display_name}</h2>
-        <LevelBadge xp={stats.xp} big />
-        <div className="xp-bar wide"><span style={{ width: `${(100 * (stats.xp - from)) / (to - from)}%` }} /></div>
-        <div className="stat-grid">
-          <div><b>{stats.games}</b><small>{t.stats.games}</small></div>
-          <div><b>{winRate}%</b><small>{t.stats.winRate}</small></div>
-          <div><b>{stats.capicuas}</b><small>{t.stats.capicuas}</small></div>
-          <div><b>{stats.pollonas}</b><small>{t.stats.pollonas}</small></div>
-          <div className="span2"><b>🪙 {stats.biggest_pot.toLocaleString()}</b><small>{t.stats.biggestPot}</small></div>
-        </div>
-        <button className="btn ghost wide" onClick={onClose}>{t.close}</button>
-      </div>
-    </div>
-  );
-}
+export { ProfileCard };
 
 // ---------- the table ----------
 
