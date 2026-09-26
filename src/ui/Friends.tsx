@@ -165,7 +165,7 @@ export function QuickInviteSheet({ friend, onClose, onRoom, onCustom }: {
     try {
       const { roomId } = await api<{ roomId: string }>('create_custom', {
         settings: mode === 'arcade'
-          ? { ruleset: 'arcade', turnSeconds: 15, visibility: 'private' }
+          ? { ruleset: 'arcade', turnSeconds: 25, visibility: 'private' }
           : { mode, stake: 0, target: 100, turnSeconds: 25, visibility: 'private' },
       });
       await s.invite(friend.id, { roomId });

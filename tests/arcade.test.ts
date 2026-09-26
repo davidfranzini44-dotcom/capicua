@@ -38,9 +38,9 @@ const humans: SeatInfo[] = [0, 1, 2, 3].map((s) => ({ seat: s as Seat, userId: `
 const bots: SeatInfo[] = [0, 1, 2, 3].map((s) => ({ seat: s as Seat, userId: null, name: `B${s}`, isBot: true, away: false }));
 
 describe('Arcade: match and charges', () => {
-  it('starts with two charges per player, 2v2, first to three stars, no bonus points', () => {
+  it('starts with no powers (they are earned), 2v2, first to three stars, no bonus points', () => {
     const g = newGame(seeded(1), arcadeRules());
-    expect(g.arcade).toMatchObject({ charges: [2, 2, 2, 2], lock: null, powerUsed: false, passes: 0 });
+    expect(g.arcade).toMatchObject({ charges: [0, 0, 0, 0], lock: null, powerUsed: false, passes: 0 });
     expect(g.rules).toMatchObject({ mode: '2v2', target: 3, capicuaBonus: 0, paseCorridoBonus: 0, ruleset: 'arcade' });
   });
 
@@ -61,11 +61,13 @@ describe('Arcade: match and charges', () => {
     const won = applyMove(last, { type: 'play', tile: [5, 6], side: 'R' });
     expect(won.handResult).toMatchObject({ kind: 'domino', side: 1, points: 1, bonus: 0, total: 1 });
     expect(won.scores).toEqual([0, 1]);
+    // The losing team (seats 0 and 2) earns one each — seat 2 is already at the limit of two.
+    expect(won.arcade!.charges).toEqual([2, 0, 2, 2]);
     const next = nextHand(won, seeded(3));
-    expect(next.arcade!.charges).toEqual([1, 0, 2, 2]);
+    expect(next.arcade!.charges).toEqual([2, 0, 2, 2]);
     expect(next.arcade).toMatchObject({ lock: null, powerUsed: false, passes: 0 });
     expect(next.turn).toBe(1); // the winner opens
-    expect(newGame(seeded(4), arcadeRules()).arcade!.charges).toEqual([2, 2, 2, 2]);
+    expect(newGame(seeded(4), arcadeRules()).arcade!.charges).toEqual([0, 0, 0, 0]);
   });
 
   it('capicúa is celebrated but still worth just one star', () => {
@@ -268,6 +270,58 @@ describe('Arcade: Candado', () => {
   });
 });
 
+describe('Arcade: earning powers', () => {
+  const none = { charges: [0, 0, 0, 0], lock: null, powerUsed: false, passes: 0 };
+
+  it('your play leaves the next rival without a play → you earn one', () => {
+    const s = arcadeWith([[[4, 6], [1, 1]], [[0, 0], [2, 3]], [[5, 5]], [[3, 3]]], [[1, 4]], 0, { arcade: { ...none } });
+    let r = applyMove(s, { type: 'play', tile: [4, 6], side: 'R' }); // ends 1 and 6: seat 1 has neither
+    expect(forcedMove(r, 1)).toEqual({ type: 'pass' });
+    r = applyMove(r, { type: 'pass' });
+    expect(r.arcade!.charges).toEqual([1, 0, 0, 0]);
+    expect(r.events.at(-1)).toEqual({ kind: 'earn', seat: 0, reason: 'block' });
+  });
+
+  it('only the pass right after your play counts', () => {
+    const s = arcadeWith([[[4, 6], [1, 1]], [[0, 0], [2, 3]], [[5, 5]], [[3, 3]]], [[1, 4]], 0, { arcade: { ...none } });
+    let r = applyMove(s, { type: 'play', tile: [4, 6], side: 'R' });
+    r = applyMove(r, { type: 'pass' }); // seat 1 → seat 0 earns
+    r = applyMove(r, { type: 'pass' }); // seat 2 passes too, but seat 1 made no play
+    expect(r.arcade!.charges).toEqual([1, 0, 0, 0]);
+  });
+
+  it('a pass forced by your Candado earns nothing extra', () => {
+    const s = arcadeWith([[[4, 6], [1, 1]], [[6, 6], [5, 5]], [[0, 0]], [[3, 3]]], [[1, 4]], 0, { arcade: { ...none, charges: [1, 0, 0, 0] } });
+    let r = applyMove(s, { type: 'play', tile: [4, 6], side: 'R', lock: 'R' });
+    r = applyMove(r, { type: 'pass' });
+    expect(r.arcade!.charges).toEqual([0, 0, 0, 0]);
+  });
+
+  it('never more than two held', () => {
+    const s = arcadeWith([[[4, 6], [1, 1]], [[0, 0], [2, 3]], [[5, 5]], [[3, 3]]], [[1, 4]], 0, { arcade: { ...none, charges: [2, 0, 0, 0] } });
+    const r = applyMove(applyMove(s, { type: 'play', tile: [4, 6], side: 'R' }), { type: 'pass' });
+    expect(r.arcade!.charges[0]).toBe(2);
+    expect(r.events.some((e) => e.kind === 'earn')).toBe(false);
+  });
+
+  it('the team that loses a hand earns one each (a comeback boost); not when the match is over', () => {
+    const s = arcadeWith([[[5, 6]], [[0, 0]], [[1, 1]], [[2, 2]]], [[3, 5]], 0, { arcade: { ...none } });
+    const r = applyMove(s, { type: 'play', tile: [5, 6], side: 'R' });
+    expect(r.arcade!.charges).toEqual([0, 1, 0, 1]);
+    expect(r.events.filter((e) => e.kind === 'earn')).toEqual([
+      { kind: 'earn', seat: 1, reason: 'comeback' }, { kind: 'earn', seat: 3, reason: 'comeback' },
+    ]);
+    const last = arcadeWith([[[5, 6]], [[0, 0]], [[1, 1]], [[2, 2]]], [[3, 5]], 0, { arcade: { ...none }, scores: [2, 0] });
+    expect(applyMove(last, { type: 'play', tile: [5, 6], side: 'R' }).arcade!.charges).toEqual([0, 0, 0, 0]);
+  });
+
+  it('with no powers, a stuck player just passes as usual', () => {
+    const s = arcadeWith([[[0, 0], [2, 3]], [[1, 1]], [[2, 2]], [[3, 3]]], [[5, 6]], 0, { arcade: { ...none } });
+    expect(canRescue(s, 0)).toBe(false);
+    expect(powerBlock(s, 0, 'cambio')).toBe('no_charges');
+  });
+});
+
 describe('Arcade: passing and blocked hands', () => {
   it('no passing while an ordinary play exists', () => {
     const s = arcadeWith([[[4, 6], [0, 0]], [[1, 1]], [[2, 2]], [[3, 3]]], [[1, 4]], 0);
@@ -350,7 +404,7 @@ describe('Arcade: whole matches', () => {
         if (move.type === 'play' && move.lock) used.add('candado');
         s = applyMove(s, move, rng);
         expect(physicalTiles(s)).toEqual(FULL);
-        expect(s.arcade!.charges.every((c) => c >= 0 && c <= ARCADE.charges)).toBe(true);
+        expect(s.arcade!.charges.every((c) => c >= 0 && c <= ARCADE.maxCharges)).toBe(true);
       }
       expect(s.winner).not.toBeNull();
       expect(Math.max(...s.scores)).toBe(3);

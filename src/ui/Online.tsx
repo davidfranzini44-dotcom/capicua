@@ -410,7 +410,7 @@ export function MainScreen(p: MainProps) {
           onPractice={() => p.onPractice('2v2', 'arcade')}
           onOnline={() => { setSheet(null); p.onQueue?.(0, '2v2', 'arcade'); }}
           onPrivate={() => run(async () => {
-            const { roomId } = await api<{ roomId: string }>('create_custom', { settings: { ruleset: 'arcade', turnSeconds: 15, visibility: 'private' } });
+            const { roomId } = await api<{ roomId: string }>('create_custom', { settings: { ruleset: 'arcade', turnSeconds: 25, visibility: 'private' } });
             setSheet(null);
             p.onRoom?.(roomId);
           })}

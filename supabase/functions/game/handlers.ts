@@ -234,7 +234,7 @@ async function tryMatch(tx: Tx, stake: number, mode: Mode, ruleset: Ruleset): Pr
   const levels = humans.map((h) => h.level as number);
   const ready = needsReadyCheck(levels);
   const room = await insertRoom(tx, {
-    kind: 'public', mode, rules: matchRules(mode, ruleset), stake, turnSeconds: TURN_SECONDS.public,
+    kind: 'public', mode, rules: matchRules(mode, ruleset), stake, turnSeconds: ruleset === 'arcade' ? TURN_SECONDS.arcade : TURN_SECONDS.public,
     visibility: 'private', host: null, phase: ready ? 'ready' : 'countdown',
     phaseMs: ready ? LOBBY.readyMs : LOBBY.countdownMs,
   });

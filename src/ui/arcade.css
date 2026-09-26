@@ -134,3 +134,5 @@
   .mode-stack.with-arcade .mode-svg { width: 48px; height: 44px; }
   .mode-stack.with-arcade .mode-text small { font-size: .55rem; }
 }
+
+.arcade-comeback { display: block; margin-top: 4px; color: #c9b8f5; font-weight: 700; }

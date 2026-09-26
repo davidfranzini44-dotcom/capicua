@@ -365,7 +365,7 @@ const dict = {
       ended: 'La mesa ya terminó.', left: 'ya no está en la mesa.', lobby: 'está en la sala. La partida empieza pronto…', back: 'Volver',
     },
     arcade: {
-      name: 'Arcade', badge: 'NUEVO', tagline: '2 vs 2 · Gana 3 manos · 2 poderes por jugador', traditional: 'Tradicional',
+      name: 'Arcade', badge: 'NUEVO', tagline: '2 vs 2 · Gana 3 manos · Gana poderes jugando', traditional: 'Tradicional',
       practice: 'Practicar', practiceSub: 'Contra bots, sin conexión', online: 'Jugar en línea', onlineSub: 'Con gente real · gratis',
       private: 'Mesa privada', privateSub: 'Invita a tus amigos', powersBtn: 'Poderes', powersTitle: 'Poderes', remaining: 'te quedan',
       charges: 'Poderes que le quedan',
@@ -376,7 +376,7 @@ const dict = {
         candado: { name: 'Candado', desc: 'Juega y cierra un extremo para el siguiente jugador.' },
       } as Record<string, { name: string; desc: string }>,
       blocked: {
-        no_charges: 'Sin poderes', power_used: 'Ya usaste un poder este turno', need3: 'Necesitas 3 fichas', need2: 'Necesitas 2 fichas',
+        no_charges: 'Sin poderes: gánalos dejando al rival sin jugada', power_used: 'Ya usaste un poder este turno', need3: 'Necesitas 3 fichas', need2: 'Necesitas 2 fichas',
         no_sequence: 'No tienes dos jugadas seguidas', no_change: 'Ninguna ficha cambiaría', no_play: 'Necesitas una jugada normal',
         opening: 'Espera la salida de la mano', not_your_turn: 'No es tu turno', hand_over: 'La mano terminó', not_arcade: '',
       } as Record<string, string>,
@@ -394,9 +394,10 @@ const dict = {
       pass: 'Pasar', stuck: 'No tienes jugada: usa un poder o pasa',
       bubble: { cambio: 'Cambio con {name}', doble: 'Doble golpe', comodin: 'Comodín', candado: 'Candado' } as Record<string, string>,
       swappedYou: '🔄 {name} cambió una ficha contigo', lockedYou: '🔒 Tienes el extremo {end} cerrado este turno',
+      earnedYou: '⚡ ¡Ganaste un poder! Dejaste al rival sin jugada', comeback: '+1 poder para',
       lockTag: 'extremo cerrado', star: '+1 estrella', intro: {
         title: '⚡ Arcade',
-        lines: ['Parejas, 2 contra 2. Gana la pareja que gane 3 manos.', 'Cada jugador tiene 2 poderes para toda la partida.', 'Un poder por turno como máximo. Guárdalos para el momento justo.'],
+        lines: ['Parejas, 2 contra 2. Gana la pareja que gane 3 manos.', 'Empiezas sin poderes: ganas ⚡1 cuando tu jugada deja al siguiente rival sin jugada, y tu pareja gana ⚡1 cada uno si pierde una mano.', 'Guardas hasta 2. Un poder por turno como máximo: úsalos en el momento justo.'],
         go: '¡A jugar!', again: '¿Cómo se juega Arcade?',
       },
       goal: 'Gana 3 manos', ruleset: 'Tipo de juego',
@@ -859,7 +860,7 @@ const dict = {
       ended: 'That table is over.', left: 'is no longer at the table.', lobby: 'is in the lobby. The game starts soon…', back: 'Back',
     },
     arcade: {
-      name: 'Arcade', badge: 'NEW', tagline: '2 vs 2 · Win 3 hands · 2 powers each', traditional: 'Traditional',
+      name: 'Arcade', badge: 'NEW', tagline: '2 vs 2 · Win 3 hands · Earn powers as you play', traditional: 'Traditional',
       practice: 'Practice', practiceSub: 'Against bots, offline', online: 'Play online', onlineSub: 'Real people · free',
       private: 'Private table', privateSub: 'Invite your friends', powersBtn: 'Powers', powersTitle: 'Powers', remaining: 'left',
       charges: 'Powers left',
@@ -870,7 +871,7 @@ const dict = {
         candado: { name: 'Lock', desc: 'Play, and close one end for the next player.' },
       } as Record<string, { name: string; desc: string }>,
       blocked: {
-        no_charges: 'No powers left', power_used: 'You already used a power this turn', need3: 'You need 3 tiles', need2: 'You need 2 tiles',
+        no_charges: 'No powers: earn them by leaving a rival with no play', power_used: 'You already used a power this turn', need3: 'You need 3 tiles', need2: 'You need 2 tiles',
         no_sequence: 'You have no two plays in a row', no_change: 'No tile would change', no_play: 'You need a normal play',
         opening: 'Wait for the hand to open', not_your_turn: 'Not your turn', hand_over: 'The hand is over', not_arcade: '',
       } as Record<string, string>,
@@ -888,9 +889,10 @@ const dict = {
       pass: 'Pass', stuck: 'No play: use a power or pass',
       bubble: { cambio: 'Swap with {name}', doble: 'Double hit', comodin: 'Wildcard', candado: 'Lock' } as Record<string, string>,
       swappedYou: '🔄 {name} swapped a tile with you', lockedYou: '🔒 The {end} end is closed for you this turn',
+      earnedYou: '⚡ You earned a power! Your rival had no play', comeback: '+1 power for',
       lockTag: 'end closed', star: '+1 star', intro: {
         title: '⚡ Arcade',
-        lines: ['Partners, 2 vs 2. The first pair to win 3 hands wins.', 'Each player has 2 powers for the whole match.', 'One power per turn at most. Save them for the right moment.'],
+        lines: ['Partners, 2 vs 2. The first pair to win 3 hands wins.', 'You start with no powers: earn ⚡1 when your play leaves the next rival with no play, and each of you gets ⚡1 when your pair loses a hand.', 'Hold up to 2. One power per turn at most: use them at the right moment.'],
         go: "Let's play!", again: 'How does Arcade work?',
       },
       goal: 'Win 3 hands', ruleset: 'Game type',

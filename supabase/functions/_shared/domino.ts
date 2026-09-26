@@ -3,7 +3,7 @@
 //   1v1 — two players; the other 14 tiles are the pile you draw from ("robar").
 //   ffa — four players, everyone for themselves, no boneyard.
 // Arcade (rules.ruleset = 'arcade', 2v2 only): each hand won is a star, three
-// stars win, and every player has two power uses for the whole match —
+// stars win, and players earn powers as they play (up to two held) —
 // Cambio, Doble golpe, Comodín and Candado (see the Arcade section below).
 // Pure functions only — this file must stay free of DOM/React so the server
 // runs the exact same rules as the browser.
@@ -44,7 +44,9 @@ export type GameEvent =
   | { kind: 'draw'; seat: Seat }
   | { kind: 'paseCorrido'; seat: Seat; points: number }
   /** An Arcade power. Never carries the values of fichas that change hands. */
-  | { kind: 'power'; seat: Seat; power: Power; target?: Seat; side?: Side; tile?: Tile; from?: number; to?: number };
+  | { kind: 'power'; seat: Seat; power: Power; target?: Seat; side?: Side; tile?: Tile; from?: number; to?: number }
+  /** Arcade: a power earned — `block` (my play left the next rival without a play) or `comeback` (my team lost a hand). */
+  | { kind: 'earn'; seat: Seat; reason: 'block' | 'comeback' };
 
 export interface HandResult {
   kind: 'domino' | 'tranque';
@@ -76,7 +78,7 @@ export const CLASSIC_DR: Rules = { mode: '2v2', target: 200, capicuaBonus: 25, p
 
 /** Arcade's public, per-match power state. */
 export interface ArcadeState {
-  /** Power uses left, per seat, for the whole match. */
+  /** Powers each seat holds right now (earned during the match, at most two). */
   charges: number[];
   /** A board end closed for one player's turn (Candado). */
   lock: { side: Side; seat: Seat } | null;
@@ -212,7 +214,7 @@ function startHand(prev: Pick<GameState, 'rules' | 'scores' | 'handNo' | 'tally'
   };
   if (isArcade(prev.rules)) {
     // Charges last the whole match; everything that belongs to a turn starts fresh.
-    const charges = prev.arcade?.charges ?? new Array(playerCount(prev.rules.mode)).fill(ARCADE.charges);
+    const charges = prev.arcade?.charges ?? new Array(playerCount(prev.rules.mode)).fill(ARCADE.startCharges);
     state.arcade = { charges: [...charges], lock: null, powerUsed: false, passes: 0, recent: prev.arcade?.recent };
   }
   return state;
@@ -344,12 +346,17 @@ export function applyMove(prev: GameState, move: Move, rng: Rng = Math.random): 
   if (move.type === 'pass') {
     const e = ends(s)!;
     const locked = lockedFor(s, seat);
+    const rightAfterAPlay = s.passesSinceLastPlay === 0;
     // A player who passed on a locked turn only showed they lack the open end.
     const shown = locked ? [locked === 'L' ? e[1] : e[0]] : e;
     for (const n of shown) if (!s.voids[seat].includes(n)) s.voids[seat].push(n);
     s.passesSinceLastPlay++;
     s.events.push({ kind: 'pass', seat });
     if (s.arcade) {
+      // The player whose placement left this one without a play earns a power
+      // (not when a Candado did it: that power already had its effect).
+      const before = ((seat + playerCount(mode) - 1) % playerCount(mode)) as Seat;
+      if (!locked && rightAfterAPlay && s.lastPlayer === before) earn(s, before, 'block');
       // A pass while locked out doesn't count towards a blocked hand: that player gets another go with both ends open.
       s.arcade.passes = locked ? 0 : s.arcade.passes + 1;
       endTurn(s, seat);
@@ -423,6 +430,10 @@ function finishHand(s: GameState, kind: 'domino' | 'tranque', winnerSeat: Seat, 
     const leaders = s.scores.flatMap((v, i) => (v === top ? [i] : []));
     s.winner = leaders.includes(side) ? side : leaders[0];
   }
+  // Arcade comeback: everyone on the team that lost the hand earns a power for the next one.
+  if (s.arcade && s.winner === null) {
+    for (const p of seatsOf(s.rules.mode)) if (sideOf(s.rules.mode, p) !== side) earn(s, p, 'comeback');
+  }
   return s;
 }
 
@@ -436,8 +447,10 @@ export const standings = (scores: number[]) => scores.map((v, side) => ({ side, 
 // ---------- Arcade ----------
 
 export const ARCADE = {
-  /** Power uses per player for the whole match. */
-  charges: 2,
+  /** Powers each player starts a match with: none, they're earned. */
+  startCharges: 0,
+  /** Most powers a player can hold at once. */
+  maxCharges: 2,
   /** Hands to win the match. */
   stars: 3,
   /** Consecutive unrestricted passes that block a hand. */
@@ -524,6 +537,13 @@ export function powerBlock(s: GameState, seat: Seat, power: Power): PowerBlock |
 /** No ordinary play, but a power could still open something up: the player decides, nobody auto-passes them. */
 export const canRescue = (s: GameState, seat: Seat) =>
   !!s.arcade && legalMoves(s, seat).length === 0 && (powerBlock(s, seat, 'cambio') === null || powerBlock(s, seat, 'comodin') === null);
+
+/** A power earned (nothing happens at the limit). */
+function earn(s: GameState, seat: Seat, reason: 'block' | 'comeback') {
+  if (!s.arcade || s.arcade.charges[seat] >= ARCADE.maxCharges) return;
+  s.arcade.charges[seat]++;
+  s.events.push({ kind: 'earn', seat, reason });
+}
 
 function spend(s: GameState, seat: Seat) {
   s.arcade!.charges[seat]--;

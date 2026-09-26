@@ -7,7 +7,7 @@ import { gameXp, type PublicState } from '../../supabase/functions/_shared/table
 import { useI18n } from '../i18n';
 import { useTableLook } from '../lib/look';
 import { playSfx, useSfxPref } from '../lib/sfx';
-import { playPowerSfx } from '../lib/arcadeSfx';
+import { playEarnSfx, playPowerSfx } from '../lib/arcadeSfx';
 import { draftPickSide, draftTapTile, draftView, startDraft, type Draft } from '../lib/powerDraft';
 import { ArcadeIntro, Charges, PowerBar, PowersPanel, Stars, useArcadeIntro } from './Arcade';
 import { snapshotOf, tableFx, type Bonus, type FxSnapshot } from '../lib/tableFx';
@@ -220,6 +220,10 @@ export function TableView(props: TableViewProps) {
       delay += 160;
       if (!watching && pe.power === 'cambio' && pe.target === mySeat) flashArcade(t.arcade.swappedYou.replace('{name}', name(pe.seat)));
     }
+    if (fx.earned.length) {
+      playEarnSfx(delay + 250);
+      if (!watching && fx.earned.some((e) => e.seat === mySeat && e.reason === 'block')) flashArcade(t.arcade.earnedYou);
+    }
     for (const m of fx.moves) {
       if (m.sound === 'tile' && m.seat === mySeat && Date.now() - myTileAt.current < 2500) {
         myTileAt.current = 0;
@@ -298,11 +302,13 @@ export function TableView(props: TableViewProps) {
   const recent = view.events.filter((e) => e.kind !== 'paseCorrido').slice(-3);
   // A power stays announced by its player until three more things happen at the table.
   const recentPowers = view.events.slice(-4).filter((e): e is Extract<GameEvent, { kind: 'power' }> => e.kind === 'power');
+  const recentEarns = view.events.slice(-3).filter((e): e is Extract<GameEvent, { kind: 'earn' }> => e.kind === 'earn' && e.reason === 'block');
   const bubble = (s: Seat): { text: string; chat: boolean } | null => {
     const c = chat[s];
     if (c && now - c.at < BUBBLE_MS) return { text: PHRASES[c.id].es, chat: true };
     const pw = [...recentPowers].reverse().find((ev) => ev.seat === s);
     if (pw) return { text: `${t.arcade.bubble[pw.power].replace('{name}', pw.target !== undefined ? name(pw.target as Seat) : '')}`, chat: true };
+    if (recentEarns.some((ev) => ev.seat === s)) return { text: '⚡+1', chat: true };
     const e = [...recent].reverse().find((ev) => ev.seat === s);
     if (e?.kind === 'pass') return { text: t.passed, chat: false };
     if (e?.kind === 'draw') return { text: t.drew, chat: false };
@@ -721,6 +727,9 @@ function ResultSheet({
             <small className="arcade-running">
               {t.us} <Stars n={view.scores[mySide]} label={t.us} /> · {t.them} <Stars n={view.scores[mySide === 0 ? 1 : 0]} label={t.them} />
             </small>
+            {view.events.some((e) => e.kind === 'earn' && e.reason === 'comeback') && (
+              <small className="arcade-comeback">⚡ {t.arcade.comeback} {ours ? t.them : t.us}</small>
+            )}
           </div>
         ) : (
           <div className="gain">

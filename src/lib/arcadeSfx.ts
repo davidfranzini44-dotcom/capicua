@@ -101,6 +101,19 @@ const SOUNDS: Record<Power, (c: BaseAudioContext, dest: AudioNode, t: number) =>
   },
 };
 
+/** A power earned: a bright little two-note "ding". */
+export function playEarnSfx(delay = 0) {
+  if (import.meta.env.DEV) ((window as unknown as { __sfxLog?: string[] }).__sfxLog ??= []).push('earn');
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  const c = audio();
+  if (!c || !out) return;
+  try {
+    const t = c.currentTime + 0.01 + delay / 1000;
+    tone(c, out, { t0: t, freq: 988, dur: 0.1, peak: 0.12, type: 'sine' });
+    tone(c, out, { t0: t + 0.09, freq: 1480, dur: 0.22, peak: 0.12, type: 'sine' });
+  } catch { /* stay quiet */ }
+}
+
 /** Play a power's sound now (or after `delay` ms). */
 export function playPowerSfx(power: Power, delay = 0) {
   if (import.meta.env.DEV) ((window as unknown as { __sfxLog?: string[] }).__sfxLog ??= []).push(power);

@@ -42,21 +42,24 @@ export interface TableFx {
   bonus: Bonus | null;
   /** Arcade: the newest power used (it has its own sound, and some are announced). */
   powerEvent: Extract<GameEvent, { kind: 'power' }> | null;
+  /** Arcade: powers just earned. */
+  earned: Extract<GameEvent, { kind: 'earn' }>[];
   /** The game just ended: how it sounds for the player at the bottom seat. */
   ending: 'win' | 'second' | 'lose' | null;
 }
 
 export function tableFx(prev: FxSnapshot | null, view: PublicState, mySeat: Seat): TableFx {
-  const none: TableFx = { moves: [], fanfare: null, bonus: null, ending: null, powerEvent: null };
+  const none: TableFx = { moves: [], fanfare: null, bonus: null, ending: null, powerEvent: null, earned: [] };
   if (!prev) return none; // first look at this table: nothing "just happened"
   const sameHand = prev.handNo === view.handNo;
   if (sameHand && view.events.length < prev.events) return none; // an older state arrived late
   const fresh = view.events.slice(sameHand ? prev.events : 0);
 
-  const moves = fresh.filter((e) => e.kind !== 'power').slice(-MAX_MOVE_SOUNDS).map((e) => ({ sound: soundOf(e), seat: e.seat }))
+  const moves = fresh.filter((e) => e.kind !== 'power' && e.kind !== 'earn').slice(-MAX_MOVE_SOUNDS).map((e) => ({ sound: soundOf(e), seat: e.seat }))
     .filter((m) => m.sound !== 'paseCorrido');
   const lastPower = [...fresh].reverse().find((e) => e.kind === 'power');
   const powerEvent = lastPower?.kind === 'power' ? lastPower : null;
+  const earned = fresh.filter((e): e is Extract<GameEvent, { kind: 'earn' }> => e.kind === 'earn');
   let fanfare: Sfx | null = null;
   let bonus: Bonus | null = null;
 
@@ -80,5 +83,5 @@ export function tableFx(prev: FxSnapshot | null, view: PublicState, mySeat: Seat
     else if (mode === 'ffa' && standings(view.scores)[1]?.side === mySide) ending = 'second';
     else ending = 'lose';
   }
-  return { moves, fanfare, bonus, ending, powerEvent };
+  return { moves, fanfare, bonus, ending, powerEvent, earned };
 }

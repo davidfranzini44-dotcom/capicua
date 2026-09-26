@@ -42,7 +42,7 @@ export const TIMING = {
 };
 
 /** A human who hasn't moved after this long gets a move played for them (a "strike"). */
-export const TURN_SECONDS = { public: 15, customDefault: 25 };
+export const TURN_SECONDS = { public: 15, customDefault: 25, /** Arcade: time to choose a power too. */ arcade: 25 };
 export const MAX_STRIKES = 3;
 
 /**
