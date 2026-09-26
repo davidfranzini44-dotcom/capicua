@@ -1,12 +1,14 @@
 // Saved friends: the list (with who's online), adding by code or from a
 // player's card, inviting to a table or tournament, and the invite pop-up.
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { levelFromXp } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { api, type Profile } from '../lib/supabase';
 import type { Push } from '../lib/push';
 import { useSocial, type Friend, type Invite, type InviteTarget, type Social } from '../lib/social';
+import { usePlayerStats, type PlayerStats } from '../lib/useRoom';
 import { Avatar, useErrorText } from './common';
+import { ProfileCard } from './ProfileCard';
 import { Sheet } from './MainScreen';
 import { BellIcon, CheckIcon, EyeIcon, HandshakeIcon, ShareNetworkIcon, UserPlusIcon, UsersThreeIcon, XIcon } from '@phosphor-icons/react';
 import './social.css';
@@ -15,6 +17,28 @@ import './social.css';
 function sorted(s: Social, list: Friend[]) {
   const rank = (f: Friend) => (s.online.get(f.id) === 'online' ? 0 : s.online.has(f.id) ? 1 : 2);
   return [...list].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
+/**
+ * A friend's profile card. It opens at once with what the list already knows
+ * (name, photo, level); the record fills in as soon as it has loaded.
+ */
+function FriendProfile({ friend, s, onClose, onQuickInvite, onWatch }: {
+  friend: Friend; s: Social; onClose: () => void; onQuickInvite: (f: Friend) => void; onWatch?: (f: Friend) => void;
+}) {
+  const { t } = useI18n();
+  const loaded = usePlayerStats([friend.id])[friend.id];
+  const stats: PlayerStats = loaded ?? {
+    id: friend.id, display_name: friend.name, avatar_url: friend.avatar, xp: friend.xp,
+    games: 0, wins: 0, capicuas: 0, pollonas: 0, biggest_pot: 0, tournaments_won: 0,
+  };
+  const where = s.online.get(friend.id);
+  const then = (fn: () => void) => () => { onClose(); fn(); };
+  const action = friend.state !== 'friend' ? undefined
+    : where === 'playing'
+      ? onWatch && <button className="btn ghost wide" onClick={then(() => onWatch(friend))}><EyeIcon size={18} />{t.watch.see}</button>
+      : <button className="btn primary wide" onClick={then(() => onQuickInvite(friend))}>{t.social.inviteToPlay}</button>;
+  return <ProfileCard stats={stats} loading={!loaded} onClose={onClose} actions={action} />;
 }
 
 function FriendFace({ f, s }: { f: Friend; s: Social }) {
@@ -49,6 +73,8 @@ export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
   const [editing, setEditing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const codeInput = useRef<HTMLInputElement>(null);
+  /** The friend whose profile card is open (by id, so it follows their latest state). */
+  const [card, setCard] = useState<string | null>(null);
   // Opening "add by code" puts the cursor in the box, so the keyboard comes straight up.
   const toggleAdd = () => {
     setAddOpen(!addOpen);
@@ -76,15 +102,24 @@ export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
     if (navigator.share) return navigator.share({ text }).catch(() => {});
     try { await navigator.clipboard.writeText(profile.friend_code ?? ''); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* blocked */ }
   };
+  const cardFriend = card ? s.friends.find((f) => f.id === card) : undefined;
+  /** Photo + name: tapping it opens the player's profile card. */
+  const opener = (f: Friend, main: ReactNode) => (
+    <button type="button" className="friend-open" onClick={() => setCard(f.id)}>
+      <FriendFace f={f} s={s} />
+      {main}
+    </button>
+  );
   const friendRow = (f: Friend) => {
     const where = s.online.get(f.id);
     return (
       <div key={f.id} className={`friend-row friend-item ${where ?? 'offline'}`}>
-        <FriendFace f={f} s={s} />
-        <span className="friend-main">
-          <b>{f.name} <small className="friend-level">{t.looks.lvl} {levelFromXp(f.xp)}</small></b>
-          <small className={`friend-where ${where ?? 'offline'}`}>{whereText(s, f.id)}</small>
-        </span>
+        {opener(f, (
+          <span className="friend-main">
+            <b>{f.name} <small className="friend-level">{t.looks.lvl} {levelFromXp(f.xp)}</small></b>
+            <small className={`friend-where ${where ?? 'offline'}`}>{whereText(s, f.id)}</small>
+          </span>
+        ))}
         {editing
           ? <button className="btn ghost small friend-action" onClick={() => confirm(`${t.social.removeConfirm} ${f.name}?`) && run(() => s.remove(f.id))}>{t.social.remove}</button>
           : where === 'playing' && onWatch
@@ -133,16 +168,14 @@ export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
         <div className="friends-group-head"><h4>{t.social.requests}</h4><span>{incoming.length + outgoing.length}</span></div>
         {incoming.map((f) => (
           <div key={f.id} className="friend-row request">
-            <FriendFace f={f} s={s} />
-            <span className="friend-main"><b>{f.name}</b><small>{t.social.wantsToBeFriends}</small></span>
+            {opener(f, <span className="friend-main"><b>{f.name}</b><small>{t.social.wantsToBeFriends}</small></span>)}
             <button className="btn primary small friend-action" onClick={() => run(() => s.respond(f.id, true))}><CheckIcon size={16} weight="bold" />{t.social.accept}</button>
             <button className="icon-btn small friend-decline" aria-label={t.social.decline} onClick={() => run(() => s.respond(f.id, false))}><XIcon size={17} /></button>
           </div>
         ))}
         {outgoing.map((f) => (
           <div key={f.id} className="friend-row pending">
-            <FriendFace f={f} s={s} />
-            <span className="friend-main"><b>{f.name}</b><small>{t.social.pending}</small></span>
+            {opener(f, <span className="friend-main"><b>{f.name}</b><small>{t.social.pending}</small></span>)}
             <button className="btn ghost small friend-action" onClick={() => run(() => s.remove(f.id))}>{t.cancel}</button>
           </div>
         ))}
@@ -173,6 +206,9 @@ export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
           <span><BellIcon size={17} />{push.state === 'install' ? t.push.install : t.push.nudge}</span>
           {push.state === 'off' && <button className="btn primary small" disabled={push.busy} onClick={push.toggle}>{t.push.turnOn}</button>}
         </div>
+      )}
+      {cardFriend && (
+        <FriendProfile friend={cardFriend} s={s} onClose={() => setCard(null)} onQuickInvite={onQuickInvite} onWatch={onWatch} />
       )}
     </section>
   );

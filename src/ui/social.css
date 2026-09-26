@@ -135,6 +135,16 @@
   .friends-card .friend-face { width: 39px; height: 39px; }
   .friends-card .friend-action { padding-inline: 7px; }
 }
+/* Photo + name open the player's profile card. */
+.friend-open {
+  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+  padding: 0; border: 0; border-radius: 12px; background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.friend-open:focus-visible { outline: 2px solid var(--us); outline-offset: 3px; }
+.friend-open:active .friend-main b { color: var(--us); }
+@media (hover: hover) { .friend-open:hover .friend-main b { color: var(--us); } }
+
 /* Phones: the title stays on one line, request buttons drop under the name
    (so the name is never cut), and the notification button gets its own row. */
 @media (max-width: 400px) {
@@ -142,13 +152,13 @@
   .friends-hero h3 { white-space: nowrap; }
   .friends-card .friend-row.request { flex-wrap: wrap; row-gap: 8px; }
   /* Indent = avatar + gap, so the buttons line up under the name. */
-  .friends-card .friend-row.request .friend-main { flex: 1 1 calc(100% - 54px); }
+  .friends-card .friend-row.request .friend-open { flex: 1 1 100%; }
   .friends-card .friend-row.request .friend-action { flex: 1; margin-left: 54px; }
   .friends-push { flex-wrap: wrap; }
   .friends-push .btn { flex: 1 1 100%; }
 }
 @media (max-width: 370px) {
-  .friends-card .friend-row.request .friend-main { flex-basis: calc(100% - 46px); }
+  .friends-card .friend-open { gap: 7px; }
   .friends-card .friend-row.request .friend-action { margin-left: 46px; }
 }
 
