@@ -1,4 +1,4 @@
-// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report|fx|fx-win|fx-lose
+// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp|fair-alerts|fair-back|report|fx|fx-win|fx-lose|fx-sounds
 // Renders the online screens with sample data so layouts can be checked without a backend.
 import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -23,6 +23,8 @@ import type { EntryRow, MatchRow, TournamentRow } from '../lib/useTournament';
 import type { GameState } from '../../supabase/functions/_shared/domino.ts';
 import { BoardDesignPreview } from './BoardDesignPreview';
 import { ArcadePreview } from './arcadePreview';
+import { playSfx, preloadSfx } from '../lib/sfx';
+import type { Sfx } from '../lib/tableFx';
 import { LookContext, type LookState } from '../lib/look';
 import { SocialContext, type Friend, type Invite, type Social } from '../lib/social';
 import { FriendsSection, InviteFriendsSheet, InviteToast, PushRow, QuickInviteSheet } from '../ui/Friends';
@@ -159,8 +161,39 @@ function FxDemo({ end }: { end: 'win' | 'lose' | null }) {
   );
 }
 
+const soundLabels: { id: Sfx; label: string; detail: string }[] = [
+  { id: 'tile', label: 'Ficha', detail: 'Golpe sobre la mesa · 4 variantes' },
+  { id: 'knock', label: 'Pase', detail: 'Dos golpes de nudillos · 3 variantes' },
+  { id: 'draw', label: 'Robar ficha', detail: 'Deslizamiento y toque · 3 variantes' },
+  { id: 'paseCorrido', label: 'Pase corrido', detail: 'Celebración corta' },
+  { id: 'capicua', label: 'Capicúa', detail: 'Fichas y campanas' },
+  { id: 'win', label: 'Victoria', detail: 'Final de partida' },
+  { id: 'second', label: 'Segundo lugar', detail: 'Final de todos contra todos' },
+  { id: 'lose', label: 'Derrota', detail: 'Final discreto' },
+];
+
+function Soundboard() {
+  useEffect(() => { preloadSfx(); }, []);
+  return <main style={{ minHeight: '100dvh', padding: '32px 20px', color: '#fff5df', background: 'radial-gradient(circle at 50% 0%, #246154, #122d2b 65%, #0c201e)' }}>
+    <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      <p style={{ color: '#e5ba6b', fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' }}>Capicúa · audio</p>
+      <h1 style={{ fontSize: 'clamp(32px, 7vw, 52px)', lineHeight: 1.05, margin: '12px 0' }}>Sonidos de la mesa</h1>
+      <p style={{ opacity: 0.8, lineHeight: 1.5, marginBottom: 24 }}>Toca cada botón para escuchar el nuevo sonido. Las fichas, los pases y el robo cambian ligeramente cada vez.</p>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {soundLabels.map(({ id, label, detail }) => <button key={id} type="button" onClick={() => playSfx(id)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, padding: '17px 20px', border: '1px solid #ffffff32', borderRadius: 16, background: '#ffffff12', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+          <span><strong style={{ display: 'block', fontSize: 19 }}>{label}</strong><small style={{ display: 'block', opacity: 0.7, marginTop: 4 }}>{detail}</small></span>
+          <span aria-hidden="true" style={{ fontSize: 24 }}>▶</span>
+        </button>)}
+      </div>
+      <a href="/preview.html?s=fx" style={{ display: 'inline-block', marginTop: 25, color: '#efc77d' }}>Verlos durante una partida →</a>
+    </div>
+  </main>;
+}
+
 function Screen({ s }: { s: string }) {
   const noop = () => {};
+  if (s === 'fx-sounds') return <Soundboard />;
   if (s === 'board-design') return <BoardDesignPreview />;
   if (s.startsWith('arcade')) return <ArcadePreview s={s} />;
   if (s.startsWith('main')) {
