@@ -1,4 +1,5 @@
-// Capicúa's service worker: just enough to make the game installable.
+// Capicúa's service worker: just enough to make the game installable, plus
+// push notifications (invites, friend requests, tournament matches).
 // It never caches the game — every visit loads fresh from the network, so a
 // new deploy shows up right away. Without internet, opening the app shows a
 // short "no connection" page instead of the browser's error.
@@ -35,4 +36,33 @@ self.addEventListener('fetch', (event) => {
       () => new Response(OFFLINE_PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }),
     ),
   );
+});
+
+// A notification from the push function: { title, body, url, tag, icon }.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { title: 'Capicúa', body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'Capicúa', {
+    body: data.body || '',
+    icon: data.icon || '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: data.tag,
+    renotify: !!data.tag,
+    data: { url: data.url || '/' },
+  }));
+});
+
+// Tapping it opens the game where it matters (an open tab is reused).
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  event.waitUntil((async () => {
+    const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const tab = tabs.find((c) => new URL(c.url).origin === self.location.origin);
+    if (tab) {
+      await tab.focus();
+      return tab.navigate(url).catch(() => self.clients.openWindow(url));
+    }
+    return self.clients.openWindow(url);
+  })());
 });

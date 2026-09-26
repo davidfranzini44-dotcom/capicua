@@ -8,6 +8,7 @@ import { forgetTable, rememberTable } from '../lib/lastTable';
 import { api, ApiError, supabase, type Profile } from '../lib/supabase';
 import { usePlayerStats, useRoom, type PlayerStats, type RoomData, type SeatRow } from '../lib/useRoom';
 import { useSocial } from '../lib/social';
+import { useWatchers } from '../lib/watch';
 import { useVoice, type Voice } from '../lib/useVoice';
 import { COOLDOWN_MS, type PhraseId } from '../quickchat';
 import type { ChestKind } from '../../supabase/functions/_shared/table.ts';
@@ -411,6 +412,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
   const [chest, setChest] = useState<ChestKind | null>(null);
   const room = r.room!;
   const game = r.game!;
+  const watchers = useWatchers(room.id);
   // Messages at the table fade on their own (they show under the hand, not over the board).
   useEffect(() => {
     if (!error) return;
@@ -568,6 +570,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
         offline={offline}
         exitConfirm={t.exitConfirmOnline}
         notice={error}
+        watchers={watchers}
         showXp
       />
       {me?.away && room.phase === 'playing' && (

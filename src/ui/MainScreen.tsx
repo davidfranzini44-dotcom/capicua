@@ -91,6 +91,8 @@ export interface HomeProps {
   onLinkGoogle?: () => void;
   /** The chest slots row (needs the signed-in player's chests). */
   chests: ReactNode;
+  /** Today's missions (signed in): how many are done and ready to collect. */
+  missions?: { done: number; total: number; claimable: number; onOpen: () => void };
 }
 
 export function HomeTab(p: HomeProps) {
@@ -115,6 +117,12 @@ export function HomeTab(p: HomeProps) {
             {p.dailyReady && <i className="dot">!</i>}
           </button>
           <button className="chip-btn invite" onClick={invite}><span>📲</span>{t.inviteShort}</button>
+          {p.missions && (
+            <button className="chip-btn missions" onClick={p.missions.onOpen} aria-label={t.missions.title}>
+              <span>🎯</span>{p.missions.done}/{p.missions.total}
+              {p.missions.claimable > 0 && <i className="dot">{p.missions.claimable}</i>}
+            </button>
+          )}
         </div>
         <button className="avatar-card" onClick={p.onAvatar}>
           <span className="avatar-face">{p.profile ? <Avatar name={p.profile.display_name} url={p.profile.avatar_url} /> : '?'}</span>

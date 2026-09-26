@@ -14,6 +14,9 @@ the shop and the admin panel run on the accounts below.
 
 Redeploy the site from this folder: `npx vercel deploy --prod`
 Redeploy a function: `npx supabase functions deploy game --project-ref acohdemaxyzembfztior`
+Push notifications: the `push` function (deploy with `--no-verify-jwt`; the database calls it through
+pg_net). It makes the app's Web Push keys itself on first use (stored in `app_secrets`). On a new
+Supabase project, update the `push_url` row in `app_secrets` to that project's functions URL.
 (`stripe-webhook` also needs `--no-verify-jwt`; the Supabase CLI needs `npx supabase login` once.)
 
 ## Left to do (Supabase dashboard → project capicua)

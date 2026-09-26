@@ -104,3 +104,35 @@
 .look-picker.compact .sw-felt { width: 36px; height: 24px; }
 .look-picker.compact .sw-tile { width: 44px; }
 .friends-card .code-input::placeholder { letter-spacing: normal; font-family: var(--font); text-transform: none; }
+
+/* ---------- daily missions ---------- */
+.chip-btn.missions { position: relative; }
+.missions-sheet h2 { margin-bottom: 2px; }
+.mission-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.mission {
+  display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 14px;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); text-align: left;
+}
+.mission.ready { border-color: var(--us); background: rgba(245,197,66,.1); }
+.mission.claimed { opacity: .6; }
+.mission.bonus { margin-top: 8px; border-style: dashed; }
+.mission-icon { font-size: 1.5rem; width: 34px; text-align: center; flex: none; }
+.mission-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mission-main b { font-size: .92rem; }
+.mission-main small { color: var(--muted); font-size: .75rem; }
+.mission-bar { display: block; height: 7px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; }
+.mission-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #f5c542, #ffdc7a); transition: width .4s ease; }
+.mission.claimed .mission-bar i { background: #3ddc84; }
+.mission-done { color: #3ddc84; font-weight: 900; font-size: 1.2rem; width: 44px; text-align: center; }
+
+/* ---------- notifications ---------- */
+.push-nudge {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px;
+  background: rgba(111,183,255,.1); border: 1px solid rgba(111,183,255,.35); text-align: left; font-size: .85rem;
+}
+.push-nudge span { flex: 1; }
+.setting-row.push-row { align-items: center; }
+.setting-row.push-row span { display: flex; flex-direction: column; gap: 3px; text-align: left; }
+.setting-row.push-row small { color: var(--muted); font-size: .75rem; line-height: 1.35; }
+.setting-row.push-row input { width: 22px; height: 22px; accent-color: var(--us); flex: none; }
+.chip-btn.missions { background: linear-gradient(#b98bff, #7a3fe0); --sh: #52239e; }

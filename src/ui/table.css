@@ -254,3 +254,17 @@
   .table-redesign:not(.mode-ffa) .table-header .score { min-width: 0; }
   .table-redesign .my-area > .table-instruction { flex-wrap: wrap; row-gap: 0; line-height: 1.2; }
 }
+
+/* ---------- watching a friend's game ---------- */
+.watch-bar {
+  display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+  min-height: 56px; padding: 8px 12px; border-radius: 16px; color: var(--ivory);
+  background: #0a3a2c; border: 1px dashed #4f7762; font-size: 14px;
+}
+.watch-bar .backs { display: flex; gap: 3px; }
+.watch-bar .tile-back { width: 10px; height: 20px; }
+.table-tools.watch-tools { justify-content: center; }
+.watch-message { gap: 16px; text-align: center; padding: 24px; }
+.watch-lobby { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.watch-lobby li { padding: 6px 12px; border-radius: 99px; background: rgba(255,255,255,.08); }
+.table-header .watchers { color: #9fd6ff; font-weight: 700; }

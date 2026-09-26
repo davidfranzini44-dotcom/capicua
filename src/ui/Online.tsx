@@ -14,7 +14,10 @@ import { GameShell, HomeTab, InstallSheet, ModeSheet, SettingsSheet, Sheet, TopB
 import { PracticeTable } from './PracticeTable';
 import { ShopTab } from './Shop';
 import { TournamentForm, TournamentScreen, TournamentsSection } from './Tournament';
-import { FriendsSection, InviteToast, QuickInviteSheet } from './Friends';
+import { FriendsSection, InviteToast, PushRow, QuickInviteSheet } from './Friends';
+import { MissionsSheet } from './Missions';
+import { useMissions } from '../lib/missions';
+import { usePush } from '../lib/push';
 import { LookPicker } from './LookPicker';
 import { ProfileCard } from './ProfileCard';
 import { LookContext, useLookState } from '../lib/look';
@@ -24,6 +27,7 @@ const AdminScreen = lazy(() => import('./Admin').then((m) => ({ default: m.Admin
 
 // The table screens pull in LiveKit (voice) — only load them when someone sits down.
 const RoomScreen = lazy(() => import('./RoomScreen').then((m) => ({ default: m.RoomScreen })));
+const WatchScreen = lazy(() => import('./Watch'));
 
 /** Invite links look like …/?sala=ABCD */
 export const inviteCodeFromUrl = () => new URLSearchParams(location.search).get('sala')?.toUpperCase() ?? null;
@@ -37,7 +41,8 @@ type View =
   | { kind: 'signin' }
   | { kind: 'admin' }
   | { kind: 'tournament'; id?: string; code?: string }
-  | { kind: 'newTournament' };
+  | { kind: 'newTournament' }
+  | { kind: 'watch'; friendId: string; name: string };
 
 const home: View = { kind: 'main', tab: 'home' };
 
@@ -70,6 +75,24 @@ export function Online() {
     if (torneo) {
       history.replaceState(null, '', location.pathname);
       return setView({ kind: 'tournament', code: torneo.toUpperCase() });
+    }
+    // From a notification: an invite to accept, or the friends list.
+    const params = new URLSearchParams(location.search);
+    const invitation = params.get('invitacion');
+    if (invitation) {
+      history.replaceState(null, '', location.pathname);
+      try {
+        const r = await api<{ roomId: string | null; tournamentId: string | null }>('invite_respond', { inviteId: invitation, accept: true });
+        if (r.tournamentId) return setView({ kind: 'tournament', id: r.tournamentId });
+        const j = await api<{ roomId: string }>('join_room', { roomId: r.roomId });
+        return setView({ kind: 'room', roomId: j.roomId });
+      } catch (e) {
+        return setView({ kind: 'main', tab: 'home', notice: errText(e) });
+      }
+    }
+    if (params.get('tab') === 'tables') {
+      history.replaceState(null, '', location.pathname);
+      return setView({ kind: 'main', tab: 'tables' });
     }
     const code = inviteCodeFromUrl();
     if (code) {
@@ -164,7 +187,13 @@ export function Online() {
             onCreated={(id) => setView({ kind: 'tournament', id })}
           />
         );
-      case 'queue':
+      case 'watch':
+      return (
+        <Suspense fallback={<Loading />}>
+          <WatchScreen key={view.friendId} friendId={view.friendId} friendName={view.name} uid={uid!} onExit={() => setView({ kind: 'main', tab: 'tables' })} />
+        </Suspense>
+      );
+    case 'queue':
         return <QueueScreen {...view} onMatched={(roomId) => setView({ kind: 'room', roomId })} onCancel={() => setView(home)} />;
       case 'admin':
         return <Suspense fallback={<Loading />}><AdminScreen onExit={() => setView(home)} /></Suspense>;
@@ -190,6 +219,7 @@ export function Online() {
             onAdmin={() => setView({ kind: 'admin' })}
             onTournament={(id) => setView({ kind: 'tournament', id })}
             onTournamentCode={(code) => setView({ kind: 'tournament', code })}
+            onWatch={(f) => setView({ kind: 'watch', friendId: f.id, name: f.name })}
             onNewTournament={() => setView({ kind: 'newTournament' })}
           />
         );
@@ -245,15 +275,16 @@ interface MainProps {
   onTournament?: (id: string) => void;
   onTournamentCode?: (code: string) => void;
   onNewTournament?: () => void;
+  onWatch?: (friend: Friend) => void;
 }
 
-type SheetState = null | 'settings' | 'coins' | 'code' | 'install' | { mode: Mode };
+type SheetState = null | 'settings' | 'coins' | 'code' | 'install' | 'missions' | { mode: Mode };
 
 /** How long someone looks at the home screen before we suggest installing. */
 const INSTALL_NUDGE_MS = 8000;
 
 export function MainScreen(p: MainProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const errText = useErrorText();
   const [sheet, setSheet] = useState<SheetState>(null);
   const [error, setError] = useState<string | null>(p.notice ?? null);
@@ -263,6 +294,8 @@ export function MainScreen(p: MainProps) {
   const social = useSocial();
   const signedIn = !!p.profile;
   const { chests, reload: reloadChests } = useChests(signedIn && !p.guest ? p.profile!.id : undefined);
+  const missions = useMissions(signedIn && p.online);
+  const push = usePush(signedIn && p.online ? p.profile!.id : undefined, lang);
   const install = useInstall();
 
   // Suggest the home-screen install after a moment on Inicio — never on top of another sheet.
@@ -302,6 +335,9 @@ export function MainScreen(p: MainProps) {
         onAvatar={signInOr(() => p.onTab('profile'))}
         onMode={(mode) => setSheet({ mode })}
         onLinkGoogle={p.guest ? linkGoogle : undefined}
+        missions={signedIn && missions.missions.length
+          ? { done: missions.done, total: missions.missions.length, claimable: missions.claimable, onOpen: () => setSheet('missions') }
+          : undefined}
         chests={
           <ChestSlots
             chests={chests}
@@ -323,7 +359,7 @@ export function MainScreen(p: MainProps) {
     body = (
       <TablesTab
         guest={p.guest} onCustom={() => p.onCustom?.()} onRoom={(id) => p.onRoom?.(id)} onCode={() => setSheet('code')}
-        friends={<FriendsSection profile={p.profile!} onQuickInvite={setQuickInvite} />}
+        friends={<FriendsSection profile={p.profile!} onQuickInvite={setQuickInvite} onWatch={p.onWatch} push={push} />}
         tournaments={<TournamentsSection uid={p.profile!.id} onCreate={() => p.onNewTournament?.()} onOpen={(id) => p.onTournament?.(id)} />}
       />
     );
@@ -341,7 +377,7 @@ export function MainScreen(p: MainProps) {
     <GameShell
       tab={p.tab}
       onTab={p.onTab}
-      badges={{ tables: social?.friends.filter((f) => f.state === 'incoming').length ?? 0 }}
+      badges={{ tables: social?.friends.filter((f) => f.state === 'incoming').length ?? 0, home: p.tab === 'home' ? 0 : missions.claimable }}
       top={<TopBar profile={p.profile} onSettings={() => setSheet('settings')} onCoins={() => setSheet('coins')} onLevel={() => p.onTab('profile')} onSignIn={p.online ? p.onSignIn : undefined} />}
     >
       {body}
@@ -350,11 +386,13 @@ export function MainScreen(p: MainProps) {
       {sheet === 'settings' && (
         <SettingsSheet onClose={() => setSheet(null)} onInstall={install.available ? () => setSheet('install') : undefined} extra={signedIn && (
           <>
+            {p.online && <PushRow push={push} />}
             {admin && <button className="btn primary wide" onClick={() => { setSheet(null); p.onAdmin?.(); }}>🛡️ {t.admin.title}</button>}
             <button className="link-btn signout" onClick={() => supabase.auth.signOut()}>{t.signOut}</button>
           </>
         )} />
       )}
+      {sheet === 'missions' && <MissionsSheet m={missions} onClose={() => setSheet(null)} onChest={reloadChests} />}
       {sheet === 'coins' && p.profile && (
         <CoinsSheet profile={p.profile} guest={p.guest} onClose={() => setSheet(null)} onError={setError} onLinkGoogle={linkGoogle} />
       )}

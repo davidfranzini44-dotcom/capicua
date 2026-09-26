@@ -1,4 +1,4 @@
-// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp
+// Dev-only screen gallery: /preview.html?s=main|main-guest|main-out|main-offline|main-profile|queue|ready|countdown|custom|profile|table|away|big-hand|voice|photo|photo-none|custom-guest|notice|missions|home-missions|settings-push|watch|watched|friends|friends-invite|invite-sheet|quick-invite|looks|table-look-<felt>-<tiles>|install-prompt|install-ios|install-ios-inapp
 // Renders the online screens with sample data so layouts can be checked without a backend.
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -24,7 +24,11 @@ import type { GameState } from '../../supabase/functions/_shared/domino.ts';
 import { BoardDesignPreview } from './BoardDesignPreview';
 import { LookContext, type LookState } from '../lib/look';
 import { SocialContext, type Friend, type Invite, type Social } from '../lib/social';
-import { FriendsSection, InviteFriendsSheet, InviteToast, QuickInviteSheet } from '../ui/Friends';
+import { FriendsSection, InviteFriendsSheet, InviteToast, PushRow, QuickInviteSheet } from '../ui/Friends';
+import { MissionsSheet } from '../ui/Missions';
+import type { Missions, Mission } from '../lib/missions';
+import type { Push } from '../lib/push';
+import { HomeTab, SettingsSheet } from '../ui/MainScreen';
 import { LookPicker } from '../ui/LookPicker';
 import { TileShape } from '../ui/Tile';
 import { lookVars } from '../lib/look';
@@ -91,6 +95,23 @@ function data(over: Partial<RoomData>): RoomData {
     room: room({}), seats: [], game: null, hand: [], bets: [], chat: {}, gone: false, online: new Set<string>(), receivedAt: Date.now(),
     sendChat: () => {}, reload: async () => {}, ...over,
   } as RoomData;
+}
+
+const fakePush = (state: Push['state']): Push => ({ state, busy: false, toggle: async () => {} });
+/** Today's missions: the easy one ready to collect, the medium one done, the hard one under way. */
+function fakeMissions(): Missions {
+  const resets = new Date(Date.now() + (5 * 60 + 12) * 60_000).toISOString();
+  const list: Mission[] = [
+    { id: 'play2', tier: 1, kind: 'play', goal: 2, chips: 150, xp: 15, progress: 2, claimed: false, resets_at: resets },
+    { id: 'win2', tier: 2, kind: 'win', goal: 2, chips: 300, xp: 30, progress: 2, claimed: true, resets_at: resets },
+    { id: 'capicua1', tier: 3, kind: 'capicua', goal: 1, chips: 500, xp: 50, progress: 0, claimed: false, resets_at: resets },
+  ];
+  const ready = (m: Mission) => !m.claimed && m.progress >= m.goal;
+  return {
+    missions: list, bonus: { id: 'bonus', tier: 4, kind: 'bonus', goal: 3, chips: 0, xp: 0, progress: 1, claimed: false, resets_at: resets },
+    resetsAt: Date.parse(resets), reload: async () => {}, claim: async () => ({ chips: 150, xp: 15 }), ready,
+    claimable: 1, done: 2,
+  };
 }
 
 function Screen({ s }: { s: string }) {
@@ -233,7 +254,7 @@ function Screen({ s }: { s: string }) {
     return (
       <SocialContext.Provider value={fakeSocial(s === 'friends-invite' ? { invites: [sampleInvite] } : {})}>
         <div className="game-shell"><main className="game-body"><div className="tab-page">
-          <FriendsSection profile={profile} onQuickInvite={noop} />
+          <FriendsSection profile={profile} onQuickInvite={noop} onWatch={noop} push={fakePush('off')} />
         </div></main></div>
         <InviteToast onRoom={noop} onTournament={noop} />
       </SocialContext.Provider>
@@ -322,6 +343,31 @@ function Screen({ s }: { s: string }) {
           </PreviewLook>
         ))}
       </div>
+    );
+  }
+  if (s === 'missions') return <MissionsSheet m={fakeMissions()} onClose={noop} />;
+  if (s === 'home-missions') {
+    return (
+      <div className="game-shell"><main className="game-body tab-home">
+        <HomeTab profile={profile} guest={false} online dailyReady activeRoom={null} onResume={noop} onDaily={noop} onAvatar={noop}
+          onMode={noop} chests={null} missions={{ done: 2, total: 3, claimable: 1, onOpen: noop }} />
+      </main></div>
+    );
+  }
+  if (s === 'settings-push') {
+    return <SettingsSheet onClose={noop} extra={<><PushRow push={fakePush('off')} /><PushRow push={fakePush('install')} /></>} />;
+  }
+  if (s === 'watch' || s === 'watched') {
+    // watch: I'm watching Robert (seat 2). watched: I'm playing and two friends are watching.
+    let g = newGame(() => 0.37, publicRules('2v2'));
+    for (let i = 0; i < 14 && !g.handResult; i++) g = applyMove(g, forcedMove(g, g.turn) ?? chooseMove(g, g.turn, () => 0.5));
+    const view = { ...publicState(g), turn: 2 as Seat };
+    return s === 'watch' ? (
+      <TableView view={view} myHand={[]} mySeat={2} names={['Wilfri', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
+        chat={{}} onChat={noop} endActions={null} turnDeadline={Date.now() + 9000} watching={{ name: 'Robert', onLeave: noop }} />
+    ) : (
+      <TableView view={view} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
+        chat={{}} onChat={noop} endActions={null} watchers={['Papo', 'Chelo']} />
     );
   }
   if (s === 'one-move') {

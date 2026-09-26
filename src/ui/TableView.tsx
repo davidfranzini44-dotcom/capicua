@@ -61,6 +61,10 @@ export interface TableViewProps {
   showXp?: boolean;
   /** A short message (e.g. a refused move) shown in the line under the hand, never over the table. */
   notice?: string | null;
+  /** Watching a friend's game: their seat is "mine", their hand stays face down, no playing. */
+  watching?: { name: string; onLeave: () => void };
+  /** Friends watching this table (the players can always see who). */
+  watchers?: string[];
 }
 
 /** Autoplay when only one tile can be played — a per-device preference. */
@@ -105,6 +109,7 @@ export function TableView(props: TableViewProps) {
   const {
     view, myHand, mySeat, names, levels, avatars, onPlay, onNextHand, onExit, chat, onChat,
     speaking, voice, pot, away, onSeatTap, mutedSeats, turnDeadline, resultNote, offline, exitConfirm, notice,
+    watching, watchers,
   } = props;
   const { t, lang, setLang } = useI18n();
   const [pending, setPending] = useState<Tile | null>(null);
@@ -126,9 +131,11 @@ export function TableView(props: TableViewProps) {
   const n = playerCount(mode);
   const rel = (offset: number) => ((mySeat + offset) % n) as Seat;
   const mySide = sideOf(mode, mySeat);
-  const name = (s: Seat) => (s === mySeat ? t.you : names[s]);
+  const name = (s: Seat) => (s === mySeat && !watching ? t.you : names[s]);
   const playing = !view.handResult && view.winner === null;
-  const myTurn = view.turn === mySeat && playing;
+  /** The bottom seat is up (me, or the friend I'm watching). */
+  const bottomTurn = view.turn === mySeat && playing;
+  const myTurn = bottomTurn && !watching;
 
   const myMoves = useMemo(() => {
     if (!myTurn) return [];
@@ -272,7 +279,7 @@ export function TableView(props: TableViewProps) {
           <h1 className="table-wordmark">CAPICÚA</h1>
           <button className="table-icon" onClick={() => (!playing || confirm(exitConfirm ?? t.exitConfirm)) && onExit()} aria-label={t.exit}><XIcon size={25} /></button>
         </div>
-        <Scores view={view} mySeat={mySeat} name={name} colorOf={colorOf} pot={pot} />
+        <Scores view={view} mySeat={mySeat} name={name} colorOf={colorOf} pot={pot} watchers={watchers} watching={!!watching} />
       </header>
 
       <div className="table-rail"><div className="felt">
@@ -301,12 +308,12 @@ export function TableView(props: TableViewProps) {
           }} />
         </div>
 
-        <div className={`self-seat ${myTurn ? 'active' : ''} ${speaking?.has(mySeat) ? 'speaking' : ''}`}>
+        <div className={`self-seat ${bottomTurn ? 'active' : ''} ${speaking?.has(mySeat) ? 'speaking' : ''}`}>
           <div className="avatar">
-            <Avatar name={t.you} url={avatars?.[mySeat]} />
-            {myTurn && <TurnArrow />}
+            <Avatar name={name(mySeat)} url={avatars?.[mySeat]} />
+            {bottomTurn && <TurnArrow />}
           </div>
-          <b>{ownerOf && <OwnerChip role="me" />}{t.you}</b>
+          <b>{ownerOf && <OwnerChip role="me" />}{name(mySeat)}</b>
           {myBubble && <span className="self-bubble">{myBubble.text}</span>}
         </div>
 
@@ -324,8 +331,14 @@ export function TableView(props: TableViewProps) {
             ))}
           </div>
         )}
+        {watching && (
+          <div className="watch-bar">
+            <span className="backs" aria-hidden>{Array.from({ length: Math.min(view.handCounts[mySeat], 7) }, (_, i) => <TileBack key={i} />)}</span>
+            <span>👁 {t.watch.watching} <b>{watching.name}</b> · {view.handCounts[mySeat]} {view.handCounts[mySeat] === 1 ? t.watch.tile : t.watch.tiles}</span>
+          </div>
+        )}
         {/* A big 1v1 hand (lots of draws) wraps into balanced rows sized to fit the screen. */}
-        <div ref={handRef} className={`hand ${hand.rows > 1 ? 'multi' : ''}`}
+        <div ref={handRef} hidden={!!watching} className={`hand ${hand.rows > 1 ? 'multi' : ''}`}
           style={{ '--per-row': hand.perRow, '--tile-w': `${hand.tile}px` } as CSSProperties}>
           <div className="hand-rows">
             {myHand.map((tile) => {
@@ -351,10 +364,16 @@ export function TableView(props: TableViewProps) {
           {!notice && !toast && playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
           {pending && <button className="table-cancel" onClick={() => setPending(null)} aria-label={t.cancel}><XIcon size={17} /></button>}
         </div>
-        <div className="table-tools">
-          {voice ?? <span className="practice-voice" title={copy.practice}><MicrophoneSlashIcon size={25} /><small>{lang === 'es' ? 'Sin voz' : 'No voice'}</small></span>}
-          <button className={`table-chat-button ${chatOpen ? 'on' : ''}`} onClick={() => setChatOpen((o) => !o)} aria-expanded={chatOpen} aria-controls="table-chat"><ChatCircleDotsIcon size={28} weight="fill" /><span>{copy.chat}</span></button>
-        </div>
+        {watching ? (
+          <div className="table-tools watch-tools">
+            <button className="btn ghost" onClick={watching.onLeave}>{t.watch.stop}</button>
+          </div>
+        ) : (
+          <div className="table-tools">
+            {voice ?? <span className="practice-voice" title={copy.practice}><MicrophoneSlashIcon size={25} /><small>{lang === 'es' ? 'Sin voz' : 'No voice'}</small></span>}
+            <button className={`table-chat-button ${chatOpen ? 'on' : ''}`} onClick={() => setChatOpen((o) => !o)} aria-expanded={chatOpen} aria-controls="table-chat"><ChatCircleDotsIcon size={28} weight="fill" /><span>{copy.chat}</span></button>
+          </div>
+        )}
       </footer>
 
       <dialog ref={menuRef} className="table-settings" onCancel={() => setMenuOpen(false)} onClose={() => setMenuOpen(false)}>
@@ -376,8 +395,9 @@ export function TableView(props: TableViewProps) {
   );
 }
 
-function Scores({ view, mySeat, name, colorOf, pot }: {
+function Scores({ view, mySeat, name, colorOf, pot, watchers, watching }: {
   view: PublicState; mySeat: Seat; name: (s: Seat) => string; colorOf: (s: Seat) => string; pot?: number;
+  watchers?: string[]; watching?: boolean;
 }) {
   const { t } = useI18n();
   const mode = view.rules.mode;
@@ -385,7 +405,7 @@ function Scores({ view, mySeat, name, colorOf, pot }: {
   const middle = (
     <div className="target">
       {t.to} {view.rules.target}
-      <small>{t.hand} {view.handNo}</small>
+      <small>{t.hand} {view.handNo}{watchers?.length ? <span className="watchers" title={`${t.watch.watchedBy}: ${watchers.join(', ')}`} aria-label={`${t.watch.watchedBy}: ${watchers.join(', ')}`}> · 👁 {watchers.length}</span> : null}</small>
       {pot ? <span className="pot">🪙 {pot.toLocaleString()}</span> : null}
     </div>
   );
@@ -403,7 +423,7 @@ function Scores({ view, mySeat, name, colorOf, pot }: {
   const theirLabel = mode === '1v1' ? name(((mySeat + 1) % 2) as Seat) : t.them;
   return (
     <div className="scores">
-      <div className="score us"><span>{mode === '1v1' ? t.you : t.us}</span><b>{view.scores[mySide]}</b></div>
+      <div className="score us"><span>{mode === '1v1' ? name(mySeat) : watching ? name(mySeat) : t.us}</span><b>{view.scores[mySide]}</b></div>
       {middle}
       <div className="score them"><span>{theirLabel}</span><b>{view.scores[other]}</b></div>
     </div>

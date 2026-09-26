@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { levelFromXp } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { api, type Profile } from '../lib/supabase';
+import type { Push } from '../lib/push';
 import { useSocial, type Friend, type Invite, type InviteTarget, type Social } from '../lib/social';
 import { Avatar, useErrorText } from './common';
 import { Sheet } from './MainScreen';
@@ -34,7 +35,9 @@ function useWhereText() {
 }
 
 /** The "Mis amigos" card at the top of the Mesas tab. */
-export function FriendsSection({ profile, onQuickInvite }: { profile: Profile; onQuickInvite: (friend: Friend) => void }) {
+export function FriendsSection({ profile, onQuickInvite, onWatch, push }: {
+  profile: Profile; onQuickInvite: (friend: Friend) => void; onWatch?: (friend: Friend) => void; push?: Push;
+}) {
   const s = useSocial();
   const { t } = useI18n();
   const errText = useErrorText();
@@ -71,6 +74,13 @@ export function FriendsSection({ profile, onQuickInvite }: { profile: Profile; o
         {friends.length > 0 && <small className="fine">{onlineCount} {t.social.onlineNow}</small>}
       </div>
 
+      {push && (push.state === 'off' || push.state === 'install') && (
+        <div className="push-nudge">
+          <span>🔔 {push.state === 'install' ? t.push.install : t.push.nudge}</span>
+          {push.state === 'off' && <button className="btn primary small" disabled={push.busy} onClick={push.toggle}>{t.push.turnOn}</button>}
+        </div>
+      )}
+
       {incoming.map((f) => (
         <div key={f.id} className="friend-row request">
           <FriendFace f={f} s={s} />
@@ -92,7 +102,9 @@ export function FriendsSection({ profile, onQuickInvite }: { profile: Profile; o
             </span>
             {editing
               ? <button className="btn ghost small" onClick={() => confirm(`${t.social.removeConfirm} ${f.name}?`) && run(() => s.remove(f.id))}>{t.social.remove}</button>
-              : <button className="btn primary small" disabled={where === 'playing'} onClick={() => onQuickInvite(f)}>{t.social.invite}</button>}
+              : where === 'playing' && onWatch
+                ? <button className="btn ghost small" onClick={() => onWatch(f)}>👁 {t.watch.see}</button>
+                : <button className="btn primary small" disabled={where === 'playing'} onClick={() => onQuickInvite(f)}>{t.social.invite}</button>}
           </div>
         );
       })}
@@ -121,6 +133,19 @@ export function FriendsSection({ profile, onQuickInvite }: { profile: Profile; o
       </form>
       {note && <p className={note.ok ? 'note-ok' : 'error'}>{note.text}</p>}
     </section>
+  );
+}
+
+/** The notifications switch in Settings, with why it's off when it can't be on. */
+export function PushRow({ push }: { push: Push }) {
+  const { t } = useI18n();
+  const can = push.state === 'on' || push.state === 'off';
+  const why = can ? t.push.why : push.state === 'denied' ? t.push.denied : push.state === 'install' ? t.push.install : t.push.unsupported;
+  return (
+    <label className="setting-row push-row">
+      <span>🔔 {t.push.title}<small>{why}</small></span>
+      {can && <input type="checkbox" checked={push.state === 'on'} disabled={push.busy} onChange={push.toggle} />}
+    </label>
   );
 }
 
