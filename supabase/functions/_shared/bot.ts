@@ -1,5 +1,5 @@
 import {
-  comodinOptions, dobleSequences, ends, forcedMove, isDouble, legalMoves, nextSeat, pips, placeOnLine, powerBlock, sameTile, seatsOf, sideOf,
+  callPassBlock, comodinOptions, dobleSequences, ends, forcedMove, isDouble, legalMoves, nextSeat, pips, placeOnLine, powerBlock, sameTile, seatsOf, sideOf,
   type GameState, type Move, type Seat, type Side, type Tile,
 } from './domino.ts';
 
@@ -87,6 +87,10 @@ export function chooseArcadeMove(state: GameState, seat: Seat, rng: () => number
 
   // Candado: leave the next rival only the end they've shown they can't follow.
   const next = nextSeat(state, seat);
+  if (rivals.includes(next) && callPassBlock(state, seat) === null && (a.charges[next] ?? 0) === 0) {
+    const after = ends({ line: placeOnLine(state.line, state.origin, seat, play.tile, play.side).line })!;
+    if (after.every((n) => state.voids[next].includes(n))) return { ...play, callPass: true };
+  }
   if (powerBlock(state, seat, 'candado') === null && rivals.includes(next)) {
     const after = ends({ line: placeOnLine(state.line, state.origin, seat, play.tile, play.side).line })!;
     for (const lock of ['L', 'R'] as Side[]) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyMove, ARCADE, arcadeRules, canRescue, comodinOptions, dobleSequences, forcedMove, fullSet, legalMoves, newGame, nextHand,
+  applyMove, ARCADE, arcadeRules, callPassBlock, canRescue, comodinOptions, dobleSequences, forcedMove, fullSet, legalMoves, newGame, nextHand,
   physOf, powerBlock, sameTile, type GameState, type Move, type Seat, type Tile,
 } from '../supabase/functions/_shared/domino.ts';
 import { chooseArcadeMove } from '../supabase/functions/_shared/bot.ts';
@@ -36,6 +36,84 @@ const FULL = fullSet().map(([a, b]) => `${a}-${b}`).sort();
 
 const humans: SeatInfo[] = [0, 1, 2, 3].map((s) => ({ seat: s as Seat, userId: `u${s}`, name: `P${s}`, isBot: false, away: false }));
 const bots: SeatInfo[] = [0, 1, 2, 3].map((s) => ({ seat: s as Seat, userId: null, name: `B${s}`, isBot: true, away: false }));
+
+describe('Arcade: Call the Pass', () => {
+  const hand = () => arcadeWith(
+    [[[4, 6], [1, 1]], [[2, 2], [3, 3]], [[0, 0], [0, 5]], [[5, 5], [6, 6]]],
+    [[1, 4]], 0, { arcade: { charges: [1, 0, 0, 0], lock: null, powerUsed: false, passes: 0 } },
+  );
+
+  it('stakes one charge with a legal play, then wins two when the next rival passes', () => {
+    const called = applyMove(hand(), { type: 'play', tile: [4, 6], side: 'R', callPass: true });
+    expect(called.arcade).toMatchObject({ charges: [0, 0, 0, 0], callUsed: [true, false, false, false], call: { caller: 0, target: 1 } });
+    expect(called.events.slice(-2)).toEqual([
+      { kind: 'callPass', seat: 0, target: 1 }, { kind: 'play', seat: 0, tile: [4, 6], side: 'R' },
+    ]);
+    expect(publicState(called).arcade?.call).toEqual({ caller: 0, target: 1 });
+    expect(forcedMove(called, 1)).toEqual({ type: 'pass' });
+    const result = applyMove(called, { type: 'pass' });
+    expect(result.arcade).toMatchObject({ charges: [2, 0, 0, 0], call: null });
+    expect(result.events.at(-1)).toEqual({ kind: 'callPassResult', seat: 0, target: 1, success: true, gained: 2 });
+    expect(result.events.some((e) => e.kind === 'earn' && e.seat === 0 && e.reason === 'block')).toBe(false);
+    expect(Object.keys(publicState(result))).not.toContain('hands');
+  });
+
+  it('loses the stake if the rival plays, including a winning last tile', () => {
+    const s = hand();
+    s.hands[1] = [[1, 2]];
+    const called = applyMove(s, { type: 'play', tile: [4, 6], side: 'R', callPass: true });
+    const result = applyMove(called, { type: 'play', tile: [1, 2], side: 'L' });
+    expect(result.handResult?.winnerSeat).toBe(1);
+    expect(result.arcade?.call).toBeNull();
+    expect(result.events).toContainEqual({ kind: 'callPassResult', seat: 0, target: 1, success: false, gained: 0 });
+  });
+
+  it('caps the reward at two charges', () => {
+    const s = hand();
+    s.arcade!.charges[0] = 2;
+    const called = applyMove(s, { type: 'play', tile: [4, 6], side: 'R', callPass: true });
+    const result = applyMove(called, { type: 'pass' });
+    expect(result.arcade?.charges[0]).toBe(2);
+    expect(result.events.at(-1)).toMatchObject({ kind: 'callPassResult', gained: 1 });
+  });
+
+  it('settles a rival call before that rival calls the following player', () => {
+    const s = hand();
+    s.hands[1] = [[1, 6], [2, 2]];
+    s.arcade!.charges[1] = 1;
+    const first = applyMove(s, { type: 'play', tile: [4, 6], side: 'R', callPass: true });
+    const second = applyMove(first, { type: 'play', tile: [1, 6], side: 'R', callPass: true });
+    expect(second.events).toContainEqual({ kind: 'callPassResult', seat: 0, target: 1, success: false, gained: 0 });
+    expect(second.arcade?.call).toEqual({ caller: 1, target: 2 });
+    expect(second.arcade?.charges.slice(0, 2)).toEqual([0, 0]);
+  });
+
+  it('is once per player per hand, and resets on the next hand', () => {
+    const called = applyMove(hand(), { type: 'play', tile: [4, 6], side: 'R', callPass: true });
+    const after = applyMove(called, { type: 'pass' });
+    const again = structuredClone(after);
+    again.turn = 0;
+    expect(callPassBlock(again, 0)).toBe('used_hand');
+    expect(() => applyMove(again, { type: 'play', tile: [1, 1], side: 'L', callPass: true })).toThrow('used_hand');
+    again.handResult = { kind: 'domino', winnerSeat: 2, side: 0, points: 1, capicua: false, bonus: 0, total: 1,
+      counts: [1, 2, 2, 2], hands: again.hands, tieToMano: false };
+    const next = nextHand(again, seeded(99));
+    expect(next.arcade?.callUsed).toEqual([false, false, false, false]);
+    expect(next.arcade?.call).toBeNull();
+    expect(next.arcade?.charges[0]).toBe(2);
+  });
+
+  it('rejects opening, final tile, no charge, a used power, and Traditional play', () => {
+    const s = hand();
+    expect(callPassBlock({ ...s, line: [] }, 0)).toBe('opening');
+    expect(callPassBlock({ ...s, hands: [[[4, 6]], ...s.hands.slice(1)] }, 0)).toBe('need2');
+    expect(callPassBlock({ ...s, arcade: { ...s.arcade!, charges: [0, 0, 0, 0] } }, 0)).toBe('no_charges');
+    expect(callPassBlock({ ...s, arcade: { ...s.arcade!, powerUsed: true } }, 0)).toBe('power_used');
+    expect(() => applyMove(s, { type: 'play', tile: [4, 6], side: 'R', lock: 'L', callPass: true })).toThrow();
+    const traditional = { ...s, arcade: undefined, rules: { ...s.rules, ruleset: 'traditional' as const } };
+    expect(() => applyMove(traditional, { type: 'play', tile: [4, 6], side: 'R', callPass: true })).toThrow();
+  });
+});
 
 describe('Arcade: match and charges', () => {
   it('starts with no powers (they are earned), 2v2, first to three stars, no bonus points', () => {

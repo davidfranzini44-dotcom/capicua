@@ -372,6 +372,10 @@ const dict = {
       practice: 'Practicar', practiceSub: 'Contra bots, sin conexión', online: 'Jugar en línea', onlineSub: 'Con gente real · gratis',
       private: 'Mesa privada', privateSub: 'Invita a tus amigos', powersBtn: 'Poderes', powersTitle: 'Poderes', remaining: 'te quedan',
       charges: 'Poderes que le quedan',
+      callPass: { name: 'Cantar pase', desc: 'Apuesta ⚡1 con tu jugada: si el siguiente rival pasa, recuperas hasta ⚡2. Una vez por mano.',
+        armed: '🎯 Cantar pase: elige una ficha. Cuesta ⚡1 al jugarla.', bubble: '🎯 ¡Canto pase!',
+        bubbleSuccess: '🎯 ¡Acerté!', bubbleFailed: '🎯 Fallé',
+        success: '🎯 ¡Acertaste el pase! Recuperaste poderes.', failed: '🎯 El rival jugó: perdiste la apuesta.' },
       powers: {
         cambio: { name: 'Cambio', desc: 'Da una ficha tuya por una al azar de un rival. Después juegas.' },
         doble: { name: 'Doble golpe', desc: 'Pon dos fichas seguidas en el mismo turno.' },
@@ -382,6 +386,7 @@ const dict = {
         no_charges: 'Sin poderes: gánalos dejando al rival sin jugada', power_used: 'Ya usaste un poder este turno', need3: 'Necesitas 3 fichas', need2: 'Necesitas 2 fichas',
         no_sequence: 'No tienes dos jugadas seguidas', no_change: 'Ninguna ficha cambiaría', no_play: 'Necesitas una jugada normal',
         opening: 'Espera la salida de la mano', not_your_turn: 'No es tu turno', hand_over: 'La mano terminó', not_arcade: '',
+        used_hand: 'Ya cantaste pase esta mano',
       } as Record<string, string>,
       steps: {
         cambioTile: 'Elige la ficha que vas a dar', cambioTarget: '¿Con qué rival cambias?', doble1: 'Elige la primera ficha',
@@ -870,6 +875,10 @@ const dict = {
       practice: 'Practice', practiceSub: 'Against bots, offline', online: 'Play online', onlineSub: 'Real people · free',
       private: 'Private table', privateSub: 'Invite your friends', powersBtn: 'Powers', powersTitle: 'Powers', remaining: 'left',
       charges: 'Powers left',
+      callPass: { name: 'Call the Pass', desc: 'Stake ⚡1 with a play: if the next rival passes, regain up to ⚡2. Once per hand.',
+        armed: '🎯 Call the Pass: choose a tile. It costs ⚡1 when played.', bubble: '🎯 I call a pass!',
+        bubbleSuccess: '🎯 Called it!', bubbleFailed: '🎯 Missed it',
+        success: '🎯 You called the pass! Powers restored.', failed: '🎯 The rival played: your stake is lost.' },
       powers: {
         cambio: { name: 'Swap', desc: "Give one of your tiles for a random one of a rival's. Then play." },
         doble: { name: 'Double hit', desc: 'Play two tiles in a row in one turn.' },
@@ -880,6 +889,7 @@ const dict = {
         no_charges: 'No powers: earn them by leaving a rival with no play', power_used: 'You already used a power this turn', need3: 'You need 3 tiles', need2: 'You need 2 tiles',
         no_sequence: 'You have no two plays in a row', no_change: 'No tile would change', no_play: 'You need a normal play',
         opening: 'Wait for the hand to open', not_your_turn: 'Not your turn', hand_over: 'The hand is over', not_arcade: '',
+        used_hand: 'You already called a pass this hand',
       } as Record<string, string>,
       steps: {
         cambioTile: 'Pick the tile you give', cambioTarget: 'Swap with which rival?', doble1: 'Pick the first tile',

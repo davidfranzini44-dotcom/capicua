@@ -26,7 +26,8 @@ export function publicState(s: GameState): PublicState {
   const { hands, boneyard, ...rest } = s;
   const pub: PublicState = { ...rest, handCounts: hands.map((h) => h.length), boneyardCount: boneyard.length };
   // Arcade power state is public, except the server's list of recent request ids.
-  if (s.arcade) pub.arcade = { charges: s.arcade.charges, lock: s.arcade.lock, powerUsed: s.arcade.powerUsed, passes: s.arcade.passes };
+  if (s.arcade) pub.arcade = { charges: s.arcade.charges, lock: s.arcade.lock, powerUsed: s.arcade.powerUsed, passes: s.arcade.passes,
+    callUsed: s.arcade.callUsed ?? [false, false, false, false], call: s.arcade.call ?? null };
   return pub;
 }
 

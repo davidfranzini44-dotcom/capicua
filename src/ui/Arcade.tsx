@@ -1,7 +1,7 @@
 // Capicúa Arcade at the table: the stars, the powers menu, the step-by-step bar
 // for choosing a power (with confirm/cancel), and the short first-time guide.
 import { useState } from 'react';
-import { ARCADE, powerBlock, type GameState, type Power, type Seat, type Tile } from '../../supabase/functions/_shared/domino.ts';
+import { ARCADE, callPassBlock, powerBlock, type GameState, type Power, type Seat, type Tile } from '../../supabase/functions/_shared/domino.ts';
 import { useI18n } from '../i18n';
 import type { Draft, DraftView } from '../lib/powerDraft';
 import { HandTile } from './Tile';
@@ -24,13 +24,14 @@ export function Charges({ n, label }: { n: number; label: string }) {
   return <span className={`charge-pill ${n === 0 ? 'empty' : ''}`} aria-label={`${label}: ${n}`}>⚡{n}</span>;
 }
 
-/** The "Poderes · 2" menu: the four powers, and why one can't be used right now. */
-export function PowersPanel({ state, seat, onPick, onClose }: {
-  state: GameState; seat: Seat; onPick: (p: Power) => void; onClose: () => void;
+/** The "Poderes · 2" menu: powers, Call the Pass, and why each is unavailable. */
+export function PowersPanel({ state, seat, onPick, onCallPass, onClose }: {
+  state: GameState; seat: Seat; onPick: (p: Power) => void; onCallPass: () => void; onClose: () => void;
 }) {
   const { t } = useI18n();
   const a = t.arcade;
   const left = state.arcade?.charges[seat] ?? 0;
+  const callBlock = callPassBlock(state, seat);
   return (
     <div className="powers-panel" id="powers-panel" role="dialog" aria-label={a.powersTitle}>
       <div className="powers-head">
@@ -50,6 +51,14 @@ export function PowersPanel({ state, seat, onPick, onClose }: {
           </button>
         );
       })}
+      <button className={`power-row ${callBlock ? 'off' : ''}`}
+        disabled={!!callBlock} onClick={onCallPass}>
+        <span className="power-icon" aria-hidden>🎯</span>
+        <span className="power-text">
+          <b>{a.callPass.name}</b>
+          <small>{callBlock ? a.blocked[callBlock] : a.callPass.desc}</small>
+        </span>
+      </button>
     </div>
   );
 }
@@ -141,6 +150,7 @@ export function ArcadeIntro({ onClose }: { onClose: () => void }) {
           {POWERS.map((p) => (
             <li key={p}><span aria-hidden>{POWER_ICON[p]}</span><b>{a.powers[p].name}</b><small>{a.powers[p].desc}</small></li>
           ))}
+          <li><span aria-hidden>🎯</span><b>{a.callPass.name}</b><small>{a.callPass.desc}</small></li>
         </ul>
         <button className="btn primary wide" onClick={onClose} autoFocus>{a.intro.go}</button>
       </div>

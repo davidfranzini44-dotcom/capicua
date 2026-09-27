@@ -28,7 +28,7 @@ export interface Placed {
 
 export type Move =
   /** `lock` = Candado: after this play, that end of the board is closed for the next player. */
-  | { type: 'play'; tile: Tile; side: Side; lock?: Side }
+  | { type: 'play'; tile: Tile; side: Side; lock?: Side; callPass?: boolean }
   | { type: 'pass' }
   | { type: 'draw' }
   /** Give one of my fichas for a random one of an opponent's. My turn goes on. */
@@ -48,7 +48,9 @@ export type GameEvent =
   /** An Arcade power. Never carries the values of fichas that change hands. */
   | { kind: 'power'; seat: Seat; power: Power; target?: Seat; side?: Side; tile?: Tile; from?: number; to?: number }
   /** Arcade: a power earned — `block` (my play left the next rival without a play) or `comeback` (my team lost a hand). */
-  | { kind: 'earn'; seat: Seat; reason: 'block' | 'comeback' };
+  | { kind: 'earn'; seat: Seat; reason: 'block' | 'comeback' }
+  | { kind: 'callPass'; seat: Seat; target: Seat }
+  | { kind: 'callPassResult'; seat: Seat; target: Seat; success: boolean; gained: number };
 
 export interface HandResult {
   kind: 'domino' | 'tranque';
@@ -93,6 +95,10 @@ export interface ArcadeState {
   powerUsed: boolean;
   /** Consecutive unrestricted passes; four in a row block the hand. */
   passes: number;
+  /** One Call the Pass per seat per hand. Older saved games may omit this. */
+  callUsed?: boolean[];
+  /** The rival whose current turn will settle the call. */
+  call?: { caller: Seat; target: Seat } | null;
   /** Recent online action ids, so a retried request is never applied twice (server only). */
   recent?: string[];
 }
@@ -222,7 +228,8 @@ function startHand(prev: Pick<GameState, 'rules' | 'scores' | 'handNo' | 'tally'
   if (isArcade(prev.rules)) {
     // Charges last the whole match; everything that belongs to a turn starts fresh.
     const charges = prev.arcade?.charges ?? new Array(playerCount(prev.rules.mode)).fill(ARCADE.startCharges);
-    state.arcade = { charges: [...charges], lock: null, powerUsed: false, passes: 0, recent: prev.arcade?.recent };
+    state.arcade = { charges: [...charges], lock: null, powerUsed: false, passes: 0,
+      callUsed: new Array(playerCount(prev.rules.mode)).fill(false), call: null, recent: prev.arcade?.recent };
   }
   return state;
 }
@@ -325,8 +332,21 @@ function lay(s: GameState, seat: Seat, tile: Tile, side: Side, wildHalf?: 0 | 1)
 }
 
 /** The turn moves on: the lock on this player expires and the next player starts fresh. */
-function endTurn(s: GameState, seat: Seat) {
+function resolveCall(s: GameState, seat: Seat, passed: boolean) {
+  const call = s.arcade?.call;
+  if (!call || call.target !== seat) return;
+  let gained = 0;
+  if (passed) {
+    gained = Math.min(2, ARCADE.maxCharges - s.arcade!.charges[call.caller]);
+    s.arcade!.charges[call.caller] += gained;
+  }
+  s.events.push({ kind: 'callPassResult', seat: call.caller, target: seat, success: passed, gained });
+  s.arcade!.call = null;
+}
+
+function endTurn(s: GameState, seat: Seat, passed = false) {
   if (s.arcade) {
+    resolveCall(s, seat, passed);
     if (s.arcade.lock?.seat === seat) s.arcade.lock = null;
     s.arcade.powerUsed = false;
   }
@@ -336,6 +356,11 @@ function endTurn(s: GameState, seat: Seat) {
 export function applyMove(prev: GameState, move: Move, rng: Rng = Math.random): GameState {
   if (prev.handResult) throw new Error('Hand is over');
   const seat = prev.turn;
+  if (move.type === 'play' && move.callPass) {
+    const block = callPassBlock(prev, seat);
+    if (block) throw new Error(`Call the Pass not available: ${block}`);
+    if (move.lock) throw new Error('Call the Pass cannot be combined with Candado');
+  }
   if (move.type === 'cambio' || move.type === 'doble' || move.type === 'comodin' || (move.type === 'play' && move.lock)) {
     return applyPower(prev, seat, move, rng);
   }
@@ -363,10 +388,10 @@ export function applyMove(prev: GameState, move: Move, rng: Rng = Math.random): 
       // The player whose placement left this one without a play earns a power
       // (not when a Candado did it: that power already had its effect).
       const before = ((seat + playerCount(mode) - 1) % playerCount(mode)) as Seat;
-      if (!locked && rightAfterAPlay && s.lastPlayer === before) earn(s, before, 'block');
+      if (!locked && rightAfterAPlay && s.lastPlayer === before && s.arcade.call?.target !== seat) earn(s, before, 'block');
       // A pass while locked out doesn't count towards a blocked hand: that player gets another go with both ends open.
       s.arcade.passes = locked ? 0 : s.arcade.passes + 1;
-      endTurn(s, seat);
+      endTurn(s, seat, true);
       if (s.arcade.passes >= ARCADE.passesToBlock) return finishTranque(s);
       return s;
     }
@@ -392,6 +417,18 @@ export function applyMove(prev: GameState, move: Move, rng: Rng = Math.random): 
   const capicua =
     willEmpty && before !== null && before[0] !== before[1] &&
     ((tile[0] === before[0] && tile[1] === before[1]) || (tile[0] === before[1] && tile[1] === before[0]));
+
+  if (move.callPass) {
+    // A targeted rival may make their own call. Settle the earlier one before
+    // replacing the single pending call for the following seat.
+    resolveCall(s, seat, false);
+    const target = nextSeat(s, seat);
+    s.arcade!.charges[seat]--;
+    s.arcade!.callUsed ??= new Array(playerCount(mode)).fill(false);
+    s.arcade!.callUsed[seat] = true;
+    s.arcade!.call = { caller: seat, target };
+    s.events.push({ kind: 'callPass', seat, target });
+  }
 
   lay(s, seat, tile, side);
 
@@ -420,6 +457,8 @@ function finishTranque(s: GameState): GameState {
 }
 
 function finishHand(s: GameState, kind: 'domino' | 'tranque', winnerSeat: Seat, capicua: boolean, tieToMano = false): GameState {
+  // A final-tile play by the targeted rival settles the wager before scoring.
+  if (s.arcade?.call) resolveCall(s, s.arcade.call.target, false);
   const counts = s.hands.map(handCount);
   const arcade = isArcade(s.rules);
   // Arcade: every hand is worth one star, capicúa included (it only gets a celebration).
@@ -435,6 +474,7 @@ function finishHand(s: GameState, kind: 'domino' | 'tranque', winnerSeat: Seat, 
     counts, hands: s.hands.map((h) => h.map((t) => [...t] as Tile)), tieToMano,
   };
   if (s.arcade) {
+    s.arcade.call = null;
     s.arcade.lock = null;
     s.arcade.powerUsed = false;
   }
@@ -550,6 +590,15 @@ export function powerBlock(s: GameState, seat: Seat, power: Power): PowerBlock |
 /** No ordinary play, but a power could still open something up: the player decides, nobody auto-passes them. */
 export const canRescue = (s: GameState, seat: Seat) =>
   !!s.arcade && legalMoves(s, seat).length === 0 && (powerBlock(s, seat, 'cambio') === null || powerBlock(s, seat, 'comodin') === null);
+
+/** A call is staked on an ordinary placement and judged on the next rival's turn. */
+export function callPassBlock(s: GameState, seat: Seat): PowerBlock | 'used_hand' | null {
+  const base = powerBase(s, seat);
+  if (base) return base;
+  if (s.arcade?.callUsed?.[seat]) return 'used_hand';
+  if (s.hands[seat].length < 2) return 'need2';
+  return legalMoves(s, seat).length ? null : 'no_play';
+}
 
 /** A power earned (nothing happens at the limit). */
 function earn(s: GameState, seat: Seat, reason: 'block' | 'comeback') {

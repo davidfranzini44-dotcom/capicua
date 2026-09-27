@@ -165,6 +165,7 @@ export function TableView(props: TableViewProps) {
   const arcade = view.arcade ?? null;
   const [powersOpen, setPowersOpen] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [callArmed, setCallArmed] = useState(false);
   const [introOpen, setIntroOpen] = useArcadeIntro(!!arcade && !watching);
   const [arcadeNotice, setArcadeNotice] = useState<string | null>(null);
   const dv = draft && myTurn ? draftView(mine, mySeat, draft) : null;
@@ -178,6 +179,7 @@ export function TableView(props: TableViewProps) {
   useEffect(() => {
     setDraft(null);
     setPowersOpen(false);
+    setCallArmed(false);
   }, [view.handNo, view.events.length, view.turn]);
 
   // One move per turn: a tap plus autoplay (or a double tap) before the server's answer
@@ -188,11 +190,11 @@ export function TableView(props: TableViewProps) {
   // Only one thing you can do? Do it (after a beat, so you see it happen).
   const single = myMoves.length === 1 ? myMoves[0] : null;
   useEffect(() => {
-    if (!autoplay || !single || draft || powersOpen || powersReady) return;
+    if (!autoplay || !single || draft || powersOpen || powersReady || callArmed) return;
     const id = setTimeout(() => play(single), 650);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoplay, single && JSON.stringify(single), view.line.length, view.handNo, draft, powersOpen, powersReady]);
+  }, [autoplay, single && JSON.stringify(single), view.line.length, view.handNo, draft, powersOpen, powersReady, callArmed]);
 
   // The hand's summary waits for the last tile to land — and for a capicúa pop-up to finish.
   const resultDelay = view.handResult?.capicua ? RESULT_AFTER_BONUS_MS : RESULT_MS;
@@ -227,6 +229,10 @@ export function TableView(props: TableViewProps) {
       playEarnSfx(delay + 250);
       if (!watching && fx.earned.some((e) => e.seat === mySeat && e.reason === 'block')) flashArcade(t.arcade.earnedYou);
     }
+    for (const result of fx.callResults) {
+      if (result.success) playEarnSfx(delay + 250);
+      if (!watching && result.seat === mySeat) flashArcade(result.success ? t.arcade.callPass.success : t.arcade.callPass.failed);
+    }
     for (const m of fx.moves) {
       if (m.sound === 'tile' && m.seat === mySeat && Date.now() - myTileAt.current < 2500) {
         myTileAt.current = 0;
@@ -254,6 +260,10 @@ export function TableView(props: TableViewProps) {
     const last = sent.current;
     if (last && last.key === moveKey && Date.now() - last.at < 3000) return; // already sent for this turn
     sent.current = { key: moveKey, at: Date.now() };
+    if (callArmed && m.type === 'play' && !m.lock) {
+      m = { ...m, callPass: true };
+      setCallArmed(false);
+    }
     const power: Power | null = m.type === 'play' ? (m.lock ? 'candado' : null) : m.type === 'pass' || m.type === 'draw' ? null : m.type;
     if (power) {
       playPowerSfx(power); // right away, not when the server answers
@@ -273,6 +283,7 @@ export function TableView(props: TableViewProps) {
 
   const pickPower = (p: Power) => {
     setPowersOpen(false);
+    setCallArmed(false);
     setPending(null);
     setDraft(startDraft(p));
   };
@@ -306,9 +317,12 @@ export function TableView(props: TableViewProps) {
   // A power stays announced by its player until three more things happen at the table.
   const recentPowers = view.events.slice(-4).filter((e): e is Extract<GameEvent, { kind: 'power' }> => e.kind === 'power');
   const recentEarns = view.events.slice(-3).filter((e): e is Extract<GameEvent, { kind: 'earn' }> => e.kind === 'earn' && e.reason === 'block');
+  const recentCalls = view.events.slice(-4).filter((e): e is Extract<GameEvent, { kind: 'callPass' | 'callPassResult' }> => e.kind === 'callPass' || e.kind === 'callPassResult');
   const bubble = (s: Seat): { text: string; chat: boolean } | null => {
     const c = chat[s];
     if (c && now - c.at < BUBBLE_MS) return { text: PHRASES[c.id].es, chat: true };
+    const call = [...recentCalls].reverse().find((ev) => ev.seat === s);
+    if (call) return { text: call.kind === 'callPass' ? t.arcade.callPass.bubble : call.success ? t.arcade.callPass.bubbleSuccess : t.arcade.callPass.bubbleFailed, chat: true };
     const pw = [...recentPowers].reverse().find((ev) => ev.seat === s);
     if (pw) return { text: `${t.arcade.bubble[pw.power].replace('{name}', pw.target !== undefined ? name(pw.target as Seat) : '')}`, chat: true };
     if (recentEarns.some((ev) => ev.seat === s)) return { text: '⚡+1', chat: true };
@@ -439,7 +453,9 @@ export function TableView(props: TableViewProps) {
 
       <footer className="my-area">
         {powersOpen && arcade && (
-          <PowersPanel state={mine} seat={mySeat} onPick={pickPower} onClose={() => setPowersOpen(false)} />
+          <PowersPanel state={mine} seat={mySeat} onPick={pickPower}
+            onCallPass={() => { setPowersOpen(false); setPending(null); setCallArmed(true); }}
+            onClose={() => setPowersOpen(false)} />
         )}
         {chatOpen && (
           <div className="chat-panel" id="table-chat">
@@ -487,10 +503,10 @@ export function TableView(props: TableViewProps) {
             onLock={(lock) => setDraft({ ...(draft as Extract<Draft, { power: 'candado' }>), lock })}
             onConfirm={confirmDraft} onCancel={() => setDraft(null)} />
         ) : (
-        <div className={`table-instruction ${notice || arcadeNotice ? 'notice' : ''}`} role="status" aria-live="polite">
-          {notice || arcadeNotice || lockNote + (pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status)}
+        <div className={`table-instruction ${notice || arcadeNotice || callArmed ? 'notice' : ''}`} role="status" aria-live="polite">
+          {notice || arcadeNotice || (callArmed ? t.arcade.callPass.armed : lockNote + (pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status))}
           {!notice && playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
-          {pending && <button className="table-cancel" onClick={() => setPending(null)} aria-label={t.cancel}><XIcon size={17} /></button>}
+          {(pending || callArmed) && <button className="table-cancel" onClick={() => { setPending(null); setCallArmed(false); }} aria-label={t.cancel}><XIcon size={17} /></button>}
           {stuck && <button className="btn ghost table-pass" onClick={() => play({ type: 'pass' })}>{t.arcade.pass}</button>}
         </div>
         )}
@@ -503,7 +519,7 @@ export function TableView(props: TableViewProps) {
             {voice ?? <span className="practice-voice" title={copy.practice}><MicrophoneSlashIcon size={25} /><small>{lang === 'es' ? 'Sin voz' : 'No voice'}</small></span>}
             {arcade && (
               <button className={`table-powers-button ${powersOpen ? 'on' : ''} ${stuck || (powersReady && !powersOpen) ? 'ready' : ''}`}
-                onClick={() => { setChatOpen(false); setDraft(null); setPowersOpen((o) => !o); }} aria-expanded={powersOpen} aria-controls="powers-panel"
+                onClick={() => { setChatOpen(false); setDraft(null); setCallArmed(false); setPowersOpen((o) => !o); }} aria-expanded={powersOpen} aria-controls="powers-panel"
                 aria-label={`${t.arcade.powersBtn} · ${arcade.charges[mySeat] ?? 0}`}>
                 <b aria-hidden>⚡{arcade.charges[mySeat] ?? 0}</b><span aria-hidden>{t.arcade.powersBtn}</span>
               </button>
