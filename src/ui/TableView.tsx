@@ -504,10 +504,18 @@ export function TableView(props: TableViewProps) {
             onConfirm={confirmDraft} onCancel={() => setDraft(null)} />
         ) : (
         <div className={`table-instruction ${notice || arcadeNotice || callArmed ? 'notice' : ''}`} role="status" aria-live="polite">
-          {notice || arcadeNotice || (callArmed ? t.arcade.callPass.armed : lockNote + (pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick) : status))}
+          {notice || arcadeNotice || (callArmed ? <Say long={t.arcade.callPass.armed} short={t.arcade.callPass.armedShort} /> : (
+            // One inline run, so the 🔒 stays on the text's line instead of wrapping as its own item.
+            <span>
+              {lockNote && <Say long={lockNote} short="🔒 " />}
+              {pending ? view.line.length === 0 ? (lang === 'es' ? 'Toca el centro para salir' : 'Tap the center to start') : copy.place
+                : myTurn && myMoves.length > 0 ? (view.mustOpen ? status : copy.pick)
+                : stuck ? <Say long={t.arcade.stuck} short={t.arcade.stuckShort} className="stuck-say" /> : status}
+            </span>
+          ))}
           {!notice && playing && secondsLeft !== null && <span className={secondsLeft <= 5 ? 'urgent' : ''}> · {secondsLeft} s</span>}
           {(pending || callArmed) && <button className="table-cancel" onClick={() => { setPending(null); setCallArmed(false); }} aria-label={t.cancel}><XIcon size={17} /></button>}
-          {stuck && <button className="btn ghost table-pass" onClick={() => play({ type: 'pass' })}>{t.arcade.pass}</button>}
+          {stuck && <button className="btn ghost table-pass" onClick={() => play({ type: 'pass' })} title={t.arcade.stuck}>{t.arcade.pass}</button>}
         </div>
         )}
         {watching ? (
@@ -666,6 +674,14 @@ function OwnerChip({ role }: { role: OwnerRole }) {
       <path d={arrowPath(0, 0, 0.43, OWNER_ARROW[role])} className="owner-mark" />
     </svg>
   );
+}
+
+/**
+ * A status message with a shorter wording for phones where the status shares its
+ * row with the voice, powers and chat buttons (CSS picks one; both read the same).
+ */
+function Say({ long, short, className = '' }: { long: string; short: string; className?: string }) {
+  return <><span className={`say-long ${className}`}>{long}</span><span className={`say-short ${className}`} aria-hidden>{short}</span></>;
 }
 
 function SeatBadge({

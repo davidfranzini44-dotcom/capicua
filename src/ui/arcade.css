@@ -75,7 +75,7 @@
 .half-choice svg.mini { width: 20px; height: auto; }
 .power-actions { display: flex; gap: 8px; justify-content: center; }
 .power-actions .btn { min-height: 44px; min-width: 110px; }
-.table-pass { min-height: 40px; padding: 6px 14px; margin-left: 4px; }
+.table-pass { min-height: 40px; height: 40px; padding: 0 14px; margin-left: 4px; }
 
 /* ---------- hand result and the guide ---------- */
 .arcade-gain b { color: #ffd23f; }
@@ -112,8 +112,18 @@
 .rule-chips .arcade-chip { background: linear-gradient(90deg, #c7a4ff, #4fd8ff); color: #1c1238; font-weight: 800; }
 .btn.arcade-invite { background: linear-gradient(#c7a4ff, #6a3fe0); color: #fff; }
 
+.say-short { display: none; }
+/* Room for the Pasar button in every state, so the status row (and the board) keeps one height all hand. */
+.table-redesign.ruleset-arcade .my-area > .table-instruction { min-height: 44px; }
 /* Short phones: voice | status | ⚡n | chat on one row; a power being chosen gets the row below. */
 @media (max-height: 740px) and (max-width: 699px) {
+  /* The status slot is narrow here: shorter wording, 12 px, and at most three lines, which fit in
+     the row's 44 px, so the row (and the board above it) never changes height mid-hand. */
+  .table-redesign.ruleset-arcade .my-area > .table-instruction { font-size: 12px; line-height: 1.2; gap: 6px; min-height: 36px; }
+  /* The long wording stays for screen readers; the short one is only for the eye. */
+  .table-redesign.ruleset-arcade .say-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .table-redesign.ruleset-arcade .say-short { display: inline; }
+  .table-redesign.ruleset-arcade .table-pass { min-height: 36px; height: 36px; padding: 0 12px; margin-left: 0; font-size: 13px; }
   .table-redesign.ruleset-arcade .my-area { grid-template-columns: auto minmax(0, 1fr) auto auto; }
   .table-redesign.ruleset-arcade .table-tools > .table-powers-button { grid-column: 3; grid-row: 2; min-width: 52px; padding: 0 8px; }
   .table-redesign.ruleset-arcade .table-tools > .table-powers-button span { display: none; }
@@ -136,3 +146,15 @@
 }
 
 .arcade-comeback { display: block; margin-top: 4px; color: #c9b8f5; font-weight: 700; }
+
+/* The narrowest short phones: voice and chat keep just their icons (the words stay for screen
+   readers), so the status between them has room; when stuck, only Pasar sits beside ⚡ (which glows). */
+@media (max-height: 740px) and (max-width: 359px) {
+  .table-redesign.ruleset-arcade .say-short.stuck-say { display: none; }
+  .table-redesign.ruleset-arcade .table-chat-button, .table-redesign.ruleset-arcade .practice-voice { min-width: 44px; width: 44px; }
+  .table-redesign.ruleset-arcade .table-chat-button span, .table-redesign.ruleset-arcade .practice-voice small {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .table-redesign.ruleset-arcade .voice-pill { font-size: 0; min-width: 44px; padding: 0 10px; gap: 0; }
+  .table-redesign.ruleset-arcade .voice-pill .vp-count { font-size: 11px; }
+}
