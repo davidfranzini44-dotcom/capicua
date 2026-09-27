@@ -14,7 +14,8 @@ import { ArcadeSheet, GameShell, HomeTab, InstallSheet, ModeSheet, SettingsSheet
 import { PracticeTable } from './PracticeTable';
 import { ShopTab } from './Shop';
 import { TournamentForm, TournamentScreen, TournamentsSection } from './Tournament';
-import { FriendsSection, InviteToast, PushRow, QuickInviteSheet } from './Friends';
+import { FriendsSection, InviteToast, joinInvitedRoom, LastSeenRow, PushRow, QuickInviteSheet } from './Friends';
+import { usePresenceHeartbeat } from '../lib/presence';
 import { MissionsSheet } from './Missions';
 import { useMissions } from '../lib/missions';
 import { usePush } from '../lib/push';
@@ -60,6 +61,7 @@ export function Online() {
   const signedIn = !!session && !!profile && profile.display_name !== 'Jugador';
   /** Friends see me as busy while I'm at a table. */
   const social = useSocialState(signedIn ? uid : undefined, view.kind === 'room' ? 'playing' : 'online');
+  usePresenceHeartbeat(signedIn);
   const look = useLookState(signedIn ? profile : null, guest);
 
   /** Where does this player belong right now? Seated → table, queued → queue, else the main screen. */
@@ -82,10 +84,23 @@ export function Online() {
     if (invitation) {
       history.replaceState(null, '', location.pathname);
       try {
-        const r = await api<{ roomId: string | null; tournamentId: string | null }>('invite_respond', { inviteId: invitation, accept: true });
-        if (r.tournamentId) return setView({ kind: 'tournament', id: r.tournamentId });
-        const j = await api<{ roomId: string }>('join_room', { roomId: r.roomId });
-        return setView({ kind: 'room', roomId: j.roomId });
+        const { data: inv } = await supabase.from('table_invites').select('room_id').eq('id', invitation).eq('status', 'sent').maybeSingle();
+        if (inv?.room_id) {
+          // A table: sit down first (moving from a lobby is automatic), then mark it accepted.
+          const j = await joinInvitedRoom(inv.room_id);
+          if (j !== 'in_game') {
+            api('invite_respond', { inviteId: invitation, accept: true }).catch(() => {});
+            return setView({ kind: 'room', roomId: j.roomId });
+          }
+          // Mid-game: back to it. The invite stays up on screen and warns before leaving the game.
+        } else {
+          const r = await api<{ roomId: string | null; tournamentId: string | null }>('invite_respond', { inviteId: invitation, accept: true });
+          if (r.tournamentId) return setView({ kind: 'tournament', id: r.tournamentId });
+          if (r.roomId) {
+            const j = await joinInvitedRoom(r.roomId);
+            if (j !== 'in_game') return setView({ kind: 'room', roomId: j.roomId });
+          }
+        }
       } catch (e) {
         return setView({ kind: 'main', tab: 'home', notice: errText(e) });
       }
@@ -230,9 +245,8 @@ export function Online() {
     <LookContext.Provider value={look}>
       <SocialContext.Provider value={social}>
         {screen}
-        {view.kind !== 'room' && (
-          <InviteToast onRoom={(roomId) => setView({ kind: 'room', roomId })} onTournament={(id) => setView({ kind: 'tournament', id })} />
-        )}
+        {/* Everywhere, a table included: accepting from a game in progress warns before forfeiting it. */}
+        <InviteToast onRoom={(roomId) => setView({ kind: 'room', roomId })} onTournament={(id) => setView({ kind: 'tournament', id })} />
       </SocialContext.Provider>
     </LookContext.Provider>
   );
@@ -388,6 +402,7 @@ export function MainScreen(p: MainProps) {
         <SettingsSheet onClose={() => setSheet(null)} onInstall={install.available ? () => setSheet('install') : undefined} extra={signedIn && (
           <>
             {p.online && <PushRow push={push} />}
+            {p.online && <LastSeenRow />}
             {admin && <button className="btn primary wide" onClick={() => { setSheet(null); p.onAdmin?.(); }}>🛡️ {t.admin.title}</button>}
             <button className="link-btn signout" onClick={() => supabase.auth.signOut()}>{t.signOut}</button>
           </>

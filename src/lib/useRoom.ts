@@ -221,6 +221,8 @@ export interface PlayerStats {
   biggest_pot: number;
   tournaments_won: number;
   avatar_url: string | null;
+  /** Chip balance (missing on placeholder cards until the profile loads). */
+  chips?: number;
 }
 
 /** Public profile stats for the people at a table (for lobby cards). */
@@ -229,8 +231,8 @@ export function usePlayerStats(ids: string[]) {
   const key = [...ids].sort().join(',');
   useEffect(() => {
     if (!key || !onlineEnabled) return;
-    supabase.from('profiles').select('id, display_name, xp, games, wins, capicuas, pollonas, biggest_pot, tournaments_won, avatar_url').in('id', key.split(','))
-      .then(({ data }) => data && setStats(Object.fromEntries(data.map((p) => [p.id, { ...p, biggest_pot: Number(p.biggest_pot) } as PlayerStats]))));
+    supabase.from('profiles').select('id, display_name, xp, games, wins, capicuas, pollonas, biggest_pot, tournaments_won, avatar_url, chips').in('id', key.split(','))
+      .then(({ data }) => data && setStats(Object.fromEntries(data.map((p) => [p.id, { ...p, biggest_pot: Number(p.biggest_pot), chips: Number(p.chips) } as PlayerStats]))));
   }, [key]);
   return stats;
 }

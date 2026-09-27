@@ -38,8 +38,8 @@ export const TIMING = {
   drawMs: 550,
   autoPassMs: 1300,
   awayMs: 900,
-  /** The hand summary stays up this long before the next hand deals itself. */
-  nextHandMs: 12_000,
+  /** Between hands: the next one deals when everyone taps "Listo", or after this long. */
+  nextHandMs: 25_000,
 };
 
 /** A human who hasn't moved after this long gets a move played for them (a "strike"). */
@@ -52,7 +52,11 @@ export const MAX_STRIKES = 3;
  */
 export function autoDelay(s: GameState, seats: SeatInfo[], turnMs: number): number | null {
   if (s.winner !== null) return null;
-  if (s.handResult) return TIMING.nextHandMs;
+  if (s.handResult) {
+    // Nobody left at the table to wait for (everyone ready, or everyone gone): deal now.
+    const waiting = seats.some((x) => !x.isBot && !x.away && !(s.nextReady ?? []).includes(x.seat));
+    return waiting ? TIMING.nextHandMs : TIMING.awayMs;
+  }
   const seat = seats.find((x) => x.seat === s.turn)!;
   const forced = forcedMove(s, s.turn);
   // Arcade: stuck but a power could still help — a person gets the whole turn to decide.

@@ -97,6 +97,16 @@ export function RoomScreen({ roomId, uid, profile, onLeave, onBrokeUp, onRequeue
   return <Pregame r={r} uid={uid} profile={profile} voice={voiceOk ? voice : null} voiceControl={voiceControl} onLeave={leave} />;
 }
 
+/** When `key` first showed up (the first `at` seen for it); later updates under the same key keep it. */
+function useFirstSeenAt(key: string | null, at: number) {
+  const [first, setFirst] = useState({ key, at });
+  if (first.key !== key) {
+    setFirst({ key, at });
+    return at;
+  }
+  return first.at;
+}
+
 // ---------- pre-game lobby ----------
 
 function useSecondsLeft(iso: string | null) {
@@ -216,7 +226,7 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
 
       <PlayerList
         mode={mode} seats={r.seats} stats={stats} hostId={room.host} uid={uid}
-        showReady={room.phase !== 'countdown'} speaking={voice?.speaking}
+        showReady={room.phase !== 'countdown'} speaking={voice?.speaking} muted={voice?.status === 'on' ? voice.mutedPeers : undefined}
         canSit={room.kind === 'custom' && room.phase === 'lobby'}
         emptyHint={withBots ? t.botsFill : t.waitingPerson}
         onSit={(seat) => run(() => api('take_seat', { roomId: room.id, seat }))}
@@ -282,7 +292,17 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
         : room.kind === 'public' && room.stake === 0 ? <p className="fine">{t.friendlyNote}</p>
         : <SideBets r={r} mode={mode} profile={profile} onError={setError} />}
       {error && <p className="error">{error}</p>}
-      {card && stats[card] && <ProfileCard stats={stats[card]} onClose={() => setCard(null)} />}
+      {card && stats[card] && (
+        <ProfileCard
+          stats={stats[card]}
+          onClose={() => setCard(null)}
+          actions={voice?.status === 'on' && card !== uid ? (
+            <button className="btn ghost wide" onClick={() => voice.togglePeer(card)}>
+              {voice.mutedPeers.has(card) ? t.fair.unmute : t.fair.mute}
+            </button>
+          ) : undefined}
+        />
+      )}
       {inviting && <InviteFriendsSheet target={{ roomId: room.id }} onClose={() => setInviting(false)} />}
     </div>
   );
@@ -300,9 +320,11 @@ const shuffled = <T,>(xs: T[]) => {
   return a;
 };
 
-function PlayerList({ mode, seats, stats, hostId, uid, showReady, speaking, canSit, emptyHint, onSit, onCard, arrange }: {
+function PlayerList({ mode, seats, stats, hostId, uid, showReady, speaking, muted, canSit, emptyHint, onSit, onCard, arrange }: {
   mode: Mode; seats: SeatRow[]; stats: Record<string, PlayerStats>; hostId: string | null; uid: string;
   showReady: boolean; speaking?: Set<string>; canSit: boolean; emptyHint: string; onSit: (seat: number) => void; onCard: (id: string) => void;
+  /** People I've muted on voice (tap their card to mute or unmute). */
+  muted?: Set<string>;
   /** Host is arranging teams: every chair is tappable, two taps swap them. */
   arrange?: { picked: number | null; onPick: (seat: number) => void };
 }) {
@@ -337,7 +359,7 @@ function PlayerList({ mode, seats, stats, hostId, uid, showReady, speaking, canS
                   <Avatar name={s.name} url={st?.avatar_url} />
                 </span>
                 <span className="pc-main">
-                  <b>{s.name}{hostId && s.user_id === hostId && ' 👑'}{s.is_bot && <small className="bot-tag"> {t.bot}</small>}</b>
+                  <b>{s.name}{hostId && s.user_id === hostId && ' 👑'}{s.is_bot && <small className="bot-tag"> {t.bot}</small>}{s.user_id && muted?.has(s.user_id) && <small className="muted-tag" aria-label={t.fair.unmute}> 🔇</small>}</b>
                   {st ? <LevelBadge xp={st.xp} /> : <span className="level-badge"><b>{s.level}</b></span>}
                 </span>
                 <span className="pc-stats">
@@ -487,6 +509,12 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
   const isOnline = (s: SeatRow) => !presenceReady || (!!s.user_id && r.online.has(s.user_id));
   const offline = new Set(r.seats.filter((s) => !s.is_bot && s.user_id !== uid && !isOnline(s)).map((s) => s.seat));
 
+  // Between hands the clock runs from the moment the hand ended: people tapping "Listo" update
+  // the game, but don't restart the 25 s.
+  const betweenHands = !!view.handResult && view.winner === null;
+  const handEndAt = useFirstSeenAt(betweenHands ? `${game.id}:${view.handNo}` : null, r.receivedAt);
+  const clockFrom = betweenHands ? handEndAt : r.receivedAt;
+
   // The server acts on its own (bots, draws/passes, timeouts, next hand) but only when someone
   // calls `tick`. The lowest-seated player who's connected does it on time; others back them up.
   const tickerId = r.seats.filter((s) => s.user_id && !s.is_bot && isOnline(s)).sort((a, b) => a.seat - b.seat)[0]?.user_id;
@@ -494,14 +522,21 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
     if (game.auto_delay_ms == null) return;
     const ticker = { user_id: tickerId };
     const slack = ticker?.user_id === uid ? 120 : 4000;
-    const wait = Math.max(0, r.receivedAt + game.auto_delay_ms + slack - Date.now());
+    const wait = Math.max(0, clockFrom + game.auto_delay_ms + slack - Date.now());
     const id = setTimeout(() => {
       api<{ acted: boolean }>('tick', { gameId: game.id })
         .then((res) => { if (!res.acted) setTimeout(() => setRetry((n) => n + 1), 1500); })
         .catch(() => setTimeout(() => setRetry((n) => n + 1), 3000));
     }, wait);
     return () => clearTimeout(id);
-  }, [game.id, game.version, game.auto_delay_ms, r.receivedAt, tickerId, uid, retry]);
+  }, [game.id, game.version, game.auto_delay_ms, clockFrom, tickerId, uid, retry]);
+
+  // "Listo" between hands: who's ready, who we're waiting for (people at the table), and when it deals anyway.
+  const readyUp = betweenHands ? {
+    ready: new Set((view.nextReady ?? []) as Seat[]),
+    waiting: r.seats.filter((s) => !s.is_bot && s.user_id && !s.away && !(view.nextReady ?? []).includes(s.seat as Seat)).map((s) => s.seat as Seat),
+    deadline: game.auto_delay_ms != null ? handEndAt + game.auto_delay_ms : null,
+  } : undefined;
 
   // Server playing for me? Any touch on the table means I'm back.
   const reclaiming = useRef(false);
@@ -610,6 +645,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
         pot={game.pot || undefined}
         voice={voiceControl ?? undefined}
         turnDeadline={turnDeadline}
+        readyUp={readyUp}
         resultNote={resultNote}
         endActions={endActions}
         offline={offline}

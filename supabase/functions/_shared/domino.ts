@@ -127,6 +127,10 @@ export interface GameState {
   winner: number | null;
   /** Whole-game counts per side (side bets and profile stats read these). */
   tally: Tally;
+  /** Whole-game counts per player: who is carrying the game. Missing on games started before it existed. */
+  seatStats?: SeatStats;
+  /** Online, between hands: the seats that tapped "Listo" for the next one. */
+  nextReady?: Seat[];
   /** Arcade only. */
   arcade?: ArcadeState;
 }
@@ -135,6 +139,28 @@ export interface Tally {
   capicuas: number[];
   tranques: number[];
   hands: number[];
+}
+
+/** Per player, for the whole game (index = seat). */
+export interface SeatStats {
+  /** Points this player won for their side: hands they closed, plus pase corrido / de salida. Arcade: stars. */
+  points: number[];
+  /** Hands they won by playing their last tile. */
+  dominoes: number[];
+  capicuas: number[];
+  /** Tiles they laid on the board. */
+  tiles: number[];
+  passes: number[];
+}
+
+export const emptySeatStats = (mode: Mode): SeatStats => {
+  const zeros = () => new Array(playerCount(mode)).fill(0);
+  return { points: zeros(), dominoes: zeros(), capicuas: zeros(), tiles: zeros(), passes: zeros() };
+};
+
+function stat(s: GameState, key: keyof SeatStats, seat: Seat, by = 1) {
+  s.seatStats ??= emptySeatStats(s.rules.mode);
+  s.seatStats[key][seat] += by;
 }
 
 const emptyTally = (mode: Mode): Tally => ({
@@ -198,7 +224,7 @@ function firstOpener(hands: Tile[][]): { seat: Seat; tile: Tile } {
   return best;
 }
 
-function startHand(prev: Pick<GameState, 'rules' | 'scores' | 'handNo' | 'tally' | 'arcade'>, rng: Rng, mano: Seat | null): GameState {
+function startHand(prev: Pick<GameState, 'rules' | 'scores' | 'handNo' | 'tally' | 'arcade' | 'seatStats'>, rng: Rng, mano: Seat | null): GameState {
   const { hands, boneyard } = deal(prev.rules.mode, rng);
   let mustOpen: Tile | null = null;
   if (mano === null) {
@@ -224,6 +250,7 @@ function startHand(prev: Pick<GameState, 'rules' | 'scores' | 'handNo' | 'tally'
     handResult: null,
     winner: null,
     tally: structuredClone(prev.tally),
+    seatStats: structuredClone(prev.seatStats ?? emptySeatStats(prev.rules.mode)),
   };
   if (isArcade(prev.rules)) {
     // Charges last the whole match; everything that belongs to a turn starts fresh.
@@ -328,6 +355,7 @@ function lay(s: GameState, seat: Seat, tile: Tile, side: Side, wildHalf?: 0 | 1)
   s.lastPlayer = seat;
   s.passesSinceLastPlay = 0;
   s.events.push({ kind: 'play', seat, tile: normalize(tile[0], tile[1]), side });
+  stat(s, 'tiles', seat);
   if (s.arcade) s.arcade.passes = 0;
 }
 
@@ -384,6 +412,7 @@ export function applyMove(prev: GameState, move: Move, rng: Rng = Math.random): 
     for (const n of shown) if (!s.voids[seat].includes(n)) s.voids[seat].push(n);
     s.passesSinceLastPlay++;
     s.events.push({ kind: 'pass', seat });
+    stat(s, 'passes', seat);
     if (s.arcade) {
       // The player whose placement left this one without a play earns a power
       // (not when a Candado did it: that power already had its effect).
@@ -399,6 +428,7 @@ export function applyMove(prev: GameState, move: Move, rng: Rng = Math.random): 
     const salida = s.rules.paseSalidaBonus ?? 0;
     if (salida > 0 && s.line.length === 1 && s.passesSinceLastPlay === 1 && s.lastPlayer !== null) {
       s.scores[sideOf(mode, s.lastPlayer)] += salida;
+      stat(s, 'points', s.lastPlayer, salida);
       s.events.push({ kind: 'paseSalida', seat: s.lastPlayer, points: salida });
     }
     s.turn = nextSeat(s, seat);
@@ -406,6 +436,7 @@ export function applyMove(prev: GameState, move: Move, rng: Rng = Math.random): 
     if (s.passesSinceLastPlay === playerCount(mode) - 1 && s.turn === s.lastPlayer) {
       const points = s.rules.paseCorridoBonus;
       s.scores[sideOf(mode, s.turn)] += points;
+      stat(s, 'points', s.turn, points);
       s.events.push({ kind: 'paseCorrido', seat: s.turn, points });
     }
     return s;
@@ -469,6 +500,9 @@ function finishHand(s: GameState, kind: 'domino' | 'tranque', winnerSeat: Seat, 
   s.tally.hands[side]++;
   if (capicua) s.tally.capicuas[side]++;
   if (kind === 'tranque') s.tally.tranques[side]++;
+  stat(s, 'points', winnerSeat, points + bonus);
+  if (kind === 'domino') stat(s, 'dominoes', winnerSeat);
+  if (capicua) stat(s, 'capicuas', winnerSeat);
   s.handResult = {
     kind, winnerSeat, side, points, capicua, bonus, total: points + bonus,
     counts, hands: s.hands.map((h) => h.map((t) => [...t] as Tile)), tieToMano,

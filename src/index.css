@@ -356,6 +356,41 @@ button:disabled { cursor: default; }
 .sheet-actions { display: flex; gap: 10px; }
 .sheet > .btn { width: 100%; }
 
+/* Between hands: "Listo" and the clock until the next hand deals by itself. */
+.ready-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+/* The summary can be taller than a phone: the Listo button stays in reach at the bottom. */
+.sheet > .ready-btn, .sheet > .ready-wait { position: sticky; bottom: 0; z-index: 1; flex: none; box-shadow: 0 -10px 18px 6px #10271e; }
+.ready-secs { min-width: 30px; padding: 1px 8px; border-radius: 999px; background: rgba(0,0,0,.25); font-variant-numeric: tabular-nums; font-size: .9em; }
+.ready-wait { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 12px; border-radius: 14px; background: #173c2a; border: 1px solid rgba(61,220,132,.45); text-align: center; }
+.ready-wait b { font-size: .92rem; }
+.ready-clock { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
+.reveal li { position: relative; }
+.rready {
+  position: absolute; left: -6px; top: -6px; width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center; font-style: normal; font-size: .7rem; font-weight: 900;
+  background: #3ddc84; color: #06220f; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+
+/* Who is carrying the game. */
+.contrib { width: 100%; border-collapse: separate; border-spacing: 0 4px; font-size: .82rem; margin: 2px 0 4px; }
+.contrib caption { text-align: left; font-weight: 700; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 0 2px 2px; }
+.contrib thead th { font-weight: 600; font-size: .7rem; color: var(--muted); padding: 0 4px; text-align: center; }
+.contrib td, .contrib tbody th { background: rgba(255,255,255,.05); padding: 6px 4px; text-align: center; font-variant-numeric: tabular-nums; }
+.contrib tbody th { text-align: left; font-weight: 600; border-radius: 10px 0 0 10px; padding-left: 10px; width: 46%; }
+.contrib td:last-child { border-radius: 0 10px 10px 0; }
+.contrib tr.us th { box-shadow: inset 3px 0 0 var(--us); }
+.contrib tr.them th { box-shadow: inset 3px 0 0 var(--them); }
+.contrib tr.mvp th, .contrib tr.mvp td { background: rgba(255,210,63,.14); }
+.contrib td b { font-size: .95rem; }
+.cname { display: flex; align-items: center; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.mvp-star { flex: none; }
+.ccap { flex: none; color: #ffd23f; font-size: .72rem; }
+.cbar { display: block; height: 3px; margin-top: 4px; border-radius: 2px; background: rgba(255,255,255,.08); overflow: hidden; }
+.cbar i { display: block; height: 100%; background: #ffd23f; border-radius: 2px; }
+.contrib tr.them .cbar i { background: var(--them); }
+.contrib tr.us .cbar i { background: var(--us); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
 /* ---------- Online screens ---------- */
 .screen {
   min-height: 100%;
@@ -551,6 +586,9 @@ button:disabled { cursor: default; }
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; margin: 6px 0; }
 .stat-grid div { background: rgba(255,255,255,.06); border-radius: 12px; padding: 10px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .stat-grid .span2 { grid-column: span 4; }
+.stat-grid .half { grid-column: span 2; }
+.last-seen { margin: -6px 0 0; font-size: .8rem; color: var(--muted); }
+.last-seen.on { color: #3ddc84; font-weight: 700; }
 .stat-grid b { font-size: 1.15rem; }
 .stat-grid small { font-size: .68rem; color: var(--muted); }
 
@@ -922,6 +960,8 @@ button:disabled { cursor: default; }
 .gameover-backdrop.won { background: radial-gradient(circle at 50% 25%, rgba(255,200,60,.55), rgba(40,25,0,.95) 70%); }
 .gameover-backdrop.lost { background: radial-gradient(circle at 50% 30%, rgba(40,60,90,.9), rgba(5,10,20,.96)); }
 .gameover { width: min(100%, 420px); display: flex; flex-direction: column; align-items: center; gap: 12px; position: relative; z-index: 32; }
+.gameover-backdrop { align-items: start; }
+.gameover { margin-block: auto; }
 .go-trophy { font-size: 5.5rem; line-height: 1; filter: drop-shadow(0 8px 20px rgba(0,0,0,.5)); animation: trophy 1s cubic-bezier(.3,1.8,.5,1); }
 .won .go-trophy { animation: trophy 1s cubic-bezier(.3,1.8,.5,1), float 2.4s ease-in-out 1s infinite; }
 @keyframes trophy { from { transform: scale(0) rotate(-30deg); } to { transform: scale(1) rotate(0); } }

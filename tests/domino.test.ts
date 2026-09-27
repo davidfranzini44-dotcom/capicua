@@ -92,6 +92,8 @@ describe('pase de salida (2v2)', () => {
     expect(u.scores).toEqual([30, 0]);
     expect(u.events.at(-1)).toEqual({ kind: 'paseSalida', seat: 0, points: 30 });
     expect(u.turn).toBe(2);
+    // The opener earned it; the one who couldn't follow is counted as passing.
+    expect(u.seatStats).toMatchObject({ points: [30, 0, 0, 0], passes: [0, 1, 0, 0], tiles: [1, 0, 0, 0] });
   });
 
   it('only that first pass counts: the partner passing too, or a pass later in the hand, adds nothing', () => {
@@ -216,6 +218,16 @@ describe('bots finish full games in every mode', () => {
         expect(s.scores[s.winner]).toBe(Math.max(...s.scores));
         for (let i = 1; i < s.line.length; i++) expect(s.line[i].a).toBe(s.line[i - 1].b);
         expect(s.tally.hands.reduce((a, b) => a + b, 0)).toBe(s.handNo);
+        // Per player: each side's points add up to its score; every hand is a dominó or a tranque.
+        const st = s.seatStats!;
+        const sides = s.scores.length;
+        const bySide = (xs: number[]) => xs.reduce((acc, v, seat) => { acc[mode === '2v2' ? seat % 2 : seat] += v; return acc; }, new Array(sides).fill(0));
+        expect(st.points).toHaveLength(playerCount(mode));
+        expect(bySide(st.points)).toEqual(s.scores);
+        expect(bySide(st.capicuas)).toEqual(s.tally.capicuas);
+        expect(st.dominoes.reduce((a, b) => a + b, 0) + s.tally.tranques.reduce((a, b) => a + b, 0)).toBe(s.handNo);
+        expect(st.tiles.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(s.line.length);
+        expect(s.nextReady).toBeUndefined();
       }
       expect(handCount([])).toBe(0);
     });

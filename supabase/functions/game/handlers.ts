@@ -68,6 +68,8 @@ interface MatchDb {
 interface SeatRow {
   seat: number; user_id: string | null; is_bot: boolean; name: string; level: number;
   ready: boolean; away: boolean; left_game: boolean; strikes: number;
+  /** Walked out of a game in progress to join another table: the server plays the seat, for good. */
+  forfeited?: boolean;
 }
 interface PairStats {
   u1: string; u2: string; name1: string; name2: string; games: number; public_games: number; partners: number;
@@ -158,15 +160,63 @@ export async function recordNetwork(uid: string, ip: string | null) {
 /**
  * The table this player belongs at right now, if any. A game in progress
  * counts even if they walked out — their stake is in it and the server is
- * keeping their chair warm until they come back.
+ * keeping their chair warm until they come back — unless they forfeited it
+ * to join another table.
  */
 async function activeRoomOf(tx: Tx, uid: string): Promise<string | null> {
   const [r] = await tx`
     select r.id from rooms r join room_seats s on s.room_id = r.id
-    where s.user_id = ${uid}
+    where s.user_id = ${uid} and not s.forfeited
       and (r.phase = 'playing' or (r.phase in ('lobby', 'ready', 'countdown') and not s.left_game))
     order by r.created_at desc limit 1`;
   return r?.id ?? null;
+}
+
+/**
+ * Leave a table to go to another one (accepting an invite). A game in progress
+ * is forfeited: the server plays the seat to the end (stake stays in the pot,
+ * leaver XP applies) and the player can't take it back. Anywhere else it's the
+ * same as leaving, without a decline strike.
+ */
+async function vacateFor(tx: Tx, roomId: string, uid: string) {
+  const { room, seats } = await lockRoom(tx, roomId);
+  const mine = mySeat(seats, uid);
+  if (room.phase === 'playing') {
+    await tx`update room_seats set away = true, left_game = true, forfeited = true where room_id = ${room.id} and seat = ${mine.seat}`;
+    mine.away = true;
+    await refreshDelay(tx, room, seats);
+    return;
+  }
+  if (room.kind === 'public' && (room.phase === 'ready' || room.phase === 'countdown')) {
+    await breakUpTable(tx, room, seats, [], [uid]);
+    return;
+  }
+  if (room.kind === 'tournament') {
+    // The match keeps its bracket: not ready, and free to sit elsewhere until they come back.
+    await tx`update room_seats set ready = false, left_game = true where room_id = ${room.id} and seat = ${mine.seat}`;
+    return;
+  }
+  await leaveCustom(tx, room, seats, uid);
+}
+
+/** Leave a custom table outside a game: side bets back, host passes on, an empty table closes. */
+async function leaveCustom(tx: Tx, room: RoomDb, seats: SeatRow[], uid: string) {
+  const mine = mySeat(seats, uid);
+  await refundSideBets(tx, room.id, uid);
+  await tx`delete from room_seats where room_id = ${room.id} and seat = ${mine.seat}`;
+  const others = humansOf(seats).filter((s) => s.user_id !== uid);
+  if (others.length === 0) {
+    await tx`delete from rooms where id = ${room.id}`;
+  } else {
+    const host = room.host === uid ? others[0].user_id : room.host;
+    // A custom countdown in progress stops if someone walks away.
+    await tx`
+      update rooms set host = ${host}, updated_at = now(),
+        phase = case when phase = 'countdown' then 'lobby' else phase end,
+        phase_ends_at = case when phase = 'countdown' then null else phase_ends_at end
+      where id = ${room.id}`;
+    if (host !== room.host) await tx`update room_seats set ready = true where room_id = ${room.id} and user_id = ${host}`;
+  }
 }
 
 async function insertRoom(tx: Tx, f: {
@@ -255,7 +305,7 @@ async function tryMatch(tx: Tx, stake: number, mode: Mode, ruleset: Ruleset): Pr
  * breaks up: side bets come back, everyone else goes to the front of the
  * queue, and repeat decliners sit out for a few minutes.
  */
-async function breakUpTable(tx: Tx, room: RoomDb, seats: SeatRow[], decliners: string[]) {
+async function breakUpTable(tx: Tx, room: RoomDb, seats: SeatRow[], decliners: string[], leavers: string[] = []) {
   const now = Date.now();
   for (const uid of decliners) {
     const p = await me(tx, uid);
@@ -269,7 +319,7 @@ async function breakUpTable(tx: Tx, room: RoomDb, seats: SeatRow[], decliners: s
   }
   await refundSideBets(tx, room.id);
   for (const s of humansOf(seats)) {
-    if (decliners.includes(s.user_id!)) continue;
+    if (decliners.includes(s.user_id!) || leavers.includes(s.user_id!)) continue;
     await tx`
       insert into queue (user_id, stake, mode, level, ruleset, joined_at)
       values (${s.user_id}, ${room.stake}, ${room.mode}, ${s.level}, ${rulesetOf(room.rules)}, now() - interval '10 minutes')
@@ -684,7 +734,13 @@ export const handlers = {
     });
   },
 
-  async join_room(uid: string, { code, roomId }: { code?: string; roomId?: string }) {
+  /**
+   * Sit at a table (by code, or by id from an invite). Already seated elsewhere:
+   * refused with `in_game` (a game in progress) or `already_in_room` (anything
+   * else), unless `switchTable` says to leave that table first. 'lobby' moves
+   * only from a table that isn't playing; `true` also forfeits a game in progress.
+   */
+  async join_room(uid: string, { code, roomId, switchTable = false }: { code?: string; roomId?: string; switchTable?: boolean | 'lobby' }) {
     return await sql.begin(async (tx) => {
       const [r] = roomId
         ? await tx`select id from rooms where id = ${roomId}`
@@ -693,6 +749,12 @@ export const handlers = {
       const { room, seats } = await lockRoom(tx, r.id);
       const mine = seats.find((s) => s.user_id === uid);
       if (mine) {
+        if (mine.forfeited && room.phase === 'playing') throw new HttpError(409, 'forfeited');
+        if (mine.left_game && room.kind === 'tournament' && room.phase !== 'playing' && room.phase !== 'finished') {
+          // Back from another table before the match started: the chair is theirs again.
+          await tx`update room_seats set left_game = false where room_id = ${room.id} and seat = ${mine.seat}`;
+          return { roomId: room.id };
+        }
         if (mine.away && !mine.left_game) return { roomId: room.id };
         if (mine.left_game && room.phase === 'playing') {
           // Came back: take the chair over from the server again.
@@ -704,13 +766,20 @@ export const handlers = {
       }
       if (room.kind !== 'custom') throw new HttpError(403, 'not_in_room');
       if (room.phase !== 'lobby') throw new HttpError(409, 'game_in_progress');
-      if (await activeRoomOf(tx, uid)) throw new HttpError(409, 'already_in_room');
       await notBanned(tx, uid);
       if (room.stake > 0) await noGuests(tx, uid);
       const p = await me(tx, uid);
       if (p.chips < room.stake) throw new HttpError(409, 'balance_too_low');
       const free = seatsOf(room.mode).find((s) => !seats.some((x) => x.seat === s));
       if (free === undefined) throw new HttpError(409, 'room_full');
+      // Everything about the new table checks out: only now leave the old one.
+      const active = await activeRoomOf(tx, uid);
+      if (active) {
+        const [cur] = await tx`select phase from rooms where id = ${active}`;
+        const playing = cur?.phase === 'playing';
+        if (!switchTable || (playing && switchTable !== true)) throw new HttpError(409, playing ? 'in_game' : 'already_in_room');
+        await vacateFor(tx, active, uid);
+      }
       await tx`delete from queue where user_id = ${uid}`;
       await tx`insert into room_seats (room_id, seat, user_id, name, level) values (${room.id}, ${free}, ${uid}, ${p.display_name}, ${p.level})`;
       await tx`update rooms set updated_at = now() where id = ${room.id}`;
@@ -777,21 +846,7 @@ export const handlers = {
         if (room.phase === 'ready') await tx`update room_seats set ready = false where room_id = ${room.id} and seat = ${mine.seat}`;
         return { ok: true };
       }
-      await refundSideBets(tx, room.id, uid);
-      await tx`delete from room_seats where room_id = ${room.id} and seat = ${mine.seat}`;
-      const others = humansOf(seats).filter((s) => s.user_id !== uid);
-      if (others.length === 0) {
-        await tx`delete from rooms where id = ${room.id}`;
-      } else {
-        const host = room.host === uid ? others[0].user_id : room.host;
-        // A custom countdown in progress stops if someone walks away.
-        await tx`
-          update rooms set host = ${host}, updated_at = now(),
-            phase = case when phase = 'countdown' then 'lobby' else phase end,
-            phase_ends_at = case when phase = 'countdown' then null else phase_ends_at end
-          where id = ${room.id}`;
-        if (host !== room.host) await tx`update room_seats set ready = true where room_id = ${room.id} and user_id = ${host}`;
-      }
+      await leaveCustom(tx, room, seats, uid);
       return { ok: true };
     });
   },
@@ -845,6 +900,7 @@ export const handlers = {
     return await sql.begin(async (tx) => {
       const { game, room, state, seats } = await lockGame(tx, gameId, uid);
       const mine = mySeat(seats, uid);
+      if (mine.forfeited) throw new HttpError(409, 'forfeited');
       const arcade = state.arcade;
       if (arcade && actionId && arcade.recent?.includes(actionId)) return { ok: true, duplicate: true };
       if (!arcade && move?.type !== 'play' && move?.type !== 'pass' && move?.type !== 'draw') throw new HttpError(400, 'illegal_move');
@@ -902,12 +958,27 @@ export const handlers = {
     });
   },
 
+  /**
+   * "Listo" between hands. The next hand deals once every person still at the
+   * table is ready; otherwise `tick` deals it when the 25 s run out.
+   */
   async next_hand(uid: string, { gameId }: { gameId: string }) {
     return await sql.begin(async (tx) => {
       const { game, room, state, seats } = await lockGame(tx, gameId, uid);
       if (!state.handResult || state.winner !== null) return { ok: true }; // someone already dealt
-      await saveGame(tx, room, game, nextHand(state), seats, true);
-      return { ok: true };
+      const mine = mySeat(seats, uid);
+      if (mine.forfeited) return { ok: true };
+      const ready = new Set<number>([...(state.nextReady ?? []), mine.seat]);
+      const waiting = seats.filter((s) => !s.is_bot && s.user_id && !s.away && !ready.has(s.seat));
+      if (waiting.length === 0) {
+        await saveGame(tx, room, game, nextHand(state), seats, true);
+        return { ok: true, dealt: true };
+      }
+      // Only who's ready changes: the clock (last_move_at, auto_delay_ms) keeps running.
+      const next: GameState = { ...state, nextReady: [...ready].sort((a, b) => a - b) as Seat[] };
+      await tx`update games set public_state = ${tx.json(publicState(next) as never)}, version = version + 1 where id = ${game.id}`;
+      await tx`update game_private set state = ${tx.json(next as never)} where game_id = ${game.id}`;
+      return { ok: true, dealt: false };
     });
   },
 
@@ -917,6 +988,7 @@ export const handlers = {
       const { room, seats } = await lockRoom(tx, roomId);
       const mine = mySeat(seats, uid);
       if (room.phase !== 'playing' || !mine.away) return { ok: true };
+      if (mine.forfeited) throw new HttpError(409, 'forfeited');
       await tx`update room_seats set away = false, left_game = false, strikes = 0 where room_id = ${room.id} and seat = ${mine.seat}`;
       mine.away = false;
       await refreshDelay(tx, room, seats);

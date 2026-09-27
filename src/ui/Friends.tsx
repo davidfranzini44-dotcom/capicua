@@ -1,9 +1,10 @@
 // Saved friends: the list (with who's online), adding by code or from a
 // player's card, inviting to a table or tournament, and the invite pop-up.
-import { useRef, useState, type ReactNode } from 'react';
-import { levelFromXp } from '../../supabase/functions/_shared/table.ts';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { LEAVER_XP, levelFromXp } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
-import { api, type Profile } from '../lib/supabase';
+import { api, ApiError, type Profile } from '../lib/supabase';
+import { getShowLastSeen, setShowLastSeen } from '../lib/presence';
 import type { Push } from '../lib/push';
 import { useSocial, type Friend, type Invite, type InviteTarget, type Social } from '../lib/social';
 import { usePlayerStats, type PlayerStats } from '../lib/useRoom';
@@ -38,7 +39,7 @@ function FriendProfile({ friend, s, onClose, onQuickInvite, onWatch }: {
     : where === 'playing'
       ? onWatch && <button className="btn ghost wide" onClick={then(() => onWatch(friend))}><EyeIcon size={18} />{t.watch.see}</button>
       : <button className="btn primary wide" onClick={then(() => onQuickInvite(friend))}>{t.social.inviteToPlay}</button>;
-  return <ProfileCard stats={stats} loading={!loaded} onClose={onClose} actions={action} />;
+  return <ProfileCard stats={stats} loading={!loaded} online={!!where} onClose={onClose} actions={action} />;
 }
 
 function FriendFace({ f, s }: { f: Friend; s: Social }) {
@@ -227,6 +228,29 @@ export function PushRow({ push }: { push: Push }) {
   );
 }
 
+/** Settings: let other players see when I was last online (on unless turned off). */
+export function LastSeenRow() {
+  const { t } = useI18n();
+  const [show, setShow] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    getShowLastSeen().then((v) => { if (live) setShow(v); }, () => { if (live) setShow(true); });
+    return () => { live = false; };
+  }, []);
+  const toggle = async (v: boolean) => {
+    setBusy(true);
+    setShow(v);
+    try { await setShowLastSeen(v); } catch { setShow(!v); } finally { setBusy(false); }
+  };
+  return (
+    <label className="setting-row push-row">
+      <span>🕒 {t.presence.show}<small>{t.presence.showHint}</small></span>
+      <input type="checkbox" checked={show ?? true} disabled={busy || show === null} onChange={(e) => toggle(e.target.checked)} />
+    </label>
+  );
+}
+
 /** Invite a friend when you're not at a table yet: start a friendly one (or set one up) and send it. */
 export function QuickInviteSheet({ friend, onClose, onRoom, onCustom }: {
   friend: Friend; onClose: () => void; onRoom: (roomId: string) => void; onCustom: (friendId: string) => void;
@@ -309,12 +333,18 @@ export function InviteFriendsSheet({ target, onClose }: { target: InviteTarget; 
 }
 
 /** A friend invited me: shows on top of whatever screen I'm on (not at a table). */
-export function InviteToast({ onRoom, onTournament }: { onRoom: (roomId: string) => void; onTournament: (id: string) => void }) {
+export function InviteToast({ onRoom, onTournament, join = joinInvitedRoom }: {
+  onRoom: (roomId: string) => void; onTournament: (id: string) => void;
+  /** How to sit at the invited table (the design preview swaps in a fake server). */
+  join?: typeof joinInvitedRoom;
+}) {
   const s = useSocial();
   const { t } = useI18n();
   const errText = useErrorText();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The invite whose "you'll forfeit your game" warning is showing. */
+  const [warn, setWarn] = useState<string | null>(null);
   const inv = s?.invites[0];
   if (!s || !inv) return null;
   const d = inv.details;
@@ -323,13 +353,20 @@ export function InviteToast({ onRoom, onTournament }: { onRoom: (roomId: string)
     ? `🏆 ${d.name} · ${t.modes[d.mode]?.name ?? d.mode}${d.stake ? ` · 🪙 ${d.stake.toLocaleString()}` : ''}`
     : d.ruleset === 'arcade' ? `⚡ ${t.arcade.name} · ${t.arcade.goal}`
     : `${t.modes[d.mode]?.name ?? d.mode} · ${d.stake ? `🪙 ${d.stake.toLocaleString()}` : t.free}${d.target ? ` · ${t.targetLbl} ${d.target}` : ''}`;
-  const accept = async () => {
+  const accept = async (forfeit = false) => {
     setBusy(true);
     setError(null);
     try {
-      const r = await s.answer(inv, true);
-      if (r.tournamentId) return onTournament(r.tournamentId);
-      const j = await api<{ roomId: string }>('join_room', { roomId: r.roomId });
+      if (!inv.room_id) {
+        const r = await s.answer(inv, true);
+        if (r.tournamentId) return onTournament(r.tournamentId);
+        return;
+      }
+      // Sit down first, and only then mark the invite accepted: if I can't join, it stays up.
+      const j = await join(inv.room_id, forfeit);
+      if (j === 'in_game') return setWarn(inv.id);
+      setWarn(null);
+      s.answer(inv, true).catch(() => {});
       onRoom(j.roomId);
     } catch (e) {
       setError(errText(e));
@@ -337,20 +374,45 @@ export function InviteToast({ onRoom, onTournament }: { onRoom: (roomId: string)
       setBusy(false);
     }
   };
+  const warning = warn === inv.id;
   return (
-    <div className="invite-toast" role="alertdialog" aria-label={t.social.invitesYou}>
+    <div className={`invite-toast ${warning ? 'warning' : ''}`} role="alertdialog" aria-label={t.social.invitesYou}>
       <span className="avatar"><Avatar name={d.from} url={friend?.avatar} /></span>
       <span className="invite-main">
         <b>{d.from} {d.kind === 'tournament' ? t.social.invitesYouTour : t.social.invitesYou}</b>
         <small>{what}</small>
+        {warning && <small className="invite-warn"><b>⚠️ {t.social.inGame}.</b> {t.social.forfeitWarn.replace('{xp}', String(-LEAVER_XP))}</small>}
         {error && <small className="error">{error}</small>}
       </span>
       <span className="invite-actions">
-        <button className="btn primary small" disabled={busy} onClick={accept}>{t.social.join}</button>
-        <button className="btn ghost small" disabled={busy} onClick={() => { s.answer(inv, false).catch(() => {}); }}>{t.social.notNow}</button>
+        {warning ? (
+          <>
+            <button className="btn danger small" disabled={busy} onClick={() => accept(true)}>{t.social.forfeitGo}</button>
+            <button className="btn ghost small" disabled={busy} onClick={() => setWarn(null)}>{t.social.keepPlaying}</button>
+          </>
+        ) : (
+          <>
+            <button className="btn primary small" disabled={busy} onClick={() => accept()}>{t.social.join}</button>
+            <button className="btn ghost small" disabled={busy} onClick={() => { s.answer(inv, false).catch(() => {}); }}>{t.social.notNow}</button>
+          </>
+        )}
       </span>
     </div>
   );
+}
+
+/**
+ * Sit at the table I was invited to. Waiting at another table (a lobby, a ready
+ * check) doesn't stop me: I just move. In the middle of a game, the caller has to
+ * ask first — `forfeit` leaves that game to a bot for good.
+ */
+export async function joinInvitedRoom(roomId: string, forfeit = false): Promise<{ roomId: string } | 'in_game'> {
+  try {
+    return await api<{ roomId: string }>('join_room', { roomId, switchTable: forfeit ? true : 'lobby' });
+  } catch (e) {
+    if (!forfeit && e instanceof ApiError && e.code === 'in_game') return 'in_game';
+    throw e;
+  }
 }
 
 /** On a player's card: add them, or see where you stand. */

@@ -57,6 +57,8 @@ export interface TableViewProps {
   mutedSeats?: Set<Seat>;
   /** Local timestamp when the current player's turn runs out (online). */
   turnDeadline?: number | null;
+  /** Online, between hands: who tapped "Listo", who's still to, and when the next hand deals anyway. */
+  readyUp?: ReadyUp;
   /** Extra line under the result (e.g. chips won, side bets). */
   resultNote?: ReactNode;
   /** Human seats whose owner doesn't have the table open right now. */
@@ -124,7 +126,7 @@ const FFA_COLORS = ['var(--us)', 'var(--them)', '#6fb7ff', '#c79bff'];
 export function TableView(props: TableViewProps) {
   const {
     view, myHand, mySeat, names, levels, avatars, onPlay, onNextHand, onExit, chat, onChat,
-    speaking, voice, pot, away, onSeatTap, mutedSeats, turnDeadline, resultNote, offline, outOfApp, exitConfirm, notice,
+    speaking, voice, pot, away, onSeatTap, mutedSeats, turnDeadline, readyUp, resultNote, offline, outOfApp, exitConfirm, notice,
     watching, watchers,
   } = props;
   const { t, lang, setLang } = useI18n();
@@ -549,7 +551,8 @@ export function TableView(props: TableViewProps) {
       </dialog>
 
       {showResult && view.handResult && view.winner === null && (
-        <ResultSheet view={view} mySeat={mySeat} name={name} onNext={onNextHand} endActions={props.endActions} note={resultNote} />
+        <ResultSheet view={view} mySeat={mySeat} name={name} onNext={onNextHand} endActions={props.endActions} note={resultNote}
+          readyUp={readyUp} watching={!!watching} />
       )}
       {showResult && view.winner !== null && (
         <GameOver view={view} mySeat={mySeat} name={name} endActions={props.endActions} note={resultNote} showXp={props.showXp && !arcade} />
@@ -725,10 +728,34 @@ function SeatBadge({
   );
 }
 
+export interface ReadyUp {
+  ready: Set<Seat>;
+  /** People at the table who haven't tapped "Listo" yet (bots and players who left don't count). */
+  waiting: Seat[];
+  /** Local timestamp when the next hand deals on its own. */
+  deadline: number | null;
+}
+
+/** Seconds until `deadline`, ticking. */
+function useCountdown(deadline: number | null | undefined) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (deadline == null) return;
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [deadline]);
+  return deadline == null ? null : Math.max(0, Math.ceil((deadline - now) / 1000));
+}
+
 function ResultSheet({
-  view, mySeat, name, onNext, endActions, note,
-}: { view: PublicState; mySeat: Seat; name: (s: Seat) => string; onNext: () => void; endActions: ReactNode; note?: ReactNode }) {
+  view, mySeat, name, onNext, endActions, note, readyUp, watching,
+}: {
+  view: PublicState; mySeat: Seat; name: (s: Seat) => string; onNext: () => void; endActions: ReactNode; note?: ReactNode;
+  readyUp?: ReadyUp; watching?: boolean;
+}) {
   const { t } = useI18n();
+  const [tapped, setTapped] = useState(false);
+  const secs = useCountdown(readyUp?.deadline);
   const r = view.handResult!;
   const mode = view.rules.mode;
   const mySide = sideOf(mode, mySeat);
@@ -789,6 +816,7 @@ function ResultSheet({
         <ul className="reveal">
           {seats.map((s) => (
             <li key={s} className={sideOf(mode, s) === mySide ? 'us' : 'them'}>
+              {readyUp?.ready.has(s) && <i className="rready" title={t.between.ready} aria-label={t.between.ready}>✓</i>}
               <span className="rname">{name(s)}</span>
               <span className="rtiles">
                 {r.hands[s].map((tile) => <HandTile key={`${tile[0]}-${tile[1]}`} tile={tile} className="mini" />)}
@@ -797,9 +825,81 @@ function ResultSheet({
             </li>
           ))}
         </ul>
-        {over ? <div className="sheet-actions">{endActions}</div> : <button className="btn primary" onClick={onNext}>{t.nextHand}</button>}
+        <Contributions view={view} mySeat={mySeat} name={name} />
+        {over ? <div className="sheet-actions">{endActions}</div>
+          : readyUp ? (() => {
+            const iAmReady = tapped || readyUp.ready.has(mySeat);
+            const others = readyUp.waiting.filter((s) => s !== mySeat || !iAmReady);
+            const clock = secs != null && <small className="ready-clock">{t.between.auto.replace('{s}', String(secs))}</small>;
+            if (watching || iAmReady) {
+              return (
+                <div className="ready-wait" role="status">
+                  <b>{watching ? '' : `✓ ${t.between.ready} · `}{others.length ? t.between.waiting.replace('{names}', others.map(name).join(', ')) : t.between.dealing}</b>
+                  {clock}
+                </div>
+              );
+            }
+            return (
+              <button className="btn primary ready-btn" onClick={() => { setTapped(true); onNext(); }}>
+                {t.between.ready}{secs != null && <span className="ready-secs" aria-label={t.between.auto.replace('{s}', String(secs))}>{secs}</span>}
+              </button>
+            );
+          })()
+          : !watching && <button className="btn primary" onClick={onNext}>{t.nextHand}</button>}
       </div>
     </div>
+  );
+}
+
+/**
+ * Who is carrying the game: points each player brought in (hands they closed, pase
+ * corrido / de salida; Arcade: stars), tiles laid, passes, hands closed by dominó.
+ * Games started before these counts existed simply don't show it.
+ */
+function Contributions({ view, mySeat, name }: { view: PublicState; mySeat: Seat; name: (s: Seat) => string }) {
+  const { t } = useI18n();
+  const st = view.seatStats;
+  if (!st) return null;
+  const mode = view.rules.mode;
+  const mySide = sideOf(mode, mySeat);
+  const seats = Array.from({ length: playerCount(mode) }, (_, i) => i as Seat);
+  if (seats.every((s) => !st.tiles[s] && !st.points[s])) return null;
+  const best = seats.reduce((b, s) => (st.points[s] > st.points[b] || (st.points[s] === st.points[b] && st.tiles[s] > st.tiles[b]) ? s : b), seats[0]);
+  const hasMvp = st.points[best] > 0 && seats.filter((s) => st.points[s] === st.points[best] && st.tiles[s] === st.tiles[best]).length === 1;
+  // Share of the points: of the team's in pairs, of everyone's otherwise.
+  const pool = (s: Seat) => (mode === '2v2' ? view.scores[sideOf(mode, s)] : st.points.reduce((a, b) => a + b, 0));
+  const share = (s: Seat) => (pool(s) > 0 ? Math.round((100 * st.points[s]) / pool(s)) : 0);
+  return (
+    <table className="contrib">
+      <caption>{t.between.title}</caption>
+      <thead>
+        <tr>
+          <th scope="col"><span className="sr-only">{t.players}</span></th>
+          <th scope="col">{view.arcade ? t.between.stars : t.between.points}</th>
+          <th scope="col">{t.between.tiles}</th>
+          <th scope="col">{t.between.passes}</th>
+          <th scope="col">{t.between.dominoes}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {seats.map((s) => (
+          <tr key={s} className={`${sideOf(mode, s) === mySide ? 'us' : 'them'} ${hasMvp && s === best ? 'mvp' : ''}`}>
+            <th scope="row">
+              <span className="cname">
+                {hasMvp && s === best && <span className="mvp-star" title={t.between.mvp} aria-label={t.between.mvp}>⭐</span>}
+                {name(s)}
+                {st.capicuas[s] > 0 && <small className="ccap" title={`${st.capicuas[s]} ${t.between.capicuas}`}>✨{st.capicuas[s]}</small>}
+              </span>
+              <span className="cbar" title={t.between.share.replace('{p}', String(share(s)))}><i style={{ width: `${share(s)}%` }} /></span>
+            </th>
+            <td><b>{st.points[s]}</b></td>
+            <td>{st.tiles[s]}</td>
+            <td>{st.passes[s]}</td>
+            <td>{st.dominoes[s]}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -846,6 +946,8 @@ function GameOver({ view, mySeat, name, endActions, note, showXp }: {
           <div><b>{view.tally.tranques[mySide]}</b><small>{t.summary.tranquesWon}</small></div>
           <div><b>{view.tally.hands[mySide]}</b><small>{t.summary.handsWon}</small></div>
         </div>
+
+        <Contributions view={view} mySeat={mySeat} name={name} />
 
         <div className="go-rewards">
           {showXp && <div className="reward xp"><span>⭐</span><b>+{xp} XP</b></div>}

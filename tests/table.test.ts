@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CLASSIC_DR, newGame, type Mode, type Seat } from '../supabase/functions/_shared/domino.ts';
+import { applyMove, CLASSIC_DR, newGame, type Mode, type Seat } from '../supabase/functions/_shared/domino.ts';
+import { chooseMove } from '../supabase/functions/_shared/bot.ts';
 import {
-  autoAction, botsAllowed, chestReward, CHESTS, effectiveStake, packFor, rollChest, rushCost, salaFor, gameXp, levelFromXp, levelTitle, minHumans, needsReadyCheck, payouts, publicState, roomCode,
+  autoAction, autoDelay, botsAllowed, chestReward, CHESTS, effectiveStake, packFor, rollChest, rushCost, salaFor, gameXp, levelFromXp, levelTitle, minHumans, needsReadyCheck, payouts, publicState, roomCode,
   sideBetMultiplier, sideBetWon, TIMING, validateCustom, voiceRoomFor, xpForLevel, type SeatInfo,
   customRules, publicRules,
 } from '../supabase/functions/_shared/table.ts';
@@ -32,6 +33,22 @@ describe('visibility & timing', () => {
 
     const away = humans.map((x) => (x.seat === g.turn ? { ...x, away: true } : x));
     expect(autoAction(g, away, TURN, 0, TIMING.awayMs)).toMatchObject({ kind: 'move', strike: false });
+  });
+
+  it('between hands: waits for everyone at the table to tap Listo, or 25 s', () => {
+    let g = newGame();
+    while (!g.handResult) g = applyMove(g, chooseMove(g, g.turn));
+    const seats = [human(0, 'a'), human(1, 'b'), bot(2), { ...human(3, 'd'), away: true }];
+    expect(TIMING.nextHandMs).toBe(25_000);
+    expect(autoDelay(g, seats, TURN)).toBe(TIMING.nextHandMs);
+    expect(autoAction(g, seats, TURN, 0, TIMING.nextHandMs - 1)).toBeNull();
+    expect(autoAction(g, seats, TURN, 0, TIMING.nextHandMs)).toEqual({ kind: 'nextHand' });
+    // One of the two people present is ready: still waiting.
+    expect(autoDelay({ ...g, nextReady: [0] }, seats, TURN)).toBe(TIMING.nextHandMs);
+    // Both are (the bot and the one who left don't count): deal right away.
+    expect(autoDelay({ ...g, nextReady: [0, 1] }, seats, TURN)).toBe(TIMING.awayMs);
+    // Nobody left to wait for.
+    expect(autoDelay(g, seats.map((x) => ({ ...x, away: true })), TURN)).toBe(TIMING.awayMs);
   });
 });
 

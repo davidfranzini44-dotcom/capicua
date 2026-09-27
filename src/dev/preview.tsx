@@ -2,7 +2,7 @@
 // Renders the online screens with sample data so layouts can be checked without a backend.
 import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { applyMove, forcedMove, fullSet, legalMoves, newGame, type Seat } from '../../supabase/functions/_shared/domino.ts';
+import { applyMove, forcedMove, fullSet, legalMoves, newGame, nextHand, type Seat } from '../../supabase/functions/_shared/domino.ts';
 import { chooseMove } from '../../supabase/functions/_shared/bot.ts';
 import { publicRules, publicState } from '../../supabase/functions/_shared/table.ts';
 import { LangContext, strings, type Lang } from '../i18n';
@@ -311,6 +311,9 @@ function Screen({ s }: { s: string }) {
     let g = newGame(Math.random, publicRules('2v2')) as GameState;
     g = { ...g, scores: s === 'gameover-won' ? [104, 57] : [61, 112], winner: s === 'gameover-won' ? 0 : 1, handNo: 6,
       tally: { capicuas: [2, 1], tranques: [1, 0], hands: s === 'gameover-won' ? [4, 2] : [2, 4] },
+      seatStats: s === 'gameover-won'
+        ? { points: [71, 32, 33, 25], dominoes: [3, 1, 1, 1], capicuas: [2, 1, 0, 0], tiles: [24, 21, 19, 22], passes: [3, 7, 6, 5] }
+        : { points: [36, 60, 25, 52], dominoes: [1, 2, 1, 2], capicuas: [0, 1, 0, 0], tiles: [19, 23, 20, 24], passes: [6, 4, 7, 3] },
       handResult: { kind: 'domino', winnerSeat: 0, side: 0, points: 31, capicua: true, bonus: 25, total: 56, counts: [0, 12, 9, 10], hands: [[], [], [], []], tieToMano: false } };
     return (
       <TableView view={publicState(g)} myHand={[]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
@@ -353,6 +356,15 @@ function Screen({ s }: { s: string }) {
       </div>
     );
   }
+  if (s === 'invite-in-game') {
+    // Invited while playing: Unirme warns that accepting forfeits the game in progress.
+    return (
+      <SocialContext.Provider value={fakeSocial({ invites: [sampleInvite] })}>
+        <div className="game-shell"><main className="game-body" /></div>
+        <InviteToast onRoom={noop} onTournament={noop} join={async (roomId, forfeit) => (forfeit ? { roomId } : 'in_game')} />
+      </SocialContext.Provider>
+    );
+  }
   if (s === 'friends' || s === 'friends-invite' || s === 'friends-empty') {
     // Mesas tab's friend card; friends-invite adds Yokasta's invite on top; friends-empty is a brand-new player.
     const over = s === 'friends-invite' ? { invites: [sampleInvite] } : s === 'friends-empty' ? { friends: [], online: new Map() } : {};
@@ -392,8 +404,36 @@ function Screen({ s }: { s: string }) {
   }
   if (s === 'queue') return <QueueScreen stake={1000} mode="2v2" onMatched={noop} onCancel={noop} />;
   if (s === 'custom-form') return <CustomForm profile={profile} onBack={noop} onCreated={noop} />;
-  if (s === 'profile') {
-    return <ProfileCard stats={{ id: 'x', display_name: 'Yokasta', xp: 6_200, games: 214, wins: 131, capicuas: 58, pollonas: 7, biggest_pot: 12_000, tournaments_won: 2, avatar_url: face('#c0487a') }} onClose={noop} />;
+  if (s === 'profile' || s === 'profile-online') {
+    return <ProfileCard stats={{ id: 'x', display_name: 'Yokasta', xp: 6_200, games: 214, wins: 131, capicuas: 58, pollonas: 7, biggest_pot: 12_000, tournaments_won: 2, avatar_url: face('#c0487a'), chips: 48_250 }}
+      online={s === 'profile-online'} onClose={noop} />;
+  }
+  if (s === 'lobby-muted') {
+    // Voice on in the lobby, Yokasta muted from her card.
+    const r = data({ seats: [seat(0, 'Wilfri', 4), seat(1, 'Yokasta', 6), seat(2, 'Robert', 5), seat(3, 'Chelo', 5, { is_bot: true, user_id: null })] });
+    return <Pregame r={r} uid="me" profile={profile} voice={fakeVoice({ status: 'on', micOn: true, mutedPeers: new Set(['u-Yokasta']) })} onLeave={noop} />;
+  }
+  if (s === 'between' || s === 'between-ready' || s === 'between-1v1') {
+    // A hand just ended online: "Listo" (or waiting for the others), the clock, and who is carrying the game.
+    const mode = s === 'between-1v1' ? '1v1' : '2v2';
+    let g = newGame(Math.random, publicRules(mode));
+    for (let hand = 0; hand < 2; hand++) {
+      if (hand) g = nextHand(g);
+      for (let i = 0; i < 400 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
+    }
+    const pub = { ...publicState(g), winner: null, nextReady: (s === 'between-ready' ? [0, 1] : [1]) as Seat[] };
+    const seats = mode === '1v1'
+      ? [seat(0, 'Wilfri', 4), seat(1, 'Yokasta', 13)]
+      : [seat(0, 'Wilfri', 4), seat(1, 'Yokasta', 13), seat(2, 'Robert', 6), seat(3, 'Chelo', 5, { is_bot: true, user_id: null })];
+    const r = data({
+      room: room({ phase: 'playing', current_game: 'g1', mode, rules: publicRules(mode) }),
+      seats,
+      online: new Set(['me', 'u-Yokasta', 'u-Robert']),
+      game: { id: 'g1', public_state: pub, version: 9, stake: 1000, pot: 3000, turn_ms: 15000, auto_delay_ms: 25_000, settled: false },
+      hand: [],
+      receivedAt: Date.now() - 4000,
+    });
+    return <OnlineTable r={r} uid="me" voice={null} onLeave={noop} onPlayAnother={noop} />;
   }
   if (s === 'ready') {
     const r = data({
