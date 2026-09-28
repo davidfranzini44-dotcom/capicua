@@ -7,6 +7,7 @@ import { ApiError, supabase } from '../lib/supabase';
 import { usePlayerStats, useRoom } from '../lib/useRoom';
 import { useErrorText } from './common';
 import { TableView } from './TableView';
+import { openSponsor, useSponsor } from '../lib/sponsor';
 
 export default function WatchScreen({ friendId, friendName, uid, onExit }: {
   friendId: string; friendName: string; uid: string; onExit: () => void;
@@ -44,6 +45,7 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
   const { t } = useI18n();
   const r = useRoom(roomId, uid);
   const stats = usePlayerStats(r.seats.filter((s) => s.user_id && !s.is_bot).map((s) => s.user_id!));
+  const sponsor = useSponsor(r.game?.sponsor_id);
 
   // Stop counting as a watcher however this screen closes.
   useEffect(() => () => { supabase.rpc('stop_watching', { p_room: roomId }).then(() => {}); }, [roomId]);
@@ -92,6 +94,8 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
       away={away}
       pot={game.pot || undefined}
       turnDeadline={turnDeadline}
+      sponsor={sponsor}
+      onSponsorTap={sponsor ? () => openSponsor(sponsor, game.id) : undefined}
       endActions={<button className="btn primary" onClick={leave}>{t.watch.stop}</button>}
       watching={{ name: friendName, onLeave: leave }}
     />

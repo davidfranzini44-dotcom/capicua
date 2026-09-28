@@ -44,6 +44,8 @@ export interface GameRow {
   turn_ms: number;
   auto_delay_ms: number | null;
   settled: boolean;
+  /** The sponsor printed on this table's felt. */
+  sponsor_id?: string | null;
 }
 
 export interface SideBetRow {
@@ -57,7 +59,7 @@ export interface SideBetRow {
 
 const ROOM_COLS = 'id, code, kind, mode, rules, stake, turn_seconds, visibility, host, phase, phase_ends_at, current_game, tournament_id';
 const SEAT_COLS = 'seat, user_id, is_bot, name, level, ready, away, left_game';
-const GAME_COLS = 'id, public_state, version, stake, pot, turn_ms, auto_delay_ms, settled';
+const GAME_COLS = 'id, public_state, version, stake, pot, turn_ms, auto_delay_ms, settled, sponsor_id';
 
 /**
  * Live view of one table: room, seats, the current game, my own tiles, my

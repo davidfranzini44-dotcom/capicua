@@ -477,3 +477,34 @@
   /* Status tags keep their icon beside the count; the words stay for screen readers. */
   .table-focus .seat .tag-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
+
+/* ---------- sponsored tables ---------- */
+/* The sponsor's logo, printed on the felt under the dominoes (never tappable during a hand). */
+.sponsor-mark {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: calc(var(--sp-size, .6) * 100%); height: calc(var(--sp-size, .6) * 78%);
+  object-fit: contain; opacity: var(--sp-opacity, .4);
+  pointer-events: none; user-select: none; z-index: 0;
+}
+/* White = an engraved look on any felt color. */
+.sponsor-mark.white { filter: brightness(0) invert(1); }
+.board-wrap > .board-scene { z-index: 1; }
+.sponsor-credit { margin: 0; font-size: .8rem; color: var(--muted); text-align: center; }
+.sponsor-credit b { color: var(--text); }
+button.sponsor-credit { background: none; border: 0; padding: 6px 4px; cursor: pointer; font: inherit; font-size: .8rem; color: var(--muted); }
+button.sponsor-credit:hover b { text-decoration: underline; }
+.gameover .sponsor-credit { color: #f2e4bdcc; }
+
+/* Admin: the preview felt. */
+.sp-felt { width: 100%; max-width: 420px; background: none; }
+.sp-felt .felt { height: 220px; margin: 0; }
+.sp-felt .board-wrap { inset: 12% 6%; }
+.sp-felt .board-wrap::before { inset: 0; }
+.sp-felt.mini { width: 104px; flex: none; }
+.sp-felt.mini .table-rail { padding: 3px; border-radius: 14px; }
+.sp-felt.mini .felt { height: 70px; border-radius: 11px; }
+.sp-felt.mini .felt::before { display: none; }
+/* The sample dominoes sit low in the oval, so the logo stays in view and you still see them pass over it. */
+.sp-tiles { display: flex !important; align-items: flex-end; justify-content: center; gap: 2px; padding-bottom: 6%; }
+.sp-tiles > * { width: 34px; height: auto; transform: rotate(90deg); margin: 0 -6px; }
+.sp-row .seg button { font-size: 1.5rem; line-height: 1; }

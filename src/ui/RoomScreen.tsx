@@ -10,6 +10,7 @@ import { api, ApiError, supabase, type Profile } from '../lib/supabase';
 import { usePlayerStats, useRoom, type PlayerStats, type RoomData, type SeatRow } from '../lib/useRoom';
 import { useSocial } from '../lib/social';
 import { useWatchers } from '../lib/watch';
+import { openSponsor, useSponsor } from '../lib/sponsor';
 import { useVoice, type Voice } from '../lib/useVoice';
 import { COOLDOWN_MS, type PhraseId } from '../quickchat';
 import type { ChestKind } from '../../supabase/functions/_shared/table.ts';
@@ -445,6 +446,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
   const room = r.room!;
   const game = r.game!;
   const watchers = useWatchers(room.id);
+  const sponsor = useSponsor(game.sponsor_id);
   // Messages at the table fade on their own (they show under the hand, not over the board).
   useEffect(() => {
     if (!error) return;
@@ -646,6 +648,8 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
         voice={voiceControl ?? undefined}
         turnDeadline={turnDeadline}
         readyUp={readyUp}
+        sponsor={sponsor}
+        onSponsorTap={sponsor ? () => openSponsor(sponsor, game.id) : undefined}
         resultNote={resultNote}
         endActions={endActions}
         offline={offline}

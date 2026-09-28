@@ -14,6 +14,8 @@ import { snapshotOf, tableFx, type Bonus, type FxSnapshot } from '../lib/tableFx
 import { placementRun } from '../lib/tableMotion';
 import { BUBBLE_MS, PHRASE_IDS, PHRASES, type PhraseId } from '../quickchat';
 import { Board } from './Board';
+import { SponsorCredit, SponsorMark } from './Sponsor';
+import type { TableSponsor } from '../lib/sponsor';
 import { Avatar } from './common';
 import { Confetti } from './Confetti';
 import { handLayout } from './handLayout';
@@ -77,6 +79,10 @@ export interface TableViewProps {
   watchers?: string[];
   /** Board look: the Focus Table (default) or the classic board, kept for the design comparison preview. */
   presentation?: 'classic' | 'focus';
+  /** The sponsor printed on this table's felt, if any. */
+  sponsor?: TableSponsor | null;
+  /** "Patrocinado por…" tapped (counts it and opens their link). */
+  onSponsorTap?: () => void;
 }
 
 /** Autoplay when only one tile can be played — a per-device preference. */
@@ -416,6 +422,7 @@ export function TableView(props: TableViewProps) {
         )}
 
         <div className="board-wrap">
+          {props.sponsor && <SponsorMark sponsor={props.sponsor} />}
           {dv ? (
             <Board key={view.handNo} line={dv.line} origin={dv.origin} newestKey={null} targets={dv.sides} selected={dv.selected}
               ghostKeys={dv.ghosts} ownerOf={ownerOf} nameOf={name}
@@ -547,6 +554,7 @@ export function TableView(props: TableViewProps) {
         <label><span>{t.sfx}<small>{t.sfxHint}</small></span><input type="checkbox" checked={sfx} onChange={(e) => setSfx(e.target.checked)} /></label>
         {arcade && <button className="btn ghost" onClick={() => { setMenuOpen(false); setIntroOpen(true); }}>⚡ {t.arcade.intro.again}</button>}
         <LookPicker compact />
+        {props.sponsor && <SponsorCredit sponsor={props.sponsor} onTap={props.onSponsorTap} />}
         <button className="btn primary" onClick={() => setMenuOpen(false)}>{copy.done}</button>
       </dialog>
 
@@ -555,7 +563,8 @@ export function TableView(props: TableViewProps) {
           readyUp={readyUp} watching={!!watching} />
       )}
       {showResult && view.winner !== null && (
-        <GameOver view={view} mySeat={mySeat} name={name} endActions={props.endActions} note={resultNote} showXp={props.showXp && !arcade} />
+        <GameOver view={view} mySeat={mySeat} name={name} endActions={props.endActions} note={resultNote} showXp={props.showXp && !arcade}
+          credit={props.sponsor ? <SponsorCredit sponsor={props.sponsor} onTap={props.onSponsorTap} /> : undefined} />
       )}
       {introOpen && <ArcadeIntro onClose={() => setIntroOpen(false)} />}
     </div>
@@ -904,8 +913,10 @@ function Contributions({ view, mySeat, name }: { view: PublicState; mySeat: Seat
 }
 
 /** End of the game: celebration (or commiseration) plus a summary of how it went. */
-function GameOver({ view, mySeat, name, endActions, note, showXp }: {
+function GameOver({ view, mySeat, name, endActions, note, showXp, credit }: {
   view: PublicState; mySeat: Seat; name: (s: Seat) => string; endActions: ReactNode; note?: ReactNode; showXp?: boolean;
+  /** "Mesa patrocinada por…" */
+  credit?: ReactNode;
 }) {
   const { t } = useI18n();
   const mode = view.rules.mode;
@@ -955,6 +966,7 @@ function GameOver({ view, mySeat, name, endActions, note, showXp }: {
         </div>
 
         <div className="sheet-actions">{endActions}</div>
+        {credit}
       </div>
     </div>
   );

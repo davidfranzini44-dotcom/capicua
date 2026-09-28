@@ -5,8 +5,9 @@ import { levelFromXp } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { api, supabase } from '../lib/supabase';
 import { Avatar, useErrorText } from './common';
+import { SponsorsView } from './AdminSponsors';
 
-type Section = 'stats' | 'users' | 'fair' | 'tables' | 'ledger' | 'purchases';
+type Section = 'stats' | 'users' | 'fair' | 'sponsors' | 'tables' | 'ledger' | 'purchases';
 
 interface Stats {
   players: number; guests: number; new_today: number; games_today: number; live_tables: number; in_queue: number;
@@ -43,7 +44,8 @@ export function AdminScreen({ onExit }: { onExit: () => void }) {
   const [section, setSection] = useState<Section>('stats');
   const [openUser, setOpenUser] = useState<string | null>(null);
   const tabs: [Section, string][] = [
-    ['stats', t.admin.stats], ['users', t.admin.users], ['fair', t.admin.fair], ['tables', t.admin.tables], ['ledger', t.admin.ledger], ['purchases', t.admin.purchases],
+    ['stats', t.admin.stats], ['users', t.admin.users], ['fair', t.admin.fair], ['sponsors', t.admin.sp.tab], ['tables', t.admin.tables],
+    ['ledger', t.admin.ledger], ['purchases', t.admin.purchases],
   ];
   return (
     <div className="admin">
@@ -61,6 +63,7 @@ export function AdminScreen({ onExit }: { onExit: () => void }) {
           : section === 'stats' ? <StatsView />
           : section === 'users' ? <UsersView onOpen={setOpenUser} />
           : section === 'fair' ? <FairPlayView onOpen={setOpenUser} />
+          : section === 'sponsors' ? <SponsorsView />
           : section === 'tables' ? <TablesView />
           : section === 'ledger' ? <LedgerView />
           : <PurchasesView />}

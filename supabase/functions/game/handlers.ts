@@ -25,6 +25,7 @@ import {
   validateTournament, type TournamentMode,
 } from '../_shared/tournament.ts';
 import { canUse, chipPrice, lookById } from '../_shared/cosmetics.ts';
+import { pickWeighted, sponsorMatches, validateSponsor } from '../_shared/sponsors.ts';
 import { networkOf, pairKey, pickGroup, shuffled } from '../_shared/fairplay.ts';
 import { db } from './db.ts';
 import { createCheckout, ShopError } from './purchases.ts';
@@ -365,9 +366,10 @@ async function startGame(tx: Tx, room: RoomDb, seats: SeatRow[]) {
 
   const state = newGame(Math.random, room.rules);
   const turnMs = room.turn_seconds * 1000;
+  const sponsor = await pickSponsor(tx, room).catch((e) => (console.error('pickSponsor', e), null));
   const [game] = await tx`
-    insert into games (room_id, public_state, stake, pot, turn_ms, auto_delay_ms)
-    values (${room.id}, ${tx.json(publicState(state) as never)}, ${stake}, ${stake * humans.length}, ${turnMs}, ${autoDelay(state, infos, turnMs)})
+    insert into games (room_id, public_state, stake, pot, turn_ms, auto_delay_ms, sponsor_id)
+    values (${room.id}, ${tx.json(publicState(state) as never)}, ${stake}, ${stake * humans.length}, ${turnMs}, ${autoDelay(state, infos, turnMs)}, ${sponsor})
     returning id`;
   if (stake > 0) {
     for (const h of humans) {
@@ -387,6 +389,21 @@ async function startGame(tx: Tx, room: RoomDb, seats: SeatRow[]) {
   await tx`update rooms set phase = 'playing', phase_ends_at = null, current_game = ${game.id}, updated_at = now() where id = ${room.id}`;
   if (room.kind === 'tournament') await tx`update tournament_matches set status = 'playing' where room_id = ${room.id}`;
   return game.id as string;
+}
+
+/** The sponsor printed on this game's felt: one of those running on this kind of table, by weight. */
+async function pickSponsor(tx: Tx, room: RoomDb): Promise<string | null> {
+  const live = await tx`
+    select id, weight, salas, custom, tournaments, tournament_codes, paused, starts_at, ends_at from sponsors
+    where not paused and starts_at <= now() and (ends_at is null or ends_at > now())`;
+  if (!live.length) return null;
+  const [t] = room.tournament_id ? await tx`select code from tournaments where id = ${room.tournament_id}` : [];
+  const table = { kind: room.kind, stake: room.stake, tournamentCode: t?.code ?? null };
+  const fits = live.filter((s) => sponsorMatches({
+    salas: s.salas, custom: s.custom, tournaments: s.tournaments, tournamentCodes: s.tournament_codes,
+    paused: s.paused, startsAt: s.starts_at, endsAt: s.ends_at,
+  }, table));
+  return (pickWeighted(fits as { id: string; weight: number }[])?.id as string | undefined) ?? null;
 }
 
 async function lockGame(tx: Tx, gameId: string, uid: string) {
@@ -1573,6 +1590,62 @@ export const handlers = {
       from rooms r left join room_seats s on s.room_id = r.id
       where r.phase <> 'finished'
       group by r.id order by r.created_at desc limit 100`;
+  },
+
+  /**
+   * Sponsors with what they got: games their logo was on, players reached (unique),
+   * views (players × games) and taps on "Patrocinado por…", all time and last 7 days.
+   */
+  async admin_sponsors(uid: string) {
+    await adminOnly(uid);
+    return await sql`
+      select s.*,
+        coalesce(g.games, 0)::int as games, coalesce(g.games_7d, 0)::int as games_7d,
+        coalesce(p.players, 0)::int as players, coalesce(p.views, 0)::int as views, coalesce(p.views_7d, 0)::int as views_7d,
+        coalesce(k.taps, 0)::int as taps, coalesce(k.tappers, 0)::int as tappers, coalesce(k.taps_7d, 0)::int as taps_7d
+      from sponsors s
+      left join lateral (
+        select count(*) as games, count(*) filter (where created_at > now() - interval '7 days') as games_7d
+        from games where sponsor_id = s.id
+      ) g on true
+      left join lateral (
+        select count(distinct h.user_id) as players, count(h.user_id) as views,
+               count(h.user_id) filter (where gm.created_at > now() - interval '7 days') as views_7d
+        from games gm join game_hands h on h.game_id = gm.id
+        where gm.sponsor_id = s.id and h.user_id is not null
+      ) p on true
+      left join lateral (
+        select count(*) as taps, count(distinct user_id) as tappers,
+               count(*) filter (where created_at > now() - interval '7 days') as taps_7d
+        from sponsor_taps where sponsor_id = s.id
+      ) k on true
+      order by s.paused, s.created_at desc`;
+  },
+
+  /** Create or change a sponsor (the logo is already uploaded to the `sponsors` bucket). */
+  async admin_sponsor_save(uid: string, { sponsor }: { sponsor: unknown }) {
+    await adminOnly(uid);
+    const s = validateSponsor((sponsor ?? {}) as never);
+    if (!s) throw new HttpError(400, 'bad_settings');
+    const row = {
+      name: s.name, image_path: s.imagePath, link: s.link, style: s.style, opacity: s.opacity, size: s.size,
+      salas: s.salas, custom: s.custom, tournaments: s.tournaments, tournament_codes: s.tournamentCodes,
+      weight: s.weight, starts_at: s.startsAt, ends_at: s.endsAt, paused: s.paused,
+    };
+    if (s.id) {
+      const [u] = await sql`update sponsors set ${sql(row)} where id = ${s.id} returning id`;
+      if (!u) throw new HttpError(404, 'not_found');
+      return { id: u.id };
+    }
+    const [c] = await sql`insert into sponsors ${sql(row)} returning id`;
+    return { id: c.id };
+  },
+
+  /** Remove a sponsor; games it was on just lose the link. Returns the logo path so the panel can delete the file. */
+  async admin_sponsor_delete(uid: string, { id }: { id: string }) {
+    await adminOnly(uid);
+    const [d] = await sql`delete from sponsors where id = ${id} returning image_path`;
+    return { imagePath: d?.image_path ?? null };
   },
 
   /** Shut a table down: stakes and open side bets go back to everyone. */

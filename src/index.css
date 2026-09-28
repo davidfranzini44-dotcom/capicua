@@ -1171,3 +1171,32 @@ button:disabled { cursor: default; }
 .admin-player .avatar { float: left; width: 32px; height: 32px; margin-right: 8px; font-size: .85rem; border-width: 2px; border-color: var(--us); }
 .admin-photo { display: flex; align-items: center; gap: 12px; margin: 8px 0 2px; }
 .admin-photo .avatar.big { width: 64px; height: 64px; }
+
+/* Admin → Patrocinios */
+.sp-list, .sp-editor { display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
+.sp-card { display: flex; gap: 12px; align-items: flex-start; background: rgba(255,255,255,.05); border-radius: 16px; padding: 12px; }
+.sp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.sp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sp-status { font-size: .7rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.1); }
+.sp-status.live { background: rgba(61,220,132,.18); color: #3ddc84; }
+.sp-status.scheduled { background: rgba(111,183,255,.18); color: #6fb7ff; }
+.sp-status.paused { background: rgba(245,197,66,.18); color: #f5c542; }
+.sp-where, .sp-week { color: var(--muted); }
+.sp-link { font-size: .78rem; color: #6fb7ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; }
+.sp-stats div { background: rgba(0,0,0,.2); border-radius: 10px; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; }
+.sp-stats b { font-size: .95rem; }
+.sp-stats small { font-size: .66rem; color: var(--muted); }
+.sp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.sp-upload { align-self: flex-start; cursor: pointer; }
+.sp-check { display: flex; align-items: center; gap: 8px; font-size: .9rem; }
+.sp-slider { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; }
+.sp-slider b { color: var(--us); }
+.sp-slider input { width: 100%; }
+.sp-row { display: flex; align-items: center; gap: 10px; }
+.sp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-toggle { border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.05); color: var(--text); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; cursor: pointer; }
+.chip-toggle.on { background: var(--us); color: #1b1300; border-color: var(--us); font-weight: 700; }
+.sp-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sp-dates label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; }
+@media (max-width: 420px) { .sp-card { flex-direction: column; } .sp-dates { grid-template-columns: 1fr; } }
