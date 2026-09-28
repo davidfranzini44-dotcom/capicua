@@ -51,7 +51,8 @@ function appServer(sql: postgres.Sql) {
 type Payload =
   | { kind: 'invite'; invite: string; details: { kind: 'room' | 'tournament'; from: string; mode: string; stake: number; code: string; name?: string } }
   | { kind: 'friend_request' | 'friend_accepted'; name: string }
-  | { kind: 'match_ready'; name: string; code: string };
+  | { kind: 'match_ready' | 'match_last_call' | 'checkin_missed' | 'tournament_cancelled'; name: string; code: string }
+  | { kind: 'checkin_open' | 'checkin_last'; name: string; code: string; minutes: number };
 
 interface Message { title: string; body: string; url: string; tag: string; ttl: number }
 
@@ -97,8 +98,38 @@ export function message(p: Payload, lang: 'es' | 'en'): Message | null {
     case 'match_ready':
       return {
         title: es ? '🏆 ¡Tu partida del torneo está lista!' : '🏆 Your tournament match is ready!',
-        body: es ? `${p.name}: tienes 2 minutos para marcar Listo` : `${p.name}: you have 2 minutes to press Ready`,
-        url: `/?torneo=${encodeURIComponent(p.code)}`, tag: 'match', ttl: 120,
+        body: es ? `${p.name}: tienes 3 minutos para darle a Listo` : `${p.name}: you have 3 minutes to press Ready`,
+        url: `/?torneo=${encodeURIComponent(p.code)}`, tag: 'match', ttl: 180,
+      };
+    case 'match_last_call':
+      return {
+        title: es ? '⏰ ¡Te queda 1 minuto!' : '⏰ 1 minute left!',
+        body: es ? `${p.name}: dale a Listo o pierdes la partida` : `${p.name}: press Ready or you lose the match`,
+        url: `/?torneo=${encodeURIComponent(p.code)}`, tag: 'match', ttl: 60,
+      };
+    case 'checkin_open':
+      return {
+        title: es ? `🏆 ${p.name} empieza en ${p.minutes} min` : `🏆 ${p.name} starts in ${p.minutes} min`,
+        body: es ? 'Haz check-in para confirmar que vas a jugar. Si no, sales del torneo.' : "Check in to confirm you're playing, or you'll be taken off the list.",
+        url: `/?torneo=${encodeURIComponent(p.code)}`, tag: 'checkin', ttl: 900,
+      };
+    case 'checkin_last':
+      return {
+        title: es ? '⏰ Últimos minutos para el check-in' : '⏰ Last minutes to check in',
+        body: es ? `${p.name} empieza en ${p.minutes} min. Toca para confirmar que estás.` : `${p.name} starts in ${p.minutes} min. Tap to confirm you're in.`,
+        url: `/?torneo=${encodeURIComponent(p.code)}`, tag: 'checkin', ttl: 180,
+      };
+    case 'checkin_missed':
+      return {
+        title: es ? `No hiciste check-in en ${p.name}` : `You didn't check in to ${p.name}`,
+        body: es ? 'El torneo empezó sin ti. Te devolvimos la entrada.' : 'It started without you. Your buy-in is back.',
+        url: `/?torneo=${encodeURIComponent(p.code)}`, tag: 'checkin', ttl: 3600,
+      };
+    case 'tournament_cancelled':
+      return {
+        title: es ? `${p.name} se canceló` : `${p.name} was called off`,
+        body: es ? 'No llegó suficiente gente a tiempo. Te devolvimos la entrada.' : "Not enough people checked in. Your buy-in is back.",
+        url: `/?torneo=${encodeURIComponent(p.code)}`, tag: 'checkin', ttl: 3600,
       };
     default:
       return null;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bracketSize, firstRound, minEntries, nextMatch, noShowWinner, placementFor, prizes, roundCount, stage, validateTournament,
+  afterFeeders, bracketSize, checkInOpen, firstRound, minEntries, nextMatch, noShowOutcome, placementFor, prizes, roundCount, stage, TOURNAMENT, validateTournament,
 } from '../supabase/functions/_shared/tournament.ts';
 import { roomCode, voiceRoomFor } from '../supabase/functions/_shared/table.ts';
 
@@ -46,11 +46,50 @@ describe('bracket', () => {
 });
 
 describe('no-shows', () => {
-  it('the side with more players ready goes through; a tie is a coin flip', () => {
-    expect(noShowWinner(1, 0)).toBe('a');
-    expect(noShowWinner(1, 2)).toBe('b');
-    expect(noShowWinner(0, 0, () => 0.2)).toBe('a');
-    expect(noShowWinner(0, 0, () => 0.8)).toBe('b');
+  it('someone on each side: the game is played (a missing partner is played by the server)', () => {
+    expect(noShowOutcome(1, 1)).toBe('play');
+    expect(noShowOutcome(1, 2)).toBe('play');
+    expect(noShowOutcome(2, 1)).toBe('play');
+  });
+
+  it('only one side showed up: it goes through; nobody: both are out', () => {
+    expect(noShowOutcome(1, 0)).toBe('a');
+    expect(noShowOutcome(0, 2)).toBe('b');
+    expect(noShowOutcome(0, 0)).toBe('none');
+  });
+
+  it('after a double no-show the other side of the next match goes straight on', () => {
+    expect(afterFeeders('x', 'y')).toEqual({ play: ['x', 'y'] });
+    expect(afterFeeders(null, 'y')).toEqual({ bye: 'y' });
+    expect(afterFeeders('x', null)).toEqual({ bye: 'x' });
+    expect(afterFeeders(null, null)).toBe('empty');
+  });
+
+  it('the Ready window is 3 minutes, with a reminder at 1 minute left', () => {
+    expect(TOURNAMENT.noShowMs).toBe(180_000);
+    expect(TOURNAMENT.readyReminderMs).toBe(60_000);
+  });
+});
+
+describe('start time and check-in', () => {
+  const now = Date.UTC(2026, 9, 1, 20, 0);
+  const ok = { name: 'Copa', mode: '1v1' as const, size: 8 as const, buyIn: 0, target: 100, turnSeconds: 25 };
+
+  it('the start is 5 minutes to 7 days ahead', () => {
+    expect(validateTournament({ ...ok, startsAt: now + 30 * 60_000 }, now)?.startsAt).toBe(now + 30 * 60_000);
+    expect(validateTournament({ ...ok, startsAt: now + 5 * 60_000 }, now)).not.toBeNull();
+    expect(validateTournament({ ...ok, startsAt: now + 60_000 }, now)).toBeNull();
+    expect(validateTournament({ ...ok, startsAt: now + 8 * 24 * 3_600_000 }, now)).toBeNull();
+    expect(validateTournament({ ...ok, startsAt: Number.NaN }, now)).toBeNull();
+    // An older app sends no start time: the host starts it by hand.
+    expect(validateTournament(ok, now)?.startsAt).toBeUndefined();
+  });
+
+  it('check-in opens 15 minutes before', () => {
+    const start = now + 60 * 60_000;
+    expect(checkInOpen(start, start - 16 * 60_000)).toBe(false);
+    expect(checkInOpen(start, start - 15 * 60_000)).toBe(true);
+    expect(checkInOpen(start, start + 1)).toBe(true);
   });
 });
 
@@ -75,6 +114,12 @@ describe('prizes', () => {
 
   it('free tournaments pay nothing', () => {
     expect(prizes(0, ['c'], ['r'])).toEqual([]);
+  });
+
+  it('a champion without a final to play takes it all; a final nobody showed up to is shared', () => {
+    expect(prizes(1000, ['c'], [])).toEqual([{ userId: 'c', amount: 1000 }]);
+    expect(prizes(1001, [], ['a', 'b1', 'b2'])).toEqual([{ userId: 'a', amount: 335 }, { userId: 'b1', amount: 333 }, { userId: 'b2', amount: 333 }]);
+    expect(prizes(1000, [], [])).toEqual([]);
   });
 });
 

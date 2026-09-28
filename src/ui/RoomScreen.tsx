@@ -211,7 +211,7 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
       {room.phase === 'ready' && (
         <div className="phase-banner ready">
           <strong>{room.kind === 'tournament' ? t.tour.yourMatchReady : t.readyCheckTitle}</strong>
-          <span>{room.kind === 'tournament' ? t.tour.readyRule : t.readyCheckSub}</span>
+          <span>{room.kind === 'tournament' ? (mode === '2v2' ? t.tour.readyRule2v2 : t.tour.readyRule) : t.readyCheckSub}</span>
           <b className="ready-secs">{secs}s</b>
           {me && !me.ready ? (
             <div className="ready-actions">

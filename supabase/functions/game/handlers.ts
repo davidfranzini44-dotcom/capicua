@@ -21,8 +21,8 @@ import {
   type ChestKind, type SeatInfo, type SideBetKind,
 } from '../_shared/table.ts';
 import {
-  firstRound, minEntries, noShowWinner, placementFor, playersPerEntry, prizes, roundCount, TOURNAMENT, tournamentRules, validateTournament,
-  type TournamentMode,
+  afterFeeders, checkInOpen, firstRound, minEntries, noShowOutcome, placementFor, playersPerEntry, prizes, roundCount, TOURNAMENT, tournamentRules,
+  validateTournament, type TournamentMode,
 } from '../_shared/tournament.ts';
 import { canUse, chipPrice, lookById } from '../_shared/cosmetics.ts';
 import { networkOf, pairKey, pickGroup, shuffled } from '../_shared/fairplay.ts';
@@ -32,7 +32,18 @@ import { createCheckout, ShopError } from './purchases.ts';
 export let sql: postgres.Sql;
 /** index.ts awaits this before running any action. */
 export async function ready() {
-  sql ??= await db();
+  if ((sql as postgres.Sql | undefined) !== undefined) return;
+  sql = await db();
+  // The tournament clock (pg_cron) calls this function back: tell it where, and with
+  // the project's public anon key, which the function gateway asks for.
+  const url = Deno.env.get('SUPABASE_URL');
+  const anon = Deno.env.get('SUPABASE_ANON_KEY');
+  if (url && anon) {
+    await sql`
+      insert into app_secrets (key, value) values ('game_url', ${`${url}/functions/v1/game`}), ('anon_key', ${anon})
+      on conflict (key) do update set value = excluded.value where app_secrets.value <> excluded.value`
+      .catch((e) => console.error('remember clock target', e));
+  }
 }
 type Tx = postgres.TransactionSql;
 
@@ -59,12 +70,17 @@ interface RoomDb {
 interface TournamentDb {
   id: string; code: string; name: string; host: string; mode: TournamentMode; size: number; buy_in: number;
   rules: Rules; turn_seconds: number; phase: 'lobby' | 'playing' | 'finished' | 'cancelled'; rounds: number | null; pot: number;
+  /** Scheduled start (null: an older tournament the host starts by hand). */
+  starts_at: Date | null;
+  /** Check-in reminders sent: 1 = check-in open, 2 = last call. */
+  reminded: number;
 }
 interface EntryDb { id: string; player1: string; player2: string | null }
 interface MatchDb {
   id: string; tournament_id: string; round: number; slot: number; entry_a: string | null; entry_b: string | null;
   room_id: string | null; status: 'waiting' | 'ready' | 'playing' | 'done';
 }
+type MatchResult = 'played' | 'bye' | 'forfeit' | 'no_show';
 interface SeatRow {
   seat: number; user_id: string | null; is_bot: boolean; name: string; level: number;
   ready: boolean; away: boolean; left_game: boolean; strikes: number;
@@ -489,10 +505,7 @@ async function refreshDelay(tx: Tx, room: RoomDb, seats: SeatRow[]) {
 /** A lobby deadline passed: ready check → break up (public) or forfeit (tournament); countdown → deal. */
 async function roomDeadline(tx: Tx, room: RoomDb, seats: SeatRow[]) {
   if (room.phase === 'ready') {
-    if (room.kind === 'tournament') {
-      await forfeitNoShows(tx, room, seats);
-      return { phase: 'closed' };
-    }
+    if (room.kind === 'tournament') return await resolveNoShows(tx, room, seats);
     const silent = humansOf(seats).filter((s) => !s.ready).map((s) => s.user_id!);
     await breakUpTable(tx, room, seats, silent);
     return { phase: 'closed' };
@@ -541,7 +554,85 @@ async function removeFromTournament(tx: Tx, t: TournamentDb, e: EntryDb, uid: st
   if (e.player2 === uid) await tx`update tournament_entries set player2 = null where id = ${e.id}`;
   else if (e.player2) await tx`update tournament_entries set player1 = player2, player2 = null where id = ${e.id}`;
   else await tx`delete from tournament_entries where id = ${e.id}`;
+  await tx`delete from tournament_checkins where tournament_id = ${t.id} and user_id = ${uid}`;
   await refundBuyIn(tx, t, uid);
+}
+
+/** Buzz a player's phone (the push function words it in their language). Never fails the caller. */
+async function notify(q: Tx | postgres.Sql, userId: string, payload: Record<string, unknown>) {
+  await q`select notify_push(${userId}, ${q.json(payload as never)})`.catch((e) => console.error('notify', e));
+}
+
+/** Everyone signed up (players of every entry). */
+const signedUp = async (tx: Tx, tournamentId: string) => (await entriesOf(tx, tournamentId)).flatMap(playersOf);
+
+/** Signed up and checked in. */
+async function checkedIn(tx: Tx, tournamentId: string) {
+  return new Set((await tx`select user_id from tournament_checkins where tournament_id = ${tournamentId}`).map((r) => r.user_id as string));
+}
+
+/**
+ * Close the sign-ups and draw the bracket. By the clock (scheduled start): whoever
+ * hasn't checked in is taken off the list first, and if too few are left it's
+ * cancelled with everyone's buy-in back. By the host: a scheduled tournament
+ * starts early only once everyone signed up has checked in.
+ */
+async function startTournament(tx: Tx, t: TournamentDb, by: 'host' | 'clock') {
+  const dropped: string[] = [];
+  if (t.starts_at) {
+    const here = await checkedIn(tx, t.id);
+    const missing = (await signedUp(tx, t.id)).filter((p) => !here.has(p));
+    if (by === 'host') {
+      if (!checkInOpen(t.starts_at.getTime(), Date.now())) throw new HttpError(409, 'checkin_not_open');
+      if (missing.length) throw new HttpError(409, 'not_everyone_checked_in');
+    }
+    for (const p of missing) {
+      // Re-read: taking player1 off a pair moves player2 up.
+      const e = (await entriesOf(tx, t.id)).find((x) => x.player1 === p || x.player2 === p);
+      if (e) await removeFromTournament(tx, t, e, p);
+      dropped.push(p);
+    }
+  }
+  let entries = await entriesOf(tx, t.id);
+  if (t.mode === '2v2') {
+    const solo = entries.filter((e) => !e.player2).sort(() => Math.random() - 0.5);
+    // With an odd number the one at the front sits out — never the host.
+    if (solo.length % 2 && solo[0].player1 === t.host) solo.push(solo.shift()!);
+    while (solo.length >= 2) {
+      const [a, b] = [solo.pop()!, solo.pop()!];
+      await tx`delete from tournament_entries where id = ${b.id}`;
+      await tx`update tournament_entries set player2 = ${b.player1} where id = ${a.id}`;
+    }
+    if (solo.length) {
+      await removeFromTournament(tx, t, solo[0], solo[0].player1);
+      dropped.push(solo[0].player1);
+    }
+    entries = await entriesOf(tx, t.id);
+  }
+  const people = entries.reduce((n, e) => n + playersOf(e).length, 0);
+  if (entries.length < minEntries(t.mode) || people < TOURNAMENT.minPlayers) {
+    if (by === 'host') throw new HttpError(409, 'tournament_need_people'); // rolls back any pairing above
+    // Not enough people showed up: call it off, everyone gets their buy-in back.
+    for (const e of entries) for (const p of playersOf(e)) await refundBuyIn(tx, t, p);
+    await tx`update tournaments set phase = 'cancelled', cancel_reason = 'not_enough' where id = ${t.id}`;
+    for (const p of [...entries.flatMap(playersOf), ...dropped]) await notify(tx, p, { kind: 'tournament_cancelled', name: t.name, code: t.code });
+    return;
+  }
+  for (const p of dropped) await notify(tx, p, { kind: 'checkin_missed', name: t.name, code: t.code });
+  const rounds = roundCount(entries.length);
+  await tx`update tournaments set phase = 'playing', rounds = ${rounds}, started_at = now() where id = ${t.id}`;
+  const pairs = firstRound(entries.map((e) => e.id));
+  for (let r = 1; r <= rounds; r++) {
+    for (let slot = 0; slot < 2 ** (rounds - r); slot++) {
+      const [a, b] = r === 1 ? pairs[slot] : [null, null];
+      await tx`insert into tournament_matches (tournament_id, round, slot, entry_a, entry_b) values (${t.id}, ${r}, ${slot}, ${a}, ${b})`;
+    }
+  }
+  const opening = await tx<MatchDb[]>`select * from tournament_matches where tournament_id = ${t.id} and round = 1 order by slot`;
+  for (const m of opening) {
+    if (m.entry_b) await createMatchRoom(tx, { ...t, rounds }, m);
+    else await resolveMatch(tx, m, m.entry_a!, 'bye');
+  }
 }
 
 /** Both sides of a match are known: open its table. Entry A sits on side 0 (seats 0 and 2), B on side 1. */
@@ -562,50 +653,100 @@ async function createMatchRoom(tx: Tx, t: TournamentDb, m: MatchDb) {
   await tx`update tournament_matches set room_id = ${room.id}, status = 'ready', ready_by = ${room.phase_ends_at} where id = ${m.id}`;
 }
 
-/** A match is decided (played, bye or no-show): knock the loser out and send the winner on. */
-async function resolveMatch(tx: Tx, m: MatchDb, winner: string, result: 'played' | 'bye' | 'forfeit') {
+/**
+ * A match is decided (played, bye, forfeit, or 'no_show' with no winner):
+ * knock the loser(s) out and move the bracket on.
+ */
+async function resolveMatch(tx: Tx, m: MatchDb, winner: string | null, result: MatchResult) {
   // The tournament lock serialises the bracket: two semifinals ending together both see the final fill up.
   const t = await lockTournament(tx, m.tournament_id);
   const [cur] = await tx`select status from tournament_matches where id = ${m.id}`;
   if (cur.status === 'done') return;
   await tx`update tournament_matches set winner = ${winner}, status = 'done', result = ${result} where id = ${m.id}`;
-  const loser = winner === m.entry_a ? m.entry_b : m.entry_a;
-  if (loser) await tx`update tournament_entries set eliminated_round = ${m.round}, placement = ${placementFor(m.round, t.rounds!)} where id = ${loser}`;
-  if (m.round === t.rounds) return await finishTournament(tx, t, winner, loser);
-  const [next] = await tx<MatchDb[]>`
-    update tournament_matches set ${tx(m.slot % 2 === 0 ? 'entry_a' : 'entry_b')} = ${winner}
-    where tournament_id = ${t.id} and round = ${m.round + 1} and slot = ${m.slot >> 1} returning *`;
-  if (next.entry_a && next.entry_b && next.status === 'waiting') await createMatchRoom(tx, t, next);
+  const losers = [m.entry_a, m.entry_b].filter((e): e is string => !!e && e !== winner);
+  for (const loser of losers) {
+    await tx`update tournament_entries set eliminated_round = ${m.round}, placement = ${placementFor(m.round, t.rounds!)} where id = ${loser}`;
+  }
+  if (m.round === t.rounds) return await finishTournament(tx, t, winner, losers);
+  if (winner) {
+    await tx`
+      update tournament_matches set ${tx(m.slot % 2 === 0 ? 'entry_a' : 'entry_b')} = ${winner}
+      where tournament_id = ${t.id} and round = ${m.round + 1} and slot = ${m.slot >> 1}`;
+  }
+  await advance(tx, t, m.round + 1, m.slot >> 1);
 }
 
-/** The final is over: placings, prize money (70/30), a trophy and bonus XP. */
-async function finishTournament(tx: Tx, t: TournamentDb, champion: string, runnerUp: string | null) {
-  await tx`update tournament_entries set placement = 1 where id = ${champion}`;
+/**
+ * Once both matches feeding it are over, the next match opens its table, sends
+ * its only entry straight through (the other side was a double no-show), or —
+ * nobody left on either side — passes the empty slot along too.
+ */
+async function advance(tx: Tx, t: TournamentDb, round: number, slot: number) {
+  const [next] = await tx<MatchDb[]>`select * from tournament_matches where tournament_id = ${t.id} and round = ${round} and slot = ${slot}`;
+  if (!next || next.status !== 'waiting') return;
+  const feeders = await tx<{ status: string; winner: string | null }[]>`
+    select status, winner from tournament_matches
+    where tournament_id = ${t.id} and round = ${round - 1} and slot in (${2 * slot}, ${2 * slot + 1}) order by slot`;
+  if (feeders.length < 2 || feeders.some((f) => f.status !== 'done')) return;
+  const step = afterFeeders(feeders[0].winner, feeders[1].winner);
+  if (step === 'empty') return await resolveMatch(tx, next, null, 'no_show');
+  if ('bye' in step) return await resolveMatch(tx, next, step.bye, 'bye');
+  await createMatchRoom(tx, t, { ...next, entry_a: step.play[0], entry_b: step.play[1] });
+}
+
+/**
+ * The final is decided: placings, prize money (70/30), a trophy and bonus XP.
+ * A final nobody showed up to has no champion: the two finalists share the pot.
+ * Nobody reached the final at all: everyone gets their buy-in back.
+ */
+async function finishTournament(tx: Tx, t: TournamentDb, champion: string | null, runnersUp: string[]) {
+  if (champion) await tx`update tournament_entries set placement = 1 where id = ${champion}`;
   await tx`update tournaments set phase = 'finished', champion = ${champion}, finished_at = now() where id = ${t.id}`;
   const entries = await entriesOf(tx, t.id);
   const players = (id: string | null) => {
     const e = entries.find((x) => x.id === id);
     return e ? playersOf(e) : [];
   };
-  for (const p of prizes(t.pot, players(champion), players(runnerUp))) {
+  const seconds = runnersUp.flatMap(players);
+  if (!champion && !seconds.length) {
+    if (t.buy_in > 0) for (const p of entries.flatMap(playersOf)) await refundBuyIn(tx, t, p);
+    return;
+  }
+  for (const p of prizes(t.pot, players(champion), seconds)) {
     await tx`update profiles set chips = chips + ${p.amount}, biggest_pot = greatest(biggest_pot, ${p.amount}) where id = ${p.userId}`;
     await tx`insert into chip_ledger (user_id, delta, reason, note) values (${p.userId}, ${p.amount}, 'tournament_prize', ${t.name})`;
   }
   for (const uid of players(champion)) {
     await tx`update profiles set tournaments_won = tournaments_won + 1, xp = xp + ${TOURNAMENT.championXp} where id = ${uid}`;
   }
-  for (const uid of players(runnerUp)) await tx`update profiles set xp = xp + ${TOURNAMENT.runnerUpXp} where id = ${uid}`;
+  for (const uid of seconds) await tx`update profiles set xp = xp + ${TOURNAMENT.runnerUpXp} where id = ${uid}`;
 }
 
-/** Ready time ran out: the side with more players ready goes through (tie: coin flip) and the table closes. */
-async function forfeitNoShows(tx: Tx, room: RoomDb, seats: SeatRow[]) {
+/**
+ * The Ready clock ran out and not everyone pressed it. Someone on each side:
+ * the game starts, and the server plays the missing players' chairs until they
+ * turn up (any tap takes the chair back). Only one side there: it goes through.
+ * Nobody: both are out.
+ */
+async function resolveNoShows(tx: Tx, room: RoomDb, seats: SeatRow[]) {
   const [m] = await tx<MatchDb[]>`select * from tournament_matches where room_id = ${room.id}`;
   if (m && m.status !== 'done') {
-    const ready = (side: number) => seats.filter((s) => sideOf(room.mode, s.seat) === side && s.ready).length;
-    const side = noShowWinner(ready(0), ready(1));
-    await resolveMatch(tx, m, side === 'a' ? m.entry_a! : m.entry_b!, 'forfeit');
+    const ready = (side: number) => seats.filter((s) => sideOf(room.mode, s.seat) === side && s.ready && !s.is_bot).length;
+    const outcome = noShowOutcome(ready(0), ready(1));
+    if (outcome === 'play') {
+      for (const s of seats) {
+        if (s.is_bot || s.ready) continue;
+        await tx`update room_seats set away = true where room_id = ${room.id} and seat = ${s.seat}`;
+        s.away = true;
+      }
+      const gameId = await startGame(tx, room, seats);
+      return { phase: 'playing', gameId };
+    }
+    if (outcome === 'none') await resolveMatch(tx, m, null, 'no_show');
+    else await resolveMatch(tx, m, outcome === 'a' ? m.entry_a! : m.entry_b!, 'forfeit');
   }
   await tx`delete from rooms where id = ${room.id}`;
+  return { phase: 'closed' };
 }
 
 /**
@@ -1086,8 +1227,16 @@ export const handlers = {
           on conflict (code) do nothing returning *`;
       }
       if (!t) throw new HttpError(503, 'no_code_available');
+      if (s.startsAt) {
+        t.starts_at = new Date(s.startsAt);
+        await tx`update tournaments set starts_at = ${t.starts_at} where id = ${t.id}`;
+      }
       await tx`insert into tournament_entries (tournament_id, player1) values (${t.id}, ${uid})`;
       await payBuyIn(tx, t, uid);
+      // The host is here already if check-in is open.
+      if (t.starts_at && checkInOpen(t.starts_at.getTime(), Date.now())) {
+        await tx`insert into tournament_checkins (tournament_id, user_id) values (${t.id}, ${uid})`;
+      }
       return { id: t.id, code: t.code };
     });
   },
@@ -1106,6 +1255,7 @@ export const handlers = {
     return {
       id: t.id, code: t.code, name: t.name, mode: t.mode, size: t.size, buyIn: t.buy_in, phase: t.phase,
       target: t.rules.target, host: host?.display_name ?? '', pot: Number(t.pot),
+      startsAt: t.starts_at ? new Date(t.starts_at).toISOString() : null,
       member: t.host === uid || entries.some((e) => e.player1 === uid || e.player2 === uid),
       entries: entries.map((e) => ({ id: e.id, names: [e.name1, e.name2].filter(Boolean), open: t.mode === '2v2' && !e.player2 })),
     };
@@ -1121,7 +1271,7 @@ export const handlers = {
       const t = await lockTournament(tx, row.id);
       const entries = await entriesOf(tx, t.id);
       if (entries.some((e) => e.player1 === uid || e.player2 === uid)) return { id: t.id };
-      if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
+      if (t.phase !== 'lobby' || (t.starts_at && t.starts_at.getTime() <= Date.now())) throw new HttpError(409, 'tournament_started');
       await notBanned(tx, uid);
       // Capacity counts people: in 2v2, solos pair up at the start, so 8 slots = 16 people however they signed up.
       const people = entries.reduce((n, e) => n + playersOf(e).length, 0);
@@ -1135,7 +1285,23 @@ export const handlers = {
         await tx`insert into tournament_entries (tournament_id, player1) values (${t.id}, ${uid})`;
       }
       await payBuyIn(tx, t, uid);
+      // Signing up during check-in means you're here.
+      if (t.starts_at && checkInOpen(t.starts_at.getTime(), Date.now())) {
+        await tx`insert into tournament_checkins (tournament_id, user_id) values (${t.id}, ${uid}) on conflict do nothing`;
+      }
       return { id: t.id };
+    });
+  },
+
+  /** "Estoy aquí": in the 15 minutes before the start. Whoever hasn't by the start is taken off the list. */
+  async tournament_checkin(uid: string, { id }: { id: string }) {
+    return await sql.begin(async (tx) => {
+      const t = await lockTournament(tx, id);
+      if (t.phase !== 'lobby' || !t.starts_at) throw new HttpError(409, 'tournament_started');
+      if (!(await signedUp(tx, t.id)).includes(uid)) throw new HttpError(403, 'not_in_tournament');
+      if (!checkInOpen(t.starts_at.getTime(), Date.now())) throw new HttpError(409, 'checkin_not_open');
+      await tx`insert into tournament_checkins (tournament_id, user_id) values (${t.id}, ${uid}) on conflict do nothing`;
+      return { ok: true };
     });
   },
 
@@ -1169,48 +1335,22 @@ export const handlers = {
       if (t.host !== uid) throw new HttpError(403, 'host_only');
       if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
       for (const e of await entriesOf(tx, t.id)) for (const p of playersOf(e)) await refundBuyIn(tx, t, p);
-      await tx`update tournaments set phase = 'cancelled' where id = ${t.id}`;
+      await tx`update tournaments set phase = 'cancelled', cancel_reason = 'host' where id = ${t.id}`;
       return { ok: true };
     });
   },
 
-  /** Host starts: pairs up anyone without a partner, draws the bracket, opens the first tables. */
+  /**
+   * Host starts now: pairs up anyone without a partner, draws the bracket, opens
+   * the first tables. A scheduled tournament starts early only once everyone
+   * signed up has checked in; otherwise the clock starts it at its time.
+   */
   async tournament_start(uid: string, { id }: { id: string }) {
     return await sql.begin(async (tx) => {
       const t = await lockTournament(tx, id);
       if (t.host !== uid) throw new HttpError(403, 'host_only');
       if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
-      let entries = await entriesOf(tx, t.id);
-      if (t.mode === '2v2') {
-        const solo = entries.filter((e) => !e.player2).sort(() => Math.random() - 0.5);
-        // With an odd number the one at the front sits out — never the host.
-        if (solo.length % 2 && solo[0].player1 === t.host) solo.push(solo.shift()!);
-        while (solo.length >= 2) {
-          const [a, b] = [solo.pop()!, solo.pop()!];
-          await tx`delete from tournament_entries where id = ${b.id}`;
-          await tx`update tournament_entries set player2 = ${b.player1} where id = ${a.id}`;
-        }
-        if (solo.length) await removeFromTournament(tx, t, solo[0], solo[0].player1);
-        entries = await entriesOf(tx, t.id);
-      }
-      const people = entries.reduce((n, e) => n + playersOf(e).length, 0);
-      if (entries.length < minEntries(t.mode) || people < TOURNAMENT.minPlayers) {
-        throw new HttpError(409, 'tournament_need_people'); // rolls back any pairing above
-      }
-      const rounds = roundCount(entries.length);
-      await tx`update tournaments set phase = 'playing', rounds = ${rounds}, started_at = now() where id = ${t.id}`;
-      const pairs = firstRound(entries.map((e) => e.id));
-      for (let r = 1; r <= rounds; r++) {
-        for (let slot = 0; slot < 2 ** (rounds - r); slot++) {
-          const [a, b] = r === 1 ? pairs[slot] : [null, null];
-          await tx`insert into tournament_matches (tournament_id, round, slot, entry_a, entry_b) values (${t.id}, ${r}, ${slot}, ${a}, ${b})`;
-        }
-      }
-      const opening = await tx<MatchDb[]>`select * from tournament_matches where tournament_id = ${t.id} and round = 1 order by slot`;
-      for (const m of opening) {
-        if (m.entry_b) await createMatchRoom(tx, { ...t, rounds }, m);
-        else await resolveMatch(tx, m, m.entry_a!, 'bye');
-      }
+      await startTournament(tx, t, 'host');
       return { ok: true };
     });
   },
@@ -1225,25 +1365,7 @@ export const handlers = {
       select 1 from tournaments t where t.id = ${id} and (t.host = ${uid}
         or exists (select 1 from tournament_entries e where e.tournament_id = t.id and ${uid} in (e.player1, e.player2)))`;
     if (!member) throw new HttpError(403, 'not_in_tournament');
-    const due = await sql`select id from rooms where tournament_id = ${id} and phase in ('ready', 'countdown') and phase_ends_at <= now()`;
-    for (const { id: roomId } of due) {
-      await sql.begin(async (tx) => {
-        const { room, seats } = await lockRoom(tx, roomId);
-        if (room.phase_due) await roomDeadline(tx, room, seats);
-      }).catch((e) => console.error('tournament_tick deadline', e));
-    }
-    const playing = await sql`select id from rooms where tournament_id = ${id} and phase = 'playing'`;
-    for (const { id: roomId } of playing) {
-      await sql.begin((tx) => playOutAbandoned(tx, roomId)).catch((e) => console.error('tournament_tick play-out', e));
-    }
-    const lost = await sql<MatchDb[]>`select * from tournament_matches where tournament_id = ${id} and status in ('ready', 'playing') and room_id is null`;
-    for (const m of lost) {
-      await sql.begin(async (tx) => {
-        const t = await lockTournament(tx, id);
-        const [cur] = await tx`select room_id, status from tournament_matches where id = ${m.id}`;
-        if (!cur.room_id && cur.status !== 'done') await createMatchRoom(tx, t, m);
-      }).catch((e) => console.error('tournament_tick reopen', e));
-    }
+    await tickTournament(id);
     return { ok: true };
   },
 
@@ -1654,3 +1776,92 @@ const pair = (x: string, y: string): [string, string] => {
   const [p, q] = [x.toLowerCase(), String(y).toLowerCase()];
   return p < q ? [p, q] : [q, p];
 };
+// ---------- the tournament clock ----------
+
+/**
+ * Everything that's due in one tournament. Called by the server clock (pg_cron,
+ * every 30 s) and by anyone watching the bracket, so it moves on even with every
+ * app closed: check-in reminders and the scheduled start; then Ready deadlines
+ * (with a 1-minute reminder), games everyone walked away from, and tables an
+ * admin closed mid-match.
+ */
+export async function tickTournament(id: string) {
+  const [t] = await sql<TournamentDb[]>`select * from tournaments where id = ${id}`;
+  if (!t) return;
+  if (t.phase === 'lobby' && t.starts_at) {
+    await remindCheckIn(t).catch((e) => console.error('check-in reminder', e));
+    if (new Date(t.starts_at).getTime() <= Date.now()) {
+      await sql.begin(async (tx) => {
+        const locked = await lockTournament(tx, id);
+        if (locked.phase === 'lobby') await startTournament(tx, locked, 'clock');
+      }).catch((e) => console.error('scheduled start', e));
+    }
+    return;
+  }
+  if (t.phase !== 'playing') return;
+  await remindReady(id).catch((e) => console.error('ready reminder', e));
+  const due = await sql`select id from rooms where tournament_id = ${id} and phase in ('ready', 'countdown') and phase_ends_at <= now()`;
+  for (const { id: roomId } of due) {
+    await sql.begin(async (tx) => {
+      const { room, seats } = await lockRoom(tx, roomId);
+      if (room.phase_due) await roomDeadline(tx, room, seats);
+    }).catch((e) => console.error('tournament deadline', e));
+  }
+  const playing = await sql`select id from rooms where tournament_id = ${id} and phase = 'playing'`;
+  for (const { id: roomId } of playing) {
+    await sql.begin((tx) => playOutAbandoned(tx, roomId)).catch((e) => console.error('tournament play-out', e));
+  }
+  const lost = await sql<MatchDb[]>`select * from tournament_matches where tournament_id = ${id} and status in ('ready', 'playing') and room_id is null`;
+  for (const m of lost) {
+    await sql.begin(async (tx) => {
+      const locked = await lockTournament(tx, id);
+      const [cur] = await tx`select room_id, status from tournament_matches where id = ${m.id}`;
+      if (!cur.room_id && cur.status !== 'done') await createMatchRoom(tx, locked, m);
+    }).catch((e) => console.error('tournament reopen', e));
+  }
+}
+
+/** Check-in reminders to whoever hasn't checked in: when it opens (15 min before) and a last call (3 min before). Once each. */
+async function remindCheckIn(t: TournamentDb) {
+  const start = new Date(t.starts_at!).getTime();
+  const now = Date.now();
+  const stage = now >= start - TOURNAMENT.lastCallMs ? 2 : checkInOpen(start, now) ? 1 : 0;
+  if (stage <= t.reminded) return;
+  const [claimed] = await sql`update tournaments set reminded = ${stage} where id = ${t.id} and reminded < ${stage} and phase = 'lobby' returning id`;
+  if (!claimed) return;
+  const missing = await sql<{ p: string }[]>`
+    select p from tournament_entries e, unnest(array[e.player1, e.player2]) p
+    where e.tournament_id = ${t.id} and p is not null
+      and p not in (select user_id from tournament_checkins where tournament_id = ${t.id})`;
+  const minutes = Math.max(1, Math.round((start - now) / 60_000));
+  for (const { p } of missing) {
+    await notify(sql, p, { kind: stage === 1 ? 'checkin_open' : 'checkin_last', name: t.name, code: t.code, minutes });
+  }
+}
+
+/** One minute left on a Ready clock: buzz the players at that table who haven't pressed it. Once per match. */
+async function remindReady(id: string) {
+  const due = await sql<{ id: string; room_id: string }[]>`
+    select id, room_id from tournament_matches
+    where tournament_id = ${id} and status = 'ready' and not reminded and room_id is not null
+      and ready_by <= now() + ${TOURNAMENT.readyReminderMs} * interval '1 millisecond'`;
+  if (!due.length) return;
+  const [t] = await sql`select name, code from tournaments where id = ${id}`;
+  for (const m of due) {
+    const [claimed] = await sql`update tournament_matches set reminded = true where id = ${m.id} and not reminded returning id`;
+    if (!claimed) continue;
+    const late = await sql`select user_id from room_seats where room_id = ${m.room_id} and not is_bot and not ready and user_id is not null`;
+    for (const { user_id } of late) await notify(sql, user_id, { kind: 'match_last_call', name: t.name, code: t.code });
+  }
+}
+
+/** The server clock's call (pg_cron → pg_net, with the secret from app_secrets): every tournament that might have something due. */
+export async function cronTick(hook: string) {
+  const [row] = await sql`select value from app_secrets where key = 'cron_hook'`;
+  if (!row || hook !== row.value) throw new HttpError(403, 'forbidden');
+  const list = await sql`
+    select id from tournaments
+    where phase = 'playing' or (phase = 'lobby' and starts_at < now() + interval '16 minutes')`;
+  for (const { id } of list) await tickTournament(id).catch((e) => console.error('cron tick', id, e));
+  return { ok: true, tournaments: list.length };
+}

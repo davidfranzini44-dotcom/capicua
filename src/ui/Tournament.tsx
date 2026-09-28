@@ -2,8 +2,8 @@
 // sign-up lobby and the live bracket. Every change goes through the `game`
 // function; the bracket itself updates over Realtime.
 import { useEffect, useState, type CSSProperties } from 'react';
-import { stage, TOURNAMENT, TOURNAMENT_SIZES, playersPerEntry, type TournamentSettings } from '../../supabase/functions/_shared/tournament.ts';
-import { useI18n } from '../i18n';
+import { checkInOpen, stage, TOURNAMENT, TOURNAMENT_SIZES, playersPerEntry, type TournamentSettings } from '../../supabase/functions/_shared/tournament.ts';
+import { useI18n, type Strings } from '../i18n';
 import { api, type Profile } from '../lib/supabase';
 import {
   useMyTournaments, useTournament, type EntryRow, type MatchRow, type TournamentPeek, type TournamentRow,
@@ -23,6 +23,38 @@ function purse(pot: number) {
 const clock = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+const locale = (lang: string) => (lang === 'es' ? 'es-DO' : 'en-US');
+const timeOf = (ms: number, lang: string) => new Date(ms).toLocaleTimeString(locale(lang), { hour: 'numeric', minute: '2-digit' });
+
+/** "hoy 9:30 p. m." / "mañana 8:00 p. m." / "vie., 3 oct. 9:00 p. m." */
+function whenText(ms: number, lang: string, t: Strings) {
+  const d = new Date(ms);
+  const today = new Date();
+  const tomorrow = new Date(today.getTime() + 86_400_000);
+  const day = d.toDateString() === today.toDateString() ? t.tour.today
+    : d.toDateString() === tomorrow.toDateString() ? t.tour.tomorrow
+    : d.toLocaleDateString(locale(lang), { weekday: 'short', day: 'numeric', month: 'short' });
+  return `${day} ${timeOf(ms, lang)}`;
+}
+
+/** "23 min" / "1 h 20 min" / "2 d" */
+function untilText(ms: number) {
+  const m = Math.max(0, Math.ceil(ms / 60_000));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return m % 60 ? `${h} h ${m % 60} min` : `${h} h`;
+  return `${Math.round(h / 24)} d`;
+}
+
+/** Start-time choices: minutes from now, or a time the host types. */
+const START_PRESETS = [5, 15, 30, 60, 120] as const;
+const presetLabel = (m: number) => (m < 60 ? `${m} min` : `${m / 60} h`);
+/** For <input type="datetime-local">: local time, no seconds. */
+const localInput = (ms: number) => {
+  const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60_000);
+  return d.toISOString().slice(0, 16);
 };
 
 function useNow(active: boolean) {
@@ -48,9 +80,15 @@ function Seg<T extends string | number>({ value, options, onChange }: { value: T
 export function TournamentForm({ profile, guest, onBack, onCreated }: {
   profile: Profile; guest: boolean; onBack: () => void; onCreated: (id: string) => void;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const errText = useErrorText();
   const [s, setS] = useState<TournamentSettings>({ name: '', mode: '1v1', size: 8, buyIn: guest ? 0 : 500, target: 100, turnSeconds: 25 });
+  // When it starts: minutes from now, or 'custom' with the time typed in.
+  const [startIn, setStartIn] = useState<number | 'custom'>(30);
+  const [custom, setCustom] = useState(() => localInput(Date.now() + 60 * 60_000));
+  const now = useNow(true);
+  const startsAt = startIn === 'custom' ? new Date(custom).getTime() : now + startIn * 60_000;
+  const startOk = Number.isFinite(startsAt) && startsAt >= now + TOURNAMENT.minLeadMs - 30_000 && startsAt <= now + TOURNAMENT.maxLeadMs;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof TournamentSettings>(k: K, v: TournamentSettings[K]) => setS((x) => ({ ...x, [k]: v }));
@@ -60,7 +98,8 @@ export function TournamentForm({ profile, guest, onBack, onCreated }: {
     setBusy(true);
     setError(null);
     try {
-      onCreated((await api<{ id: string }>('tournament_create', { settings: s })).id);
+      const at = startIn === 'custom' ? new Date(custom).getTime() : Date.now() + startIn * 60_000;
+      onCreated((await api<{ id: string }>('tournament_create', { settings: { ...s, startsAt: at } })).id);
     } catch (e) {
       setError(errText(e));
       setBusy(false);
@@ -97,11 +136,23 @@ export function TournamentForm({ profile, guest, onBack, onCreated }: {
         <Seg value={s.target} options={[[100, '100'], [150, '150'], [200, '200']]} onChange={(v) => set('target', v)} />
         <label className="label">{t.turnTimerLbl}</label>
         <Seg value={s.turnSeconds} options={[[15, '15s'], [25, '25s'], [40, '40s']]} onChange={(v) => set('turnSeconds', v)} />
+        <label className="label">{t.tour.startLbl}</label>
+        <Seg<number | 'custom'> value={startIn}
+          options={[...START_PRESETS.map((m) => [m, presetLabel(m)] as [number, string]), ['custom', t.tour.otherTime]]}
+          onChange={setStartIn} />
+        {startIn === 'custom' && (
+          <input className="text-input" type="datetime-local" value={custom} min={localInput(now + TOURNAMENT.minLeadMs)}
+            max={localInput(now + TOURNAMENT.maxLeadMs)} onChange={(e) => setCustom(e.target.value)} />
+        )}
+        <p className={`fine left tour-when ${startOk ? '' : 'error'}`}>
+          🕘 {startOk ? t.tour.startsAt.replace('{when}', whenText(startsAt, lang, t)) : t.errors.bad_settings}
+        </p>
+        <p className="fine left">{t.tour.checkInRule}</p>
         <p className="fine left">{t.tour.minPeople}</p>
         {s.buyIn > 0 && <p className="fine left">🪙 {t.tour.potRule}</p>}
       </section>
       {error && <p className="error">{error}</p>}
-      <button className="btn primary wide" disabled={busy || s.name.trim().length < 3 || s.buyIn > profile.chips} onClick={create}>
+      <button className="btn primary wide" disabled={busy || s.name.trim().length < 3 || s.buyIn > profile.chips || !startOk} onClick={create}>
         {t.tour.create}{s.buyIn > 0 ? ` · 🪙 ${s.buyIn.toLocaleString()}` : ''}
       </button>
     </div>
@@ -134,8 +185,15 @@ export function TournamentScreen({ id, code, uid, profile, onBack, onRoom }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needPeek, tid, code]);
 
-  // Keep the bracket moving: nudge the server when a Ready clock runs out, and every 30 s while it's played.
+  // Keep the bracket moving (the server has its own clock too): nudge it at the start time, when a
+  // Ready clock runs out, and every 30 s while it's played.
   const phase = data.t?.phase;
+  const startsAt = data.t?.phase === 'lobby' && data.t.starts_at ? new Date(data.t.starts_at).getTime() : null;
+  useEffect(() => {
+    if (startsAt === null || !tid) return;
+    const id = setTimeout(() => api('tournament_tick', { id: tid }).catch(() => {}), Math.max(0, startsAt - Date.now() + 2000));
+    return () => clearTimeout(id);
+  }, [startsAt, tid]);
   const deadlines = data.matches.filter((m) => m.status === 'ready' && m.ready_by).map((m) => new Date(m.ready_by!).getTime());
   const nextDeadline = deadlines.length ? Math.min(...deadlines) : null;
   useEffect(() => {
@@ -185,8 +243,9 @@ export function TournamentScreen({ id, code, uid, profile, onBack, onRoom }: {
     <div className="screen tour-screen">
       {top}
       <TournamentView
-        tour={data.t} entries={data.entries} matches={data.matches} names={data.names} uid={uid} busy={busy}
+        tour={data.t} entries={data.entries} matches={data.matches} checkins={data.checkins} names={data.names} uid={uid} busy={busy}
         onStart={() => run(() => api('tournament_start', { id: tid }))}
+        onCheckIn={() => run(() => api('tournament_checkin', { id: tid }))}
         onCancel={() => confirm(t.tour.cancelConfirm) && run(() => api('tournament_cancel', { id: tid }))}
         onLeave={() => confirm(t.tour.leaveConfirm) && run(async () => { await api('tournament_leave', { id: tid }); onBack(); })}
         onKick={(userId) => confirm(t.tour.kickConfirm) && run(() => api('tournament_kick', { id: tid, userId }))}
@@ -201,10 +260,13 @@ export interface TournamentViewProps {
   tour: TournamentRow;
   entries: EntryRow[];
   matches: MatchRow[];
+  /** Who has checked in (scheduled tournaments). */
+  checkins?: Set<string>;
   names: Record<string, string>;
   uid: string;
   busy?: boolean;
   onStart: () => void;
+  onCheckIn?: () => void;
   onCancel: () => void;
   onLeave: () => void;
   onKick: (userId: string) => void;
@@ -213,8 +275,9 @@ export interface TournamentViewProps {
 
 /** Everything a member sees: sign-ups before the start, then the bracket. */
 export function TournamentView(p: TournamentViewProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { tour, entries, matches, names, uid } = p;
+  const checkins = p.checkins ?? new Set<string>();
   const isHost = tour.host === uid;
   const mine = entries.find((e) => e.player1 === uid || e.player2 === uid) ?? null;
   const people = entries.reduce((n, e) => n + (e.player2 ? 2 : 1), 0);
@@ -226,7 +289,12 @@ export function TournamentView(p: TournamentViewProps) {
     const e = entryId ? byId.get(entryId) : null;
     return e ? [e.player1, e.player2].filter((x): x is string => !!x).map((x) => names[x] ?? '…').join(' & ') : t.tour.tbd;
   };
-  const now = useNow(matches.some((m) => m.status === 'ready'));
+  const scheduled = tour.phase === 'lobby' && tour.starts_at ? new Date(tour.starts_at).getTime() : null;
+  const now = useNow(scheduled !== null || matches.some((m) => m.status === 'ready'));
+  const players = entries.flatMap((e) => [e.player1, e.player2].filter((x): x is string => !!x));
+  const checkInIsOpen = scheduled !== null && checkInOpen(scheduled, now);
+  const here = players.filter((x) => checkins.has(x)).length;
+  const iAmIn = players.includes(uid);
 
   return (
     <>
@@ -240,6 +308,25 @@ export function TournamentView(p: TournamentViewProps) {
           <span>⏱ {tour.turn_seconds}s</span>
         </div>
       </header>
+      {scheduled !== null && (
+        <section className={`card tour-clock ${checkInIsOpen ? 'open' : ''}`}>
+          <div className="tc-when">
+            <b>🕘 {t.tour.startsAt.replace('{when}', whenText(scheduled, lang, t))}</b>
+            <span>{scheduled > now ? t.tour.inTime.replace('{t}', untilText(scheduled - now)) : t.tour.starting}</span>
+          </div>
+          {!checkInIsOpen && <p className="fine left">{t.tour.checkInOpensAt.replace('{time}', timeOf(scheduled - TOURNAMENT.checkInMs, lang))}</p>}
+          {checkInIsOpen && iAmIn && (checkins.has(uid)
+            ? <p className="tc-done">{t.tour.checkedIn}</p>
+            : (
+              <>
+                <p className="fine left">{t.tour.checkInNow}</p>
+                <button className="btn primary wide tc-btn" disabled={p.busy} onClick={p.onCheckIn}>{t.tour.checkIn}</button>
+              </>
+            ))}
+          {checkInIsOpen && <small className="tc-count">{t.tour.checkedCount.replace('{n}', String(here)).replace('{total}', String(players.length))}</small>}
+        </section>
+      )}
+
       {tour.buy_in > 0 && (
         <div className="tour-pot">
           <span>{t.tour.pot}</span>
@@ -256,7 +343,8 @@ export function TournamentView(p: TournamentViewProps) {
             {entries.map((e) => (
               <div key={e.id} className={`te-row ${e === mine ? 'mine' : ''}`}>
                 {[e.player1, e.player2].map((pid, i) => pid ? (
-                  <span key={i} className="te-name">
+                  <span key={i} className={`te-name ${checkInIsOpen && checkins.has(pid) ? 'here' : ''}`}>
+                    {checkInIsOpen && checkins.has(pid) && <i className="te-here" aria-label="check-in">✓</i>}
                     {pid === tour.host && '👑 '}{nameOf(pid)}
                     {isHost && pid !== uid && <button className="te-kick" onClick={() => p.onKick(pid)} aria-label="✕">✕</button>}
                   </span>
@@ -265,7 +353,20 @@ export function TournamentView(p: TournamentViewProps) {
             ))}
           </section>
           {tour.mode === '2v2' && <p className="fine">{t.tour.soloNote}</p>}
-          {isHost ? (
+          {scheduled !== null ? (
+            <>
+              {isHost && (
+                <>
+                  {checkInIsOpen && here === players.length && people >= TOURNAMENT.minPlayers
+                    ? <button className="btn primary wide" disabled={p.busy} onClick={p.onStart}>{t.tour.startNow}</button>
+                    : <p className="fine">{t.tour.autoStart} {checkInIsOpen ? t.tour.startNowHint : ''}</p>}
+                  <p className="fine">{t.tour.minPeople}</p>
+                  <button className="link-btn signout" onClick={p.onCancel}>{t.tour.cancel}</button>
+                </>
+              )}
+              {!isHost && <button className="link-btn signout" onClick={p.onLeave}>{t.tour.leave}</button>}
+            </>
+          ) : isHost ? (
             <>
               <button className="btn primary wide" disabled={p.busy || people < TOURNAMENT.minPlayers} onClick={p.onStart}>{t.tour.start}</button>
               <p className="fine">{t.tour.minPeople}</p>
@@ -283,6 +384,15 @@ export function TournamentView(p: TournamentViewProps) {
       {tour.phase === 'finished' && (() => {
         const champ = entries.find((e) => e.placement === 1);
         const runner = entries.find((e) => e.placement === 2);
+        if (!champ) {
+          const finalists = entries.filter((e) => e.placement === 2);
+          return (
+            <div className="tour-champion">
+              <span className="trophy">🤝</span>
+              <small>{finalists.length ? t.tour.sharedFinal.replace('{names}', finalists.map((e) => label(e.id)).join(' · ')) : t.tour.nobodyFinal}</small>
+            </div>
+          );
+        }
         return champ && (
           <div className="tour-champion">
             <span className="trophy">🏆</span>
@@ -303,7 +413,7 @@ export function TournamentView(p: TournamentViewProps) {
           return (
             <div className="tour-me ready">
               <strong>{t.tour.yourMatchReady}</strong>
-              <span>{t.tour.readyRule}</span>
+              <span>{tour.mode === '2v2' ? t.tour.readyRule2v2 : t.tour.readyRule}</span>
               <b className="ready-secs">{next.ready_by ? clock(new Date(next.ready_by).getTime() - now) : ''}</b>
               <button className="btn primary wide" onClick={() => p.onPlay(next.room_id!)}>▶ {t.tour.play}</button>
             </div>
@@ -335,7 +445,9 @@ export function TournamentView(p: TournamentViewProps) {
         </div>
       )}
 
-      {tour.phase === 'cancelled' && <p className="note-ok center">{t.tour.phase.cancelled}</p>}
+      {tour.phase === 'cancelled' && (
+        <p className="note-ok center">{tour.cancel_reason === 'not_enough' ? t.tour.cancelledNotEnough : t.tour.phase.cancelled}</p>
+      )}
     </>
   );
 }
@@ -346,10 +458,11 @@ function MatchCard({ m, mine, label, now, onPlay }: {
   const { t } = useI18n();
   const isMine = !!mine && (m.entry_a === mine.id || m.entry_b === mine.id);
   const loser = m.winner ? (m.winner === m.entry_a ? m.entry_b : m.entry_a) : null;
+  const nobody = m.result === 'no_show';
   const side = (entryId: string | null, key: string) => {
     const won = !!m.winner && m.winner === entryId;
-    const lost = !!m.winner && !!entryId && m.winner !== entryId;
-    const text = entryId ? label(entryId) : m.result === 'bye' ? t.tour.bye : t.tour.tbd;
+    const lost = (!!m.winner || nobody) && !!entryId && m.winner !== entryId;
+    const text = entryId ? label(entryId) : m.result === 'bye' ? t.tour.bye : nobody ? '—' : t.tour.tbd;
     return (
       <div key={key} className={`br-side ${won ? 'won' : ''} ${lost ? 'lost' : ''} ${mine && entryId === mine.id ? 'me' : ''} ${entryId ? '' : 'empty'}`}>
         <span>{text}</span>{won && <b>✓</b>}
@@ -360,6 +473,7 @@ function MatchCard({ m, mine, label, now, onPlay }: {
   if (m.status === 'ready' && m.ready_by) status = `${t.tour.readyIn} ${clock(new Date(m.ready_by).getTime() - now)}`;
   else if (m.status === 'playing') status = `● ${t.tour.live}`;
   else if (m.result === 'forfeit' && loser) status = `${label(loser)} ${t.tour.forfeit}`;
+  else if (nobody && (m.entry_a || m.entry_b)) status = t.tour.noShow;
   return (
     <div className={`br-match ${isMine ? 'mine' : ''} ${m.status}`}>
       {side(m.entry_a, 'a')}
@@ -398,11 +512,13 @@ function ShareBox({ id, code, name }: { id: string; code: string; name: string }
 // ---------- invite ----------
 
 export function TournamentInvite({ peek, busy, onJoin }: { peek: TournamentPeek; busy: boolean; onJoin: (entryId?: string) => void }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const people = peek.entries.reduce((n, e) => n + e.names.length, 0);
   const capacity = peek.size * (peek.mode === '2v2' ? 2 : 1);
   const full = people >= capacity;
-  const open = peek.phase === 'lobby';
+  const startsAt = peek.startsAt ? new Date(peek.startsAt).getTime() : null;
+  const now = useNow(startsAt !== null);
+  const open = peek.phase === 'lobby' && (startsAt === null || startsAt > now);
   const { first, second } = purse(peek.pot);
   return (
     <>
@@ -415,7 +531,11 @@ export function TournamentInvite({ peek, busy, onJoin }: { peek: TournamentPeek;
           <span>{t.targetLbl} {peek.target}</span>
           <span>{peek.buyIn ? `🪙 ${peek.buyIn.toLocaleString()}` : t.free}</span>
         </div>
+        {startsAt !== null && open && (
+          <p className="tour-when">🕘 {t.tour.startsAt.replace('{when}', whenText(startsAt, lang, t))} · {t.tour.inTime.replace('{t}', untilText(startsAt - now))}</p>
+        )}
       </header>
+      {startsAt !== null && open && <p className="fine">{t.tour.checkInRule}</p>}
       {peek.buyIn > 0 && (
         <div className="tour-pot">
           <span>{t.tour.pot}</span>
@@ -452,7 +572,7 @@ export function TournamentInvite({ peek, busy, onJoin }: { peek: TournamentPeek;
 // ---------- in the Tables tab ----------
 
 export function TournamentsSection({ uid, onCreate, onOpen }: { uid: string; onCreate: () => void; onOpen: (id: string) => void }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const list = useMyTournaments(uid);
   return (
     <section className="tour-section">
@@ -465,7 +585,10 @@ export function TournamentsSection({ uid, onCreate, onOpen }: { uid: string; onC
           {list.map((x) => (
             <button key={x.id} className="tour-row" onClick={() => onOpen(x.id)}>
               <span className="tr-name">{x.name}</span>
-              <span className="tr-meta">{t.modes[x.mode].name} · {x.buy_in ? `🪙 ${x.buy_in.toLocaleString()}` : t.free}</span>
+              <span className="tr-meta">
+                {t.modes[x.mode].name} · {x.buy_in ? `🪙 ${x.buy_in.toLocaleString()}` : t.free}
+                {x.phase === 'lobby' && x.starts_at && ` · 🕘 ${whenText(new Date(x.starts_at).getTime(), lang, t)}`}
+              </span>
               <span className={`phase-chip ${x.phase}`}>{t.tour.phase[x.phase]}</span>
             </button>
           ))}

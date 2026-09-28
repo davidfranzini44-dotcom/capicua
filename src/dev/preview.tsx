@@ -247,7 +247,7 @@ function Screen({ s }: { s: string }) {
       <div className="screen tour-screen">
         <TournamentInvite busy={false} onJoin={noop} peek={{
           id: 't2', code: 'PAREJ', name: 'Parejas del viernes', mode: '2v2', size: 4, buyIn: 1000, phase: 'lobby', target: 150,
-          host: 'Yokasta', pot: 5000, member: false,
+          host: 'Yokasta', pot: 5000, member: false, startsAt: new Date(Date.now() + 47 * 60_000).toISOString(),
           entries: [
             { id: 'e1', names: ['Yokasta', 'Robert'], open: false },
             { id: 'e2', names: ['Kirsy'], open: true },
@@ -258,8 +258,10 @@ function Screen({ s }: { s: string }) {
     );
   }
   if (s.startsWith('tournament-')) {
-    // tournament-lobby | tournament-bracket | tournament-final
-    const phase = s === 'tournament-lobby' ? 'lobby' : s === 'tournament-final' ? 'finished' : 'playing';
+    // tournament-lobby | tournament-bracket | tournament-final | tournament-noshow
+    // | tournament-scheduled (before check-in) | tournament-checkin (open, not checked in) | tournament-checkin-host (all in: start now)
+    const scheduled = s === 'tournament-scheduled' || s.startsWith('tournament-checkin');
+    const phase = s === 'tournament-lobby' || scheduled ? 'lobby' : s === 'tournament-final' ? 'finished' : 'playing';
     const names = { me: 'Wilfri', y: 'Yokasta', r: 'Robert', k: 'Kirsy', c: 'Chelo' } as Record<string, string>;
     const entries: EntryRow[] = ['me', 'y', 'r', 'k', 'c'].map((p, i) => ({
       id: `e${i}`, player1: p, player2: null,
@@ -278,6 +280,10 @@ function Screen({ s }: { s: string }) {
         done('m5', 2, 0, 'e0', 'e2', 'e0'),
         done('m6', 2, 1, 'e3', 'e4', 'e4', 'forfeit'),
         done('m7', 3, 0, 'e0', 'e4', 'e0'),
+      ] : s === 'tournament-noshow' ? [
+        { ...done('m5', 2, 0, 'e0', 'e2', ''), winner: null, result: 'no_show' } as MatchRow,
+        { id: 'm6', round: 2, slot: 1, entry_a: 'e3', entry_b: 'e4', room_id: 'r2', winner: null, status: 'playing', result: null, ready_by: null } as MatchRow,
+        { id: 'm7', round: 3, slot: 0, entry_a: null, entry_b: null, room_id: null, winner: null, status: 'waiting', result: null, ready_by: null } as MatchRow,
       ] : [
         { id: 'm5', round: 2, slot: 0, entry_a: 'e0', entry_b: 'e2', room_id: 'r1', winner: null, status: 'ready', result: null, ready_by: soon } as MatchRow,
         { id: 'm6', round: 2, slot: 1, entry_a: 'e3', entry_b: 'e4', room_id: 'r2', winner: null, status: 'playing', result: null, ready_by: null } as MatchRow,
@@ -287,11 +293,14 @@ function Screen({ s }: { s: string }) {
     const tour: TournamentRow = {
       id: 't1', code: 'KXQTB', name: 'Copa del barrio', host: 'me', mode: '1v1', size: 8, buy_in: 500, rules: publicRules('1v1'),
       turn_seconds: 25, phase, rounds: phase === 'lobby' ? null : 3, pot: 2500, champion: phase === 'finished' ? 'e0' : null,
+      starts_at: scheduled ? new Date(Date.now() + (s === 'tournament-scheduled' ? 95 : 9) * 60_000).toISOString() : null, cancel_reason: null,
     };
+    const checkins = new Set(s === 'tournament-checkin' ? ['y', 'r'] : s === 'tournament-checkin-host' ? ['me', 'y', 'r', 'k'] : []);
     return (
       <div className="screen tour-screen">
-        <TournamentView tour={tour} entries={phase === 'lobby' ? entries.slice(0, 4) : entries} matches={matches} names={names} uid="me"
-          onStart={noop} onCancel={noop} onLeave={noop} onKick={noop} onPlay={noop} />
+        <TournamentView tour={{ ...tour, host: s === 'tournament-checkin' ? 'y' : 'me' }} entries={phase === 'lobby' ? entries.slice(0, 4) : entries}
+          matches={matches} names={names} uid="me" checkins={checkins}
+          onStart={noop} onCancel={noop} onLeave={noop} onKick={noop} onPlay={noop} onCheckIn={noop} />
       </div>
     );
   }

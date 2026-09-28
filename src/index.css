@@ -1095,6 +1095,18 @@ button:disabled { cursor: default; }
 .tour-me strong { color: var(--text); font-size: 1.05rem; }
 .tour-me.ready { background: rgba(245,197,66,.12); border: 1px solid rgba(245,197,66,.4); }
 .tour-me.live { background: rgba(61,220,132,.1); border: 1px solid rgba(61,220,132,.35); }
+/* Scheduled start + check-in. */
+.tour-clock { display: flex; flex-direction: column; gap: 8px; }
+.tour-clock.open { border: 1px solid rgba(245,197,66,.45); background: rgba(245,197,66,.08); }
+.tc-when { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.tc-when b { font-size: 1rem; }
+.tc-when span { color: var(--us); font-weight: 700; font-variant-numeric: tabular-nums; }
+.tc-done { margin: 0; color: #3ddc84; font-weight: 700; }
+.tc-count { color: var(--muted); text-align: center; }
+.tour-clock .fine { margin: 0; }
+.tour-when { margin: 4px 0 0; font-weight: 600; }
+.tour-when.error { color: var(--them); }
+.te-here { font-style: normal; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: #3ddc84; color: #06220f; font-size: .65rem; font-weight: 900; }
 .tour-me.out { font-style: italic; }
 .tour-champion {
   display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; padding: 14px;

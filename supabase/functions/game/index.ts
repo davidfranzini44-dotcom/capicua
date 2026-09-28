@@ -3,7 +3,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { clientIp } from '../_shared/fairplay.ts';
-import { handlers, HttpError, ready, recordNetwork } from './handlers.ts';
+import { cronTick, handlers, HttpError, ready, recordNetwork } from './handlers.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -30,6 +30,12 @@ async function userId(req: Request): Promise<string> {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
+    // The tournament clock (pg_cron), not a player.
+    const hook = req.headers.get('x-cron-hook');
+    if (hook) {
+      await ready();
+      return json(await cronTick(hook));
+    }
     const uid = await userId(req);
     const body = await req.json();
     const handler = handlers[body?.action as keyof typeof handlers];
