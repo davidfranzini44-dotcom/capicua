@@ -371,6 +371,8 @@ async function startGame(tx: Tx, room: RoomDb, seats: SeatRow[]) {
     insert into games (room_id, public_state, stake, pot, turn_ms, auto_delay_ms, sponsor_id)
     values (${room.id}, ${tx.json(publicState(state) as never)}, ${stake}, ${stake * humans.length}, ${turnMs}, ${autoDelay(state, infos, turnMs)}, ${sponsor})
     returning id`;
+  // Every person at this table is one view of the sponsor's logo (what a view package counts).
+  if (sponsor) await tx`update sponsors set views_used = views_used + ${humans.length} where id = ${sponsor}`;
   if (stake > 0) {
     for (const h of humans) {
       const [ok] = await tx`update profiles set chips = chips - ${stake} where id = ${h.userId} and chips >= ${stake} returning id`;
@@ -394,14 +396,15 @@ async function startGame(tx: Tx, room: RoomDb, seats: SeatRow[]) {
 /** The sponsor printed on this game's felt: one of those running on this kind of table, by weight. */
 async function pickSponsor(tx: Tx, room: RoomDb): Promise<string | null> {
   const live = await tx`
-    select id, weight, salas, custom, tournaments, tournament_codes, paused, starts_at, ends_at from sponsors
-    where not paused and starts_at <= now() and (ends_at is null or ends_at > now())`;
+    select id, weight, salas, custom, tournaments, tournament_codes, paused, starts_at, ends_at, max_views, views_used from sponsors
+    where not paused and starts_at <= now() and (ends_at is null or ends_at > now())
+      and (max_views is null or views_used < max_views)`;
   if (!live.length) return null;
   const [t] = room.tournament_id ? await tx`select code from tournaments where id = ${room.tournament_id}` : [];
   const table = { kind: room.kind, stake: room.stake, tournamentCode: t?.code ?? null };
   const fits = live.filter((s) => sponsorMatches({
     salas: s.salas, custom: s.custom, tournaments: s.tournaments, tournamentCodes: s.tournament_codes,
-    paused: s.paused, startsAt: s.starts_at, endsAt: s.ends_at,
+    paused: s.paused, startsAt: s.starts_at, endsAt: s.ends_at, maxViews: s.max_views, viewsUsed: s.views_used,
   }, table));
   return (pickWeighted(fits as { id: string; weight: number }[])?.id as string | undefined) ?? null;
 }
@@ -1630,7 +1633,7 @@ export const handlers = {
     const row = {
       name: s.name, image_path: s.imagePath, link: s.link, style: s.style, opacity: s.opacity, size: s.size,
       salas: s.salas, custom: s.custom, tournaments: s.tournaments, tournament_codes: s.tournamentCodes,
-      weight: s.weight, starts_at: s.startsAt, ends_at: s.endsAt, paused: s.paused,
+      weight: s.weight, starts_at: s.startsAt, ends_at: s.endsAt, paused: s.paused, max_views: s.maxViews,
     };
     if (s.id) {
       const [u] = await sql`update sponsors set ${sql(row)} where id = ${s.id} returning id`;
@@ -1639,6 +1642,14 @@ export const handlers = {
     }
     const [c] = await sql`insert into sponsors ${sql(row)} returning id`;
     return { id: c.id };
+  },
+
+  /** A new secret for the sponsor's report link: the old link stops working. */
+  async admin_sponsor_new_link(uid: string, { id }: { id: string }) {
+    await adminOnly(uid);
+    const [s] = await sql`update sponsors set report_token = replace(gen_random_uuid()::text, '-', '') where id = ${id} returning report_token`;
+    if (!s) throw new HttpError(404, 'not_found');
+    return { token: s.report_token as string };
   },
 
   /** Remove a sponsor; games it was on just lose the link. Returns the logo path so the panel can delete the file. */

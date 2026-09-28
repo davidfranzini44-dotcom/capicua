@@ -21,6 +21,21 @@ export interface SponsorRow {
   ends_at: string | null;
   paused: boolean;
   created_at: string;
+  /** Views paid for (null = no cap) and used so far. */
+  max_views: number | null;
+  views_used: number;
+  /** The secret in the sponsor's report link (admin only). */
+  report_token: string;
+}
+
+export type SponsorStatus = 'live' | 'scheduled' | 'paused' | 'ended' | 'done';
+/** Where a campaign stands: paused, over (by date), package used up, not started yet, or running. */
+export function sponsorStatus(s: Pick<SponsorRow, 'paused' | 'starts_at' | 'ends_at' | 'max_views' | 'views_used'>, now = Date.now()): SponsorStatus {
+  if (s.paused) return 'paused';
+  if (s.ends_at && Date.parse(s.ends_at) <= now) return 'ended';
+  if (s.max_views != null && s.views_used >= s.max_views) return 'done';
+  if (Date.parse(s.starts_at) > now) return 'scheduled';
+  return 'live';
 }
 
 /** What the table needs to print it. */
@@ -36,7 +51,7 @@ export interface TableSponsor {
 
 export const sponsorImageUrl = (path: string) => supabase.storage.from('sponsors').getPublicUrl(path).data.publicUrl;
 
-export const toTableSponsor = (s: SponsorRow): TableSponsor => ({
+export const toTableSponsor = (s: Pick<SponsorRow, 'id' | 'name' | 'image_path' | 'link' | 'style' | 'opacity' | 'size'>): TableSponsor => ({
   id: s.id, name: s.name, url: sponsorImageUrl(s.image_path), link: s.link, style: s.style, opacity: s.opacity, size: s.size,
 });
 
@@ -48,8 +63,9 @@ export function useSponsor(id: string | null | undefined): TableSponsor | null {
   useEffect(() => {
     if (!id || !onlineEnabled || cache.has(id)) return;
     let live = true;
-    supabase.from('sponsors').select('*').eq('id', id).maybeSingle().then(({ data }) => {
-      const s = data ? toTableSponsor(data as SponsorRow) : null;
+    // Players may read only what prints the logo (not the report link or the package).
+    supabase.from('sponsors').select('id, name, image_path, link, style, opacity, size').eq('id', id).maybeSingle().then(({ data }) => {
+      const s = data ? toTableSponsor(data) : null;
       cache.set(id, s);
       if (live) setLoaded({ id, s });
     });
@@ -58,6 +74,27 @@ export function useSponsor(id: string | null | undefined): TableSponsor | null {
   if (!id) return null;
   if (cache.has(id)) return cache.get(id)!;
   return loaded?.id === id ? loaded.s : null;
+}
+
+/** The page the sponsor opens to see their numbers (no sign-in). */
+export const sponsorReportUrl = (token: string) => `${location.origin}/?reporte=${encodeURIComponent(token)}`;
+
+/** What the sponsor's report page shows: totals only, never who the players are. */
+export interface SponsorReport {
+  name: string; image_path: string; link: string | null; style: 'color' | 'white'; opacity: number; size: number;
+  salas: number[]; custom: boolean; tournaments: boolean; tournament_codes: string[];
+  starts_at: string; ends_at: string | null; paused: boolean; max_views: number | null; views_used: number;
+  games: number; players: number; views: number; taps: number; tappers: number;
+  /** The last 30 days (Dominican time), oldest first. */
+  days: { day: string; views: number; taps: number }[];
+  updated_at: string;
+}
+
+/** Null when the link is wrong or was replaced. */
+export async function loadSponsorReport(token: string): Promise<SponsorReport | null> {
+  const { data, error } = await supabase.rpc('sponsor_report', { p_token: token });
+  if (error) throw new ApiError('server_error');
+  return (data as SponsorReport | null) ?? null;
 }
 
 /** "Patrocinado por…" was tapped: count it and open their link. */

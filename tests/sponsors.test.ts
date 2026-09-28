@@ -4,7 +4,7 @@ import { normalizeLink, pickWeighted, SPONSOR_SALAS, sponsorMatches, validateSpo
 const base: SponsorInput = {
   name: 'Colmado La Esquina', imagePath: 'k3j2-abc.webp', link: null, style: 'color', opacity: 0.4, size: 0.6,
   salas: [500, 1000], custom: false, tournaments: false, tournamentCodes: [], weight: 1,
-  startsAt: '2026-10-01T00:00:00.000Z', endsAt: null, paused: false,
+  startsAt: '2026-10-01T00:00:00.000Z', endsAt: null, paused: false, maxViews: null,
 };
 
 describe('sponsor links', () => {
@@ -43,6 +43,13 @@ describe('saving a sponsor', () => {
     expect(validateSponsor({ ...base, name: 'x' })).toBeNull();
   });
 
+  it('a package of views is a whole number from 100 to 10 million, or none', () => {
+    expect(validateSponsor({ ...base, maxViews: 5000 })?.maxViews).toBe(5000);
+    expect(validateSponsor({ ...base, maxViews: null })?.maxViews).toBeNull();
+    expect(validateSponsor({ ...base, maxViews: 50 })).toBeNull();
+    expect(validateSponsor({ ...base, maxViews: 1.5 })).toBeNull();
+  });
+
   it('offers the friendly tables and every sala', () => {
     expect(SPONSOR_SALAS).toEqual([0, 500, 1000, 1500, 2000]);
   });
@@ -66,6 +73,13 @@ describe('which tables show it', () => {
     expect(sponsorMatches({ ...base, startsAt: '2026-10-06T00:00:00Z' }, { kind: 'public', stake: 500 }, now)).toBe(false);
     expect(sponsorMatches({ ...base, endsAt: '2026-10-05T00:00:00Z' }, { kind: 'public', stake: 500 }, now)).toBe(false);
     expect(sponsorMatches({ ...base, endsAt: '2026-10-06T00:00:00Z' }, { kind: 'public', stake: 500 }, now)).toBe(true);
+  });
+
+  it('stops on its own once the views paid for are used', () => {
+    const table = { kind: 'public' as const, stake: 500 };
+    expect(sponsorMatches({ ...base, maxViews: 5000, viewsUsed: 4999 }, table, now)).toBe(true);
+    expect(sponsorMatches({ ...base, maxViews: 5000, viewsUsed: 5000 }, table, now)).toBe(false);
+    expect(sponsorMatches({ ...base, maxViews: null, viewsUsed: 99_999 }, table, now)).toBe(true);
   });
 
   it('several sponsors on the same tables share them by weight', () => {

@@ -2,8 +2,10 @@
 // part of the table, never tappable during a hand (leaving the app mid-hand
 // would flag the player for fair play). The link lives on "Patrocinado por…".
 import type { CSSProperties } from 'react';
+import { FELTS } from '../../supabase/functions/_shared/cosmetics.ts';
 import { useI18n } from '../i18n';
-import type { TableSponsor } from '../lib/sponsor';
+import type { SponsorRow, TableSponsor } from '../lib/sponsor';
+import { HandTile } from './Tile';
 
 type Mark = Pick<TableSponsor, 'url' | 'style' | 'opacity' | 'size'>;
 
@@ -23,4 +25,33 @@ export function SponsorCredit({ sponsor, onTap }: { sponsor: TableSponsor; onTap
   return sponsor.link && onTap
     ? <button type="button" className="sponsor-credit link" onClick={onTap}>{text} ↗</button>
     : <p className="sponsor-credit">{text}</p>;
+}
+
+/** A small table felt with the logo on it and a few dominoes on top, to judge how it looks. */
+export function SponsorFelt({ mark, felt = 'verde', tiles = true, className = '' }: {
+  mark: { url: string; style: 'color' | 'white'; opacity: number; size: number } | null; felt?: string; tiles?: boolean; className?: string;
+}) {
+  const f = FELTS.find((x) => x.id === felt) ?? FELTS[0];
+  return (
+    <div className={`sp-felt table-focus ${f.color ? 'felt-tint' : ''} ${className}`} style={{ '--felt-color': f.color ?? undefined } as CSSProperties}>
+      <div className="table-rail"><div className="felt">
+        <div className="board-wrap">
+          {mark && <SponsorMark sponsor={mark} />}
+          {tiles && (
+            <div className="board-scene sp-tiles" aria-hidden>
+              {([[6, 6], [6, 3], [3, 1], [1, 5]] as [number, number][]).map((tl) => <HandTile key={tl.join()} tile={tl} />)}
+            </div>
+          )}
+        </div>
+      </div></div>
+    </div>
+  );
+}
+
+/** "Amistosas, Sala 1,000, Mesas privadas, Torneos (KXQTB)" */
+export function describeTables(s: Pick<SponsorRow, 'salas' | 'custom' | 'tournaments' | 'tournament_codes'>, t: ReturnType<typeof useI18n>['t']) {
+  const parts = s.salas.map((x) => (x === 0 ? t.admin.sp.friendly : `${t.admin.sp.sala} ${x.toLocaleString()}`));
+  if (s.custom) parts.push(t.admin.sp.custom);
+  if (s.tournaments) parts.push(s.tournament_codes.length ? `${t.admin.sp.tournaments} (${s.tournament_codes.join(', ')})` : t.admin.sp.tournaments);
+  return parts.join(', ');
 }

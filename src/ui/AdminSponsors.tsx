@@ -1,52 +1,24 @@
 // Admin → Patrocinios: sponsors whose logo is printed on the felt of the tables
 // the admin picks, with what each one got (games, players, views, taps) and a
 // report to send them. Logos are cleaned up in the browser before upload.
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FELTS } from '../../supabase/functions/_shared/cosmetics.ts';
 import { normalizeLink, SPONSOR_SALAS, validateSponsor, type SponsorInput } from '../../supabase/functions/_shared/sponsors.ts';
 import { useI18n } from '../i18n';
-import { prepareSponsorLogo, removeSponsorLogo, sponsorImageUrl, uploadSponsorLogo, type PreparedLogo, type SponsorRow } from '../lib/sponsor';
+import {
+  prepareSponsorLogo, removeSponsorLogo, sponsorImageUrl, sponsorReportUrl, sponsorStatus, uploadSponsorLogo, type PreparedLogo, type SponsorRow,
+} from '../lib/sponsor';
 import { api } from '../lib/supabase';
 import { useErrorText } from './common';
-import { SponsorMark } from './Sponsor';
-import { HandTile } from './Tile';
+import { describeTables, SponsorFelt } from './Sponsor';
 
 export interface SponsorStatsRow extends SponsorRow {
   games: number; games_7d: number; players: number; views: number; views_7d: number; taps: number; tappers: number; taps_7d: number;
 }
 
-type Status = 'live' | 'scheduled' | 'paused' | 'ended';
-export function sponsorStatus(s: Pick<SponsorRow, 'paused' | 'starts_at' | 'ends_at'>, now = Date.now()): Status {
-  if (s.paused) return 'paused';
-  if (s.ends_at && Date.parse(s.ends_at) <= now) return 'ended';
-  if (Date.parse(s.starts_at) > now) return 'scheduled';
-  return 'live';
-}
-
 const dateOnly = (iso: string, lang: string) => new Date(iso).toLocaleDateString(lang === 'es' ? 'es-DO' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 /** For <input type="datetime-local">. */
 const localInput = (ms: number) => new Date(ms - new Date(ms).getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-
-/** A small table felt with the logo on it and a few dominoes on top, to judge how it looks. */
-export function SponsorFelt({ mark, felt = 'verde', tiles = true, className = '' }: {
-  mark: { url: string; style: 'color' | 'white'; opacity: number; size: number } | null; felt?: string; tiles?: boolean; className?: string;
-}) {
-  const f = FELTS.find((x) => x.id === felt) ?? FELTS[0];
-  return (
-    <div className={`sp-felt table-focus ${f.color ? 'felt-tint' : ''} ${className}`} style={{ '--felt-color': f.color ?? undefined } as CSSProperties}>
-      <div className="table-rail"><div className="felt">
-        <div className="board-wrap">
-          {mark && <SponsorMark sponsor={mark} />}
-          {tiles && (
-            <div className="board-scene sp-tiles" aria-hidden>
-              {([[6, 6], [6, 3], [3, 1], [1, 5]] as [number, number][]).map((tl) => <HandTile key={tl.join()} tile={tl} />)}
-            </div>
-          )}
-        </div>
-      </div></div>
-    </div>
-  );
-}
 
 export function SponsorsView() {
   const { t, lang } = useI18n();
@@ -70,13 +42,17 @@ export function SponsorsView() {
     const { imagePath } = await api<{ imagePath: string | null }>('admin_sponsor_delete', { id: s.id });
     if (imagePath) await removeSponsorLogo(imagePath);
   });
-  const copyReport = async (s: SponsorStatsRow) => {
-    const text = t.admin.sp.reportText
+  const copy = async (key: string, text: string) => {
+    try { await navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(null), 1500); } catch { prompt('', text); }
+  };
+  const copyReport = (s: SponsorStatsRow) => {
+    let text = t.admin.sp.reportText
       .replace('{name}', s.name).replace('{from}', dateOnly(s.starts_at, lang))
       .replace('{to}', s.ends_at && Date.parse(s.ends_at) < Date.now() ? dateOnly(s.ends_at, lang) : t.admin.sp.now)
       .replace('{games}', s.games.toLocaleString()).replace('{players}', s.players.toLocaleString())
       .replace('{views}', s.views.toLocaleString()).replace('{taps}', s.taps.toLocaleString());
-    try { await navigator.clipboard.writeText(text); setCopied(s.id); setTimeout(() => setCopied(null), 1500); } catch { prompt('', text); }
+    if (s.max_views != null) text += t.admin.sp.reportPkg.replace('{used}', s.views_used.toLocaleString()).replace('{max}', s.max_views.toLocaleString());
+    copy(`${s.id}:summary`, `${text} ${sponsorReportUrl(s.report_token)}`);
   };
 
   if (editing) {
@@ -89,20 +65,30 @@ export function SponsorsView() {
       {error && <p className="error">{error}</p>}
       {list && list.length === 0 && <p className="fine">{t.admin.sp.none}</p>}
       {list?.map((s) => (
-        <SponsorCard key={s.id} s={s} url={sponsorImageUrl(s.image_path)} copied={copied === s.id}
-          onEdit={() => setEditing(s)} onPause={() => togglePause(s)} onReport={() => copyReport(s)} onDelete={() => remove(s)} />
+        <SponsorCard key={s.id} s={s} url={sponsorImageUrl(s.image_path)} copied={copied?.startsWith(`${s.id}:`) ? copied.slice(s.id.length + 1) : null}
+          onEdit={() => setEditing(s)} onPause={() => togglePause(s)} onReport={() => copyReport(s)} onDelete={() => remove(s)}
+          onCopyLink={() => copy(`${s.id}:link`, sponsorReportUrl(s.report_token))} />
       ))}
     </div>
   );
 }
 
 /** One sponsor: its logo on a mini table, where it runs, and what it got. */
-export function SponsorCard({ s, url, copied, onEdit, onPause, onReport, onDelete }: {
-  s: SponsorStatsRow; url: string; copied: boolean; onEdit: () => void; onPause: () => void; onReport: () => void; onDelete: () => void;
+/** Share the report link: straight to the sponsor's WhatsApp when their link is a WhatsApp number. */
+export function whatsappShare(s: Pick<SponsorRow, 'name' | 'link' | 'report_token'>, t: T) {
+  const text = t.admin.sp.waText.replace('{name}', s.name).replace('{url}', sponsorReportUrl(s.report_token));
+  const to = s.link?.match(/^https:\/\/wa\.me\/(\d+)/)?.[1] ?? '';
+  return `https://wa.me/${to}?text=${encodeURIComponent(text)}`;
+}
+
+export function SponsorCard({ s, url, copied, onEdit, onPause, onReport, onDelete, onCopyLink }: {
+  s: SponsorStatsRow; url: string; copied: 'link' | 'summary' | string | null;
+  onEdit: () => void; onPause: () => void; onReport: () => void; onDelete: () => void; onCopyLink: () => void;
 }) {
   const { t, lang } = useI18n();
   const status = sponsorStatus(s);
   const ctr = s.views ? ` (${((100 * s.taps) / s.views).toFixed(1)}%)` : '';
+  const pct = s.max_views ? Math.min(100, (100 * s.views_used) / s.max_views) : 0;
   return (
           <article className="sp-card">
             <SponsorFelt mark={{ url, style: s.style, opacity: s.opacity, size: s.size }} tiles={false} className="mini" />
@@ -120,10 +106,23 @@ export function SponsorCard({ s, url, copied, onEdit, onPause, onReport, onDelet
                 <div><b>{s.taps.toLocaleString()}{ctr}</b><small>{t.admin.sp.taps}</small></div>
               </div>
               <small className="sp-week">{t.admin.sp.last7}: {s.games_7d} {t.admin.sp.games.toLowerCase()} · {s.views_7d} {t.admin.sp.views.toLowerCase()} · {s.taps_7d} {t.admin.sp.taps.toLowerCase()}</small>
+              {s.max_views != null && (
+                <div className="sp-pkg">
+                  <small>
+                    {t.admin.sp.pkg}: {t.admin.sp.pkgUsed.replace('{used}', s.views_used.toLocaleString()).replace('{max}', s.max_views.toLocaleString())}
+                    {s.views_used < s.max_views && ` · ${t.admin.sp.pkgLeft.replace('{n}', (s.max_views - s.views_used).toLocaleString())}`}
+                  </small>
+                  <span className="sp-bar" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></span>
+                </div>
+              )}
+              <div className="sp-actions">
+                <button className="btn primary small" onClick={onCopyLink}>{copied === 'link' ? t.admin.sp.linkCopied : t.admin.sp.reportLink}</button>
+                <a className="btn wa small" href={whatsappShare(s, t)} target="_blank" rel="noreferrer">{t.admin.sp.sendWa}</a>
+                <button className="btn ghost small" onClick={onReport}>{copied === 'summary' ? t.admin.sp.copied : t.admin.sp.summary}</button>
+              </div>
               <div className="sp-actions">
                 <button className="btn ghost small" onClick={onEdit}>{t.admin.sp.edit}</button>
                 <button className="btn ghost small" onClick={onPause}>{s.paused ? t.admin.sp.resume : t.admin.sp.pause}</button>
-                <button className="btn ghost small" onClick={onReport}>{copied ? t.admin.sp.copied : t.admin.sp.report}</button>
                 <button className="btn danger small" onClick={onDelete}>{t.admin.sp.del}</button>
               </div>
             </div>
@@ -132,18 +131,15 @@ export function SponsorCard({ s, url, copied, onEdit, onPause, onReport, onDelet
 }
 
 type T = ReturnType<typeof useI18n>['t'];
-function describeTables(s: Pick<SponsorRow, 'salas' | 'custom' | 'tournaments' | 'tournament_codes'>, t: T) {
-  const parts = s.salas.map((x) => (x === 0 ? t.admin.sp.friendly : `${t.admin.sp.sala} ${x.toLocaleString()}`));
-  if (s.custom) parts.push(t.admin.sp.custom);
-  if (s.tournaments) parts.push(s.tournament_codes.length ? `${t.admin.sp.tournaments} (${s.tournament_codes.join(', ')})` : t.admin.sp.tournaments);
-  return parts.join(', ');
-}
 
 const toInput = (s: SponsorRow): SponsorInput => ({
   id: s.id, name: s.name, imagePath: s.image_path, link: s.link, style: s.style, opacity: s.opacity, size: s.size,
   salas: s.salas, custom: s.custom, tournaments: s.tournaments, tournamentCodes: s.tournament_codes, weight: s.weight,
-  startsAt: s.starts_at, endsAt: s.ends_at, paused: s.paused,
+  startsAt: s.starts_at, endsAt: s.ends_at, paused: s.paused, maxViews: s.max_views,
 });
+
+/** View packages offered at a glance (any amount can be typed). */
+const PACKAGES = [1_000, 5_000, 10_000, 25_000];
 
 export function SponsorEditor({ initial, onDone, onCancel, upload = uploadSponsorLogo }: {
   initial: SponsorRow | null; onDone: () => void; onCancel: () => void;
@@ -154,8 +150,9 @@ export function SponsorEditor({ initial, onDone, onCancel, upload = uploadSponso
   const errText = useErrorText();
   const [f, setF] = useState<SponsorInput>(() => initial ? toInput(initial) : {
     name: '', imagePath: '', link: null, style: 'color', opacity: 0.4, size: 0.6, salas: [], custom: false,
-    tournaments: false, tournamentCodes: [], weight: 1, startsAt: new Date().toISOString(), endsAt: null, paused: false,
+    tournaments: false, tournamentCodes: [], weight: 1, startsAt: new Date().toISOString(), endsAt: null, paused: false, maxViews: null,
   });
+  const [linkNote, setLinkNote] = useState<string | null>(null);
   const [linkText, setLinkText] = useState(initial?.link ?? '');
   const [codesText, setCodesText] = useState(initial?.tournament_codes.join(', ') ?? '');
   const [file, setFile] = useState<File | null>(null);
@@ -268,10 +265,36 @@ export function SponsorEditor({ initial, onDone, onCancel, upload = uploadSponso
             onChange={(e) => set('endsAt', e.target.value ? new Date(e.target.value).toISOString() : null)} />
         </label>
       </div>
+      <label className="label">{t.admin.sp.pkg}</label>
+      <div className="sp-chips">
+        <button className={`chip-toggle ${f.maxViews === null ? 'on' : ''}`} onClick={() => set('maxViews', null)}>{t.admin.sp.pkgNone}</button>
+        {PACKAGES.map((n) => (
+          <button key={n} className={`chip-toggle ${f.maxViews === n ? 'on' : ''}`} onClick={() => set('maxViews', n)}>{n.toLocaleString()}</button>
+        ))}
+      </div>
+      <input className="text-input" type="number" min={100} step={100} placeholder={t.admin.sp.pkgOther} value={f.maxViews ?? ''}
+        onChange={(e) => set('maxViews', e.target.value ? Math.floor(Number(e.target.value)) : null)} />
+      <p className="fine left">
+        {t.admin.sp.pkgHint}
+        {initial && f.maxViews != null && ` ${t.admin.sp.pkgUsed.replace('{used}', initial.views_used.toLocaleString()).replace('{max}', f.maxViews.toLocaleString())}.`}
+      </p>
+
       <label className="sp-slider">{t.admin.sp.weight} <b>{f.weight}</b>
         <input type="range" min={1} max={10} step={1} value={f.weight} onChange={(e) => set('weight', Number(e.target.value))} />
       </label>
       <label className="sp-check"><input type="checkbox" checked={f.paused} onChange={(e) => set('paused', e.target.checked)} /> {t.admin.sp.paused}</label>
+      {initial && (
+        <>
+          <button className="link-btn" disabled={busy} onClick={async () => {
+            if (!confirm(t.admin.sp.newLinkConfirm)) return;
+            try {
+              await api('admin_sponsor_new_link', { id: initial.id });
+              setLinkNote(t.admin.sp.newLinkDone);
+            } catch (e) { setError(errText(e)); }
+          }}>{t.admin.sp.newLink}</button>
+          {linkNote && <small className="fine left">{linkNote}</small>}
+        </>
+      )}
 
       {noTables && <p className="fine left">{t.admin.sp.needTables}</p>}
       {!imageUrl && <p className="fine left">{t.admin.sp.needLogo}</p>}

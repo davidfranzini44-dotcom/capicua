@@ -40,9 +40,11 @@ import { lookVars } from '../lib/look';
 import { feltById, tilesById } from '../../supabase/functions/_shared/cosmetics.ts';
 import '../ui/table.css';
 import { SponsorCard, SponsorEditor, type SponsorStatsRow } from '../ui/AdminSponsors';
+import { SponsorReportView } from '../ui/SponsorReport';
+import type { SponsorReport } from '../lib/sponsor';
 
 /** A made-up sponsor logo (transparent SVG) for the sponsored-table previews. */
-const FAKE_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 200">
+const FAKE_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 200">
   <circle cx="90" cy="100" r="78" fill="#d62828"/><text x="90" y="122" font-family="Arial Black,Arial" font-weight="900" font-size="64" fill="#fff" text-anchor="middle">LE</text>
   <text x="185" y="92" font-family="Arial Black,Arial" font-weight="900" font-size="46" fill="#f5c542">COLMADO</text>
   <text x="185" y="146" font-family="Arial Black,Arial" font-weight="900" font-size="40" fill="#ffffff">LA ESQUINA</text></svg>`)}`;
@@ -50,6 +52,7 @@ const fakeSponsorRow = (over: Partial<SponsorStatsRow> = {}): SponsorStatsRow =>
   id: 'sp1', name: 'Colmado La Esquina', image_path: 'x.webp', link: 'https://wa.me/18095551234', style: 'color', opacity: 0.45, size: 0.6,
   salas: [0, 500, 1000], custom: true, tournaments: false, tournament_codes: [], weight: 1,
   starts_at: new Date(Date.now() - 9 * 86_400_000).toISOString(), ends_at: new Date(Date.now() + 21 * 86_400_000).toISOString(),
+  max_views: 5000, views_used: 3920, report_token: 'demo',
   paused: false, created_at: new Date().toISOString(),
   games: 1284, games_7d: 402, players: 611, views: 3920, views_7d: 1180, taps: 57, tappers: 49, taps_7d: 19, ...over,
 });
@@ -344,11 +347,30 @@ function Screen({ s }: { s: string }) {
   if (s === 'sponsor-cards') {
     return (
       <div className="admin"><main className="admin-body"><div className="sp-list">
-        <SponsorCard s={fakeSponsorRow()} url={FAKE_LOGO} copied={false} onEdit={noop} onPause={noop} onReport={noop} onDelete={noop} />
-        <SponsorCard s={fakeSponsorRow({ id: 'sp2', name: 'Ferretería Popular', style: 'white', opacity: 0.3, paused: true, link: null, salas: [], tournaments: true, tournament_codes: ['KXQTB'], games: 88, players: 40, views: 190, taps: 0, games_7d: 0, views_7d: 0, taps_7d: 0 })}
-          url={FAKE_LOGO} copied={false} onEdit={noop} onPause={noop} onReport={noop} onDelete={noop} />
+        <SponsorCard s={fakeSponsorRow()} url={FAKE_LOGO} copied={null} onEdit={noop} onPause={noop} onReport={noop} onDelete={noop} onCopyLink={noop} />
+        <SponsorCard s={fakeSponsorRow({ id: 'sp2', name: 'Ferretería Popular', style: 'white', opacity: 0.3, paused: true, link: null, salas: [], tournaments: true, tournament_codes: ['KXQTB'], games: 88, players: 40, views: 190, taps: 0, games_7d: 0, views_7d: 0, taps_7d: 0, max_views: null, views_used: 190 })}
+          url={FAKE_LOGO} copied="link" onEdit={noop} onPause={noop} onReport={noop} onDelete={noop} onCopyLink={noop} />
       </div></main></div>
     );
+  }
+  if (s === 'sponsor-report' || s === 'sponsor-report-done' || s === 'sponsor-report-new') {
+    // The page a sponsor opens from their private link: 30 days of made-up traffic.
+    const today = new Date();
+    const days = Array.from({ length: 30 }, (_, i) => {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29 + i);
+      const started = i >= 20;
+      const views = s === 'sponsor-report-new' ? (i === 29 ? 14 : 0) : started ? Math.round(260 + 180 * Math.sin(i / 1.7) + (i % 7 === 5 ? 220 : 0)) : 0;
+      return { day: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, views, taps: Math.round(views / 60) };
+    });
+    const views = days.reduce((a, d) => a + d.views, 0);
+    const r: SponsorReport = {
+      name: 'Colmado La Esquina', image_path: 'x.webp', link: 'https://wa.me/18095551234', style: 'color', opacity: 0.45, size: 0.62,
+      salas: [0, 500, 1000], custom: true, tournaments: false, tournament_codes: [],
+      starts_at: new Date(Date.now() - 9 * 86_400_000).toISOString(), ends_at: new Date(Date.now() + 21 * 86_400_000).toISOString(), paused: false,
+      max_views: 5000, views_used: s === 'sponsor-report-done' ? 5000 : views, games: Math.round(views / 3.1), players: Math.round(views / 6.4), views,
+      taps: days.reduce((a, d) => a + d.taps, 0), tappers: 40, days, updated_at: new Date().toISOString(),
+    };
+    return <SponsorReportView r={{ ...r, image_path: '' }} previewUrl={FAKE_LOGO} onRefresh={noop} />;
   }
   if (s === 'sponsor-editor') {
     return <div className="admin"><main className="admin-body"><SponsorEditor initial={null} onDone={noop} onCancel={noop} upload={async () => 'fake.webp'} /></main></div>;

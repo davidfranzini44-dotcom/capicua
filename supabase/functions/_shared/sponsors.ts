@@ -14,6 +14,8 @@ export const SPONSOR_LIMITS = {
   /** Logo width as a share of the table's oval. */
   size: [0.3, 0.9] as const,
   weight: [1, 10] as const,
+  /** A paid package of views: 100 to 10 million. */
+  maxViews: [100, 10_000_000] as const,
 };
 
 export type SponsorStyle = 'color' | 'white';
@@ -39,6 +41,11 @@ export interface SponsorInput {
   startsAt: string;
   endsAt: string | null;
   paused: boolean;
+  /**
+   * Views paid for (a view = one player at one game with the logo); the campaign
+   * stops on its own once they're used. Null = no cap, it runs until its end date.
+   */
+  maxViews: number | null;
 }
 
 /**
@@ -88,6 +95,8 @@ export function validateSponsor(s: Partial<SponsorInput>): SponsorInput | null {
   const endsAt = s.endsAt ? (isDate(s.endsAt) ? new Date(s.endsAt).toISOString() : null) : null;
   if (s.endsAt && !endsAt) return null;
   if (endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) return null;
+  const maxViews = s.maxViews === null || s.maxViews === undefined ? null : Number(s.maxViews);
+  if (maxViews !== null && (!Number.isInteger(maxViews) || maxViews < SPONSOR_LIMITS.maxViews[0] || maxViews > SPONSOR_LIMITS.maxViews[1])) return null;
   return {
     ...(s.id ? { id: String(s.id) } : {}),
     name, imagePath, link, style: s.style,
@@ -95,19 +104,22 @@ export function validateSponsor(s: Partial<SponsorInput>): SponsorInput | null {
     size: Math.round(clamp(s.size!, SPONSOR_LIMITS.size) * 100) / 100,
     salas, custom: !!s.custom, tournaments, tournamentCodes,
     weight: clamp(s.weight!, SPONSOR_LIMITS.weight),
-    startsAt, endsAt, paused: !!s.paused,
+    startsAt, endsAt, paused: !!s.paused, maxViews,
   };
 }
 
 export interface SponsorTarget {
   salas: number[]; custom: boolean; tournaments: boolean; tournamentCodes: string[];
   paused: boolean; startsAt: string | Date; endsAt: string | Date | null;
+  /** Views paid for, and used so far (missing = no cap). */
+  maxViews?: number | null; viewsUsed?: number;
 }
 export interface TableKind { kind: 'public' | 'custom' | 'tournament'; stake: number; tournamentCode?: string | null }
 
-/** Running now and assigned to this kind of table. */
+/** Running now (dates, not paused, views left) and assigned to this kind of table. */
 export function sponsorMatches(s: SponsorTarget, table: TableKind, now = Date.now()): boolean {
   if (s.paused || new Date(s.startsAt).getTime() > now) return false;
+  if (s.maxViews != null && (s.viewsUsed ?? 0) >= s.maxViews) return false;
   if (s.endsAt && new Date(s.endsAt).getTime() <= now) return false;
   if (table.kind === 'public') return s.salas.includes(table.stake);
   if (table.kind === 'custom') return s.custom;
