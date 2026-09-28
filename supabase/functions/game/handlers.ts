@@ -35,13 +35,15 @@ export let sql: postgres.Sql;
 export async function ready() {
   if ((sql as postgres.Sql | undefined) !== undefined) return;
   sql = await db();
-  // The tournament clock (pg_cron) calls this function back: tell it where, and with
-  // the project's public anon key, which the function gateway asks for.
+  // The tournament clock (pg_cron) calls this function back: tell it where. Its gateway
+  // wants a JWT: the anon key is one on older projects; on the new API keys it's an
+  // sb_publishable_… key and the clock uses the 'anon_jwt' row set by hand instead.
   const url = Deno.env.get('SUPABASE_URL');
-  const anon = Deno.env.get('SUPABASE_ANON_KEY');
-  if (url && anon) {
+  const anon = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  if (url) {
+    const rows = [{ key: 'game_url', value: `${url}/functions/v1/game` }, ...(anon.startsWith('eyJ') ? [{ key: 'anon_key', value: anon }] : [])];
     await sql`
-      insert into app_secrets (key, value) values ('game_url', ${`${url}/functions/v1/game`}), ('anon_key', ${anon})
+      insert into app_secrets ${sql(rows)}
       on conflict (key) do update set value = excluded.value where app_secrets.value <> excluded.value`
       .catch((e) => console.error('remember clock target', e));
   }
