@@ -555,18 +555,18 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
     const id = setTimeout(() => setShownAlert(null), 4000);
     return () => clearTimeout(id);
   }, [r.lastAlert]);
-  // People watch by link at this private table and I'm talking but not on air: say where the
-  // switch is (once per game) — otherwise they would never hear me.
-  const airNudged = useRef<string | null>(null);
-  const [airNudge, setAirNudge] = useState(false);
-  const wantsAirNudge = !!air && !air.on && voice?.status === 'on' && linkWatchers.count > 0;
+  // My voice goes on air by default at a private table: once people watch by link while I'm
+  // on voice, say so (once per game) and where to turn it off.
+  const airTold = useRef<string | null>(null);
+  const [airNotice, setAirNotice] = useState(false);
+  const tellAir = !!air?.on && voice?.status === 'on' && linkWatchers.count > 0;
   useEffect(() => {
-    if (!wantsAirNudge || airNudged.current === game.id) return;
-    airNudged.current = game.id;
-    setAirNudge(true);
-    const id = setTimeout(() => setAirNudge(false), 7000);
+    if (!tellAir || airTold.current === game.id) return;
+    airTold.current = game.id;
+    setAirNotice(true);
+    const id = setTimeout(() => setAirNotice(false), 7000);
     return () => clearTimeout(id);
-  }, [wantsAirNudge, game.id]);
+  }, [tellAir, game.id]);
   const [reminder, setReminder] = useState(false);
   useEffect(() => {
     if (game.settled || fairReminded.has(game.id)) return;
@@ -740,7 +740,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
         offline={offline}
         outOfApp={outOfApp}
         exitConfirm={t.exitConfirmOnline}
-        notice={error ?? fairNotice ?? (airNudge && !air?.on ? t.share.airNudge : null) ?? specToast}
+        notice={error ?? fairNotice ?? (airNotice && air?.on ? t.share.airOnNotice : null) ?? specToast}
         onWatchersTap={() => setSpecOpen(true)}
         watchersUnread={showSpecMessages ? specUnread : 0}
         watchers={watchers}

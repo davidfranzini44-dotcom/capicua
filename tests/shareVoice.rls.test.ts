@@ -8,6 +8,7 @@ import WATCH from '../supabase/migrations/20261001000100_watch.sql?raw';
 import SPECTATORS from '../supabase/migrations/20261008000000_spectators.sql?raw';
 import SHARE from '../supabase/migrations/20261011000000_live_share.sql?raw';
 import VOICE from '../supabase/migrations/20261012000000_share_voice.sql?raw';
+import VOICE_ON from '../supabase/migrations/20261012000100_voice_air_default_on.sql?raw';
 
 const U = {
   p0: '00000000-0000-4000-8000-000000000000', p1: '00000000-0000-4000-8000-000000000001',
@@ -43,7 +44,7 @@ const open = (uid: string, token: string) => call(uid, 'select public.watch_shar
 
 beforeAll(async () => {
   db = new PGlite();
-  for (const sql of [BASE, WATCH, SPECTATORS, SHARE, VOICE]) await db.exec(sql);
+  for (const sql of [BASE, WATCH, SPECTATORS, SHARE, VOICE, VOICE_ON]) await db.exec(sql);
   const people: [string, string, boolean][] = [
     [U.p0, 'Robert', false], [U.p1, 'Yokasta', false], [U.p2, 'Wilfri', false], [U.q0, 'Kirsy', false],
     [U.friend, 'Papo Amigo', false], [U.viewer, 'Jugador', true], [U.named, 'Nadia', false], [U.stranger, 'Extraño', false],
@@ -64,38 +65,36 @@ beforeAll(async () => {
 });
 
 describe('putting my voice on air', () => {
-  beforeEach(async () => { await db.query('delete from public.room_voice_air'); });
+  beforeEach(async () => { await db.query('delete from public.room_voice_off'); });
 
-  it('starts off; a player at a private table turns it on and off for their own voice only', async () => {
-    expect((await watchers(U.p0))!.on_air).toEqual([]);
-    expect(await onAir(U.p1, ROOM, true)).toBe(true);
-    expect(await onAir(U.p1, ROOM, true)).toBe(true); // twice is fine
-    expect((await watchers(U.p0))!.on_air).toEqual([1]);
-    await onAir(U.p0, ROOM, true);
-    expect((await watchers(U.p2))!.on_air).toEqual([0, 1]);
+  it('starts on for everyone playing at a private table; each player turns off only their own', async () => {
+    expect((await watchers(U.p0))!.on_air).toEqual([0, 1, 2]); // seat 3 is a bot
     expect(await onAir(U.p1, ROOM, false)).toBe(false);
-    expect((await watchers(U.p2))!.on_air).toEqual([0]);
+    expect(await onAir(U.p1, ROOM, false)).toBe(false); // twice is fine
+    expect((await watchers(U.p0))!.on_air).toEqual([0, 2]);
+    expect(await onAir(U.p1, ROOM, true)).toBe(true);
+    expect((await watchers(U.p2))!.on_air).toEqual([0, 1, 2]);
   });
 
   it('never at a public table, and never for someone not playing at the table', async () => {
+    expect((await watchers(U.q0, PUB))!.on_air).toEqual([]);
     await fails(onAir(U.q0, PUB, true), 'air_private_only');
     await fails(onAir(U.stranger, ROOM, true), 'not_seated');
     await fails(onAir(U.friend, ROOM, true), 'not_seated');
-    // Turning it off is always allowed.
+    // Turning it off is always allowed, and remembered only for someone seated there.
     expect(await onAir(U.stranger, ROOM, false)).toBe(false);
-    expect((await db.query('select * from public.room_voice_air')).rows).toHaveLength(0);
+    expect((await db.query('select * from public.room_voice_off')).rows).toHaveLength(0);
   });
 
   it('a player who gives the game up goes off air (a bot never talks)', async () => {
-    await onAir(U.p2, ROOM, true);
     await db.query('update public.room_seats set left_game = true where room_id = $1 and seat = 2', [ROOM]);
-    expect((await watchers(U.p0))!.on_air).toEqual([]);
+    expect((await watchers(U.p0))!.on_air).toEqual([0, 1]);
     await db.query('update public.room_seats set left_game = false where room_id = $1 and seat = 2', [ROOM]);
   });
 
   it('nobody reads or writes the table directly, nor calls the helpers', async () => {
-    await fails(as(U.p0, (tx) => tx.query('select * from public.room_voice_air')), 'permission denied');
-    await fails(as(U.p0, (tx) => tx.query(`insert into public.room_voice_air values ($1, $2)`, [ROOM, U.p0])), 'permission denied');
+    await fails(as(U.p0, (tx) => tx.query('select * from public.room_voice_off')), 'permission denied');
+    await fails(as(U.p0, (tx) => tx.query(`insert into public.room_voice_off values ($1, $2)`, [ROOM, U.p1])), 'permission denied');
     await fails(as(U.p0, (tx) => tx.query('select public.share_air_identity($1, $2)', [G1, U.p0])), 'permission denied');
     await fails(as(U.p0, (tx) => tx.query('select public.room_air_seats($1)', [ROOM])), 'permission denied');
     await fails(db.transaction(async (tx) => { await tx.exec('set local role anon'); await tx.query('select public.set_voice_on_air($1, true)', [ROOM]); }), 'permission denied');
@@ -127,7 +126,8 @@ describe('who a player lets in', () => {
   it('viewers and watching friends see who is on air, never the list of listeners', async () => {
     const link = await share(U.p0);
     await open(U.viewer, link.token);
-    await onAir(U.p0, ROOM, true);
+    await onAir(U.p1, ROOM, false);
+    await onAir(U.p2, ROOM, false);
     const shared = await call<{ watchers: { on_air: number[]; air: string[] | null } }>(U.viewer, 'select public.shared_room($1) as r', [ROOM]);
     expect(shared.watchers.on_air).toEqual([0]);
     expect(shared.watchers.air).toBeNull();
