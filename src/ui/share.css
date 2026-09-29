@@ -78,10 +78,11 @@ html.broadcast-mode, html.broadcast-mode body { height: 100%; overflow: hidden; 
 .broadcast-foot { display: flex; flex-direction: column; align-items: stretch; padding-top: 1.2dvh; }
 .broadcast-foot:empty { padding: 0; }
 .broadcast-sponsor {
-  display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 10px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px;
   padding: 8px 12px; border-radius: 14px; background: #10291fe6; border: 1px solid #d8b85566; color: #fff8de;
 }
-.broadcast-sponsor .sponsor-card-logo { width: 40px; height: 40px; }
+/* Wide wordmarks keep their shape (up to 150 px wide) instead of shrinking into a square. */
+.broadcast-sponsor .sponsor-card-logo { width: auto; min-width: 40px; max-width: 150px; height: 40px; }
 .cast-card {
   position: absolute; inset: 0; display: grid; place-content: center; gap: 12px; text-align: center;
   padding: 0 11vw 25dvh 3vw; color: #f2e4bd; font: 800 1.3rem var(--font);
