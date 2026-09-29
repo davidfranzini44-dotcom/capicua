@@ -484,7 +484,10 @@ function Screen({ s }: { s: string }) {
     const p = { ...profile, avatar_url: s === 'photo' ? profile.avatar_url : null };
     return <div className="game-shell"><main className="game-body"><div className="tab-page profile-page"><PhotoPicker profile={p} level={7} /><h2 className="tab-title">{p.display_name}</h2></div></main></div>;
   }
-  if (s === 'queue') return <QueueScreen stake={1000} mode="2v2" onMatched={noop} onCancel={noop} />;
+  // queue: after 20 s alone in line, the "few players" card offers practice with bots or a private table.
+  if (s === 'queue' || s === 'queue-friendly') {
+    return <QueueScreen stake={s === 'queue' ? 1000 : 0} mode="2v2" onMatched={noop} onCancel={noop} onPractice={noop} onCustom={noop} />;
+  }
   if (s === 'custom-form') return <CustomForm profile={profile} onBack={noop} onCreated={noop} />;
   if (s === 'profile' || s === 'profile-online') {
     return <ProfileCard stats={{ id: 'x', display_name: 'Yokasta', xp: 6_200, games: 214, wins: 131, capicuas: 58, pollonas: 7, biggest_pot: 12_000, tournaments_won: 2, avatar_url: face('#c0487a'), chips: 48_250 }}

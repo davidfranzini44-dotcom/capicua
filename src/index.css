@@ -526,6 +526,18 @@ button:disabled { cursor: default; }
 @keyframes flip { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-12px) rotate(90deg); } }
 .queue-meta { margin: 0; font-weight: 700; }
 .queue-clock { margin: 0; font-family: var(--display); font-size: 2.2rem; color: var(--us); }
+/* Few players around: what to do instead of waiting. */
+.quiet-card { width: min(100%, 380px); display: flex; flex-direction: column; align-items: stretch; gap: 10px; margin-top: 6px; text-align: center; animation: notice-in .35s ease-out both; }
+.quiet-card > b { font-size: 1.05rem; }
+.quiet-card > p { margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.4; }
+.quiet-card .btn.primary { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.quiet-card .btn.primary small { font-size: .74rem; font-weight: 600; opacity: .8; }
+.quiet-card .link-btn { align-self: center; }
+/* Short phones: the suggestion gets the room the searching animation took. */
+@media (max-height: 700px) {
+  .queue-screen.quiet .searching-tiles { display: none; }
+  .queue-screen.quiet .queue-clock { font-size: 1.6rem; }
+}
 
 /* ---------- Pre-game lobby ---------- */
 .lobby2 { gap: 12px; }

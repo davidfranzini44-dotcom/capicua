@@ -211,7 +211,8 @@ export function Online() {
         </Suspense>
       );
     case 'queue':
-        return <QueueScreen {...view} onMatched={(roomId) => setView({ kind: 'room', roomId })} onCancel={() => setView(home)} />;
+        return <QueueScreen {...view} onMatched={(roomId) => setView({ kind: 'room', roomId })} onCancel={() => setView(home)}
+          onPractice={(mode, ruleset) => setView({ kind: 'practice', mode, ruleset })} onCustom={() => setView({ kind: 'custom' })} />;
       case 'admin':
         return <Suspense fallback={<Loading />}><AdminScreen onExit={() => setView(home)} /></Suspense>;
       case 'custom':
@@ -752,13 +753,22 @@ function OpenTables({ guest, onJoin }: { guest: boolean; onJoin: (roomId: string
   );
 }
 
-export function QueueScreen({ stake, mode, ruleset = 'traditional', notice, onMatched, onCancel }: {
+/** When to suggest something else: sooner when nobody else is searching, later when a table is just slow to fill. */
+const QUIET_AFTER_S = { alone: 20, slow: 60, again: 120 };
+
+export function QueueScreen({ stake, mode, ruleset = 'traditional', notice, onMatched, onCancel, onPractice, onCustom }: {
   stake: number; mode: Mode; ruleset?: Ruleset; notice?: string; onMatched: (roomId: string) => void; onCancel: () => void;
+  /** Few players around: leave the line and play the bots offline instead. */
+  onPractice?: (mode: Mode, ruleset: Ruleset) => void;
+  /** …or open a private table to bring friends. */
+  onCustom?: () => void;
 }) {
   const { t } = useI18n();
   const [waiting, setWaiting] = useState(1);
   const [started] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
+  /** "Seguir esperando" hides the suggestion; it comes back a while later. */
+  const [dismissedAt, setDismissedAt] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -778,16 +788,35 @@ export function QueueScreen({ stake, mode, ruleset = 'traditional', notice, onMa
   }, [onMatched, onCancel]);
 
   const secs = Math.floor((now - started) / 1000);
+  const alone = waiting <= 1;
+  const quiet = !!onPractice && (dismissedAt === null
+    ? secs >= (alone ? QUIET_AFTER_S.alone : QUIET_AFTER_S.slow)
+    : secs - dismissedAt >= QUIET_AFTER_S.again);
+  const leaveThen = async (go: () => void) => { await api('queue_leave').catch(() => {}); go(); };
   return (
-    <div className="screen center queue-screen">
+    <div className={`screen center queue-screen ${quiet ? 'quiet' : ''}`}>
       <div className="searching-tiles" aria-hidden><span /><span /><span /></div>
       <h2 className="screen-title">{t.searching}</h2>
       <p className="queue-meta">{ruleset === 'arcade' ? `⚡ ${t.arcade.name} · ${t.arcade.goal}` : `${stake === 0 ? `🤝 ${t.friendly}` : `${t.sala} ${stake.toLocaleString()}`} · ${t.modes[mode].name}`}</p>
       <p className="queue-clock">{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}</p>
       <p className="fine">{waiting} {t.inQueue}</p>
-      {botsAllowed(mode, stake) && <p className="fine">{t.botsSoon}</p>}
+      {/* Bots only fill a table once a second person is searching (1 vs 1 needs just the two of them). */}
+      {botsAllowed(mode, stake) && mode !== '1v1' && <p className="fine">{t.botsSoon}</p>}
       {notice && <p className="note-ok">{notice}</p>}
-      <button className="btn ghost" onClick={async () => { await api('queue_leave').catch(() => {}); onCancel(); }}>{t.cancel}</button>
+      {quiet && (
+        <section className="card quiet-card" role="status">
+          <b>{alone ? t.quiet.aloneTitle : t.quiet.slowTitle}</b>
+          <p>{alone ? t.quiet.alone : t.quiet.slow}</p>
+          <button className="btn primary wide" onClick={() => leaveThen(() => onPractice!(mode, ruleset))}>
+            🤖 {t.quiet.practice}<small>{t.quiet.practiceSub}</small>
+          </button>
+          {onCustom && ruleset !== 'arcade' && (
+            <button className="btn ghost wide" onClick={() => leaveThen(onCustom)}>👥 {t.quiet.friends}</button>
+          )}
+          <button className="link-btn" onClick={() => setDismissedAt(secs)}>{t.quiet.keepWaiting}</button>
+        </section>
+      )}
+      <button className="btn ghost" onClick={() => leaveThen(onCancel)}>{t.cancel}</button>
     </div>
   );
 }
