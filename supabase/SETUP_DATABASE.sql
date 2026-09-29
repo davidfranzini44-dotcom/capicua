@@ -2062,3 +2062,9 @@ grant execute on function public.leave_shared_match(uuid) to authenticated;
 grant execute on function public.revoke_room_share_link(uuid) to authenticated;
 grant execute on function public.room_share_links_active(uuid) to authenticated;
 grant execute on function public.spectator_say(uuid, text) to authenticated;
+
+-- ===== 20261011000100_name_fn_search_path.sql =====
+-- The name helpers from 20261010000000 use only built-in functions: pin their search_path
+-- (Supabase's linter: function_search_path_mutable).
+alter function public.name_key(text) set search_path = '';
+alter function public.name_reserved(text) set search_path = '';
