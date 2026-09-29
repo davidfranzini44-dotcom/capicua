@@ -664,7 +664,7 @@ function Screen({ s }: { s: string }) {
     });
     return <OnlineTable r={r} uid="me" voice={null} onLeave={noop} onPlayAnother={noop} />;
   }
-  if (s === 'table' || s === 'away') {
+  if (s === 'table' || s === 'away' || s === 'table-mic' || s === 'table-muted') {
     let g = newGame(Math.random, publicRules('2v2'));
     for (let i = 0; i < 11 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
     const r = data({
@@ -675,7 +675,9 @@ function Screen({ s }: { s: string }) {
       hand: g.hands[0],
       receivedAt: Date.now() - 7000,
     });
-    return <OnlineTable r={r} uid="me" voice={null} onLeave={noop} onForfeit={noop} onPlayAnother={noop} />;
+    const mic = s === 'table-mic' || s === 'table-muted'
+      ? <VoiceButton voice={fakeVoice({ status: 'on', micOn: s === 'table-mic' })} me="me" /> : undefined;
+    return <OnlineTable r={r} uid="me" voice={null} voiceControl={mic} onLeave={noop} onForfeit={noop} onPlayAnother={noop} />;
   }
   // default: countdown lobby, 2v2 public
   const r = data({
@@ -747,3 +749,24 @@ function App() {
 const root = createRoot(document.getElementById('root')!);
 root.render(<StrictMode><App /></StrictMode>);
 if (import.meta.hot) import.meta.hot.dispose(() => root.unmount());
+
+/**
+ * Layout check for the bar under the hand (voice | status | ⚡ | chat): nothing overlaps or
+ * is cut off, the page doesn't scroll, and how far the status sits from the screen's center.
+ */
+(window as unknown as { __barCheck: () => string }).__barCheck = () => {
+  const area = document.querySelector('.my-area')!;
+  const st = area.querySelector(':scope > .table-instruction') as HTMLElement;
+  const items = [st, ...area.querySelectorAll<HTMLElement>('.table-tools > *')];
+  const R = (e: Element) => e.getBoundingClientRect();
+  const hit = (a: DOMRect, b: DOMRect) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+  const bad: string[] = [];
+  const cls = (e: Element) => e.className.split(' ')[0];
+  items.forEach((a, i) => items.slice(i + 1).forEach((b) => { if (hit(R(a), R(b))) bad.push(`overlap ${cls(a)}/${cls(b)}`); }));
+  items.forEach((e) => { if (e.scrollWidth > e.clientWidth + 1) bad.push(`clipped ${cls(e)}`); });
+  if (document.documentElement.scrollWidth > innerWidth) bad.push('sideScroll');
+  const screen = document.querySelector('.table-screen');
+  if (screen && screen.scrollHeight > screen.clientHeight + 2) bad.push('vScroll');
+  const s = R(st);
+  return `${innerWidth}x${innerHeight} ${location.search.slice(3)}: ${bad.join(', ') || 'ok'} · off ${Math.round((s.left + s.right) / 2 - innerWidth / 2)} · '${st.innerText.replace(/\n/g, ' / ').slice(0, 28)}'`;
+};

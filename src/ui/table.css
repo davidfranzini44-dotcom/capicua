@@ -286,14 +286,35 @@
   .table-redesign .seat-left, .table-redesign .seat-right { top: 14%; }
   .table-redesign .board-wrap { inset: 34% 10px 18%; }
 }
-/* Short phones: voice and chat sit on the status line's row instead of a row of their own. */
-@media (max-height: 740px) and (max-width: 699px) {
-  .table-redesign .my-area { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 8px; }
-  .table-redesign .my-area > .hand { grid-column: 1 / -1; }
-  .table-redesign .my-area > .table-instruction { grid-column: 2; grid-row: 2; margin: 4px 0; }
-  .table-redesign .table-tools { display: contents; }
-  .table-redesign .table-tools > :first-child { grid-column: 1; grid-row: 2; }
-  .table-redesign .table-tools > :last-child { grid-column: 3; grid-row: 2; }
+/* Phones: one row under the hand — voice | status | chat. Voice and chat are twin buttons
+   (same size, icon over a short word), so the status sits truly centered between them. */
+@media (max-width: 699px) {
+  .table-redesign .my-area:not(.watching) {
+    display: grid; grid-template-columns: var(--tool-w) minmax(0, 1fr) var(--tool-w); align-items: center; column-gap: 8px;
+    --tool-w: 68px; --tool-h: 52px;
+  }
+  .table-redesign .my-area:not(.watching) > .hand { grid-column: 1 / -1; }
+  .table-redesign .my-area:not(.watching) > .table-instruction {
+    grid-column: 2; grid-row: 2; margin: 8px 0 0; min-height: var(--tool-h); padding: 0 2px;
+    font-size: 13px; line-height: 1.25; text-wrap: balance;
+  }
+  .table-redesign .my-area:not(.watching) .table-tools { display: contents; }
+  .table-redesign .my-area:not(.watching) .table-tools > :first-child { grid-column: 1; grid-row: 2; }
+  .table-redesign .my-area:not(.watching) .table-tools > :last-child { grid-column: 3; grid-row: 2; }
+  .table-redesign .my-area:not(.watching) .table-tools > .voice-pill,
+  .table-redesign .my-area:not(.watching) .table-tools > .table-chat-button,
+  .table-redesign .my-area:not(.watching) .table-tools > .practice-voice {
+    width: var(--tool-w); min-width: 0; height: var(--tool-h); min-height: var(--tool-h); margin-top: 8px; padding: 4px 2px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    border-radius: 16px; border-width: 1px; font-size: 10.5px; font-weight: 800; line-height: 1.1;
+    white-space: normal; text-align: center; letter-spacing: 0;
+  }
+  .table-redesign .my-area:not(.watching) .table-tools > * svg { width: 22px; height: 22px; flex: none; }
+  .table-redesign .my-area:not(.watching) .table-tools > .table-chat-button { background: #ffffff0d; border-color: #ffffff33; }
+  .table-redesign .my-area:not(.watching) .table-tools > .table-chat-button.on { border-color: var(--us); }
+  .table-redesign .my-area:not(.watching) .table-tools > .practice-voice { background: #ffffff08; border-style: dashed; }
+  .table-redesign .my-area:not(.watching) .table-tools > .practice-voice small { font-size: inherit; font-weight: 700; }
+  .table-redesign .my-area:not(.watching) .table-tools > .voice-pill .vp-count { top: -6px; right: -6px; }
 }
 /* Tiny phones: all three opponents share the top strip, the board takes the rest. */
 @media (max-height: 640px) and (max-width: 699px) {
