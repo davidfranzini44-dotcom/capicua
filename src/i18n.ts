@@ -503,7 +503,9 @@ const dict = {
       listen: 'Escuchar', listeningNow: 'Escuchando', stopListening: 'Dejar de escuchar',
     },
     share: {
-      button: 'Compartir partida', title: 'Compartir partida',
+      button: 'Compartir partida', title: 'Compartir partida', short: 'Compartir',
+      reshareNote: 'Es el mismo enlace que te pasaron: quien lo creó puede desactivarlo.',
+      keepWatching: 'Sigue mirando en este teléfono.',
       reassure: 'Solo se comparte el tablero. Las fichas de cada jugador siguen privadas.',
       creating: 'Creando enlace…', shareWatch: 'Compartir para mirar',
       shareTitle: 'Partida en vivo · Capicúa', shareText: 'Mira mi partida de dominó en vivo',
@@ -542,7 +544,7 @@ const dict = {
       youPlay: 'Estás jugando esta partida', goToTable: 'Ir a mi mesa',
       goHome: 'Ir a Capicúa', readOnly: 'Para escribir a la mesa, entra a Capicúa y elige tu nombre.',
       hostAway: '{name} se desconectó. La partida sigue.',
-      castTitle: 'Preparar transmisión', castSub: 'Esta pantalla es para el segundo teléfono: TikTok la transmite mientras juegas en el otro.',
+      castTitle: 'Preparar transmisión', castSub: 'Esta pantalla es para el segundo teléfono: TikTok la transmite mientras sigues la partida en el otro.',
       castTips: [
         'Activa «No molestar»: al compartir pantalla, TikTok también transmite tus notificaciones.',
         'Los comentarios y los corazones salen en TikTok, no aquí.',
@@ -1217,7 +1219,9 @@ const dict = {
       listen: 'Listen', listeningNow: 'Listening', stopListening: 'Stop listening',
     },
     share: {
-      button: 'Share match', title: 'Share match',
+      button: 'Share match', title: 'Share match', short: 'Share',
+      reshareNote: "It's the same link you were given: whoever made it can turn it off.",
+      keepWatching: 'Keep watching on this phone.',
       reassure: "Only the board is shared. Every player's tiles stay private.",
       creating: 'Making a link…', shareWatch: 'Share to watch',
       shareTitle: 'Live match · Capicúa', shareText: 'Watch my domino match live',
@@ -1256,7 +1260,7 @@ const dict = {
       youPlay: "You're playing this match", goToTable: 'Go to my table',
       goHome: 'Go to Capicúa', readOnly: 'To write to the table, open Capicúa and pick your name.',
       hostAway: '{name} disconnected. The match goes on.',
-      castTitle: 'Get ready to stream', castSub: 'This screen is for the second phone: TikTok streams it while you play on the other one.',
+      castTitle: 'Get ready to stream', castSub: 'This screen is for the second phone: TikTok streams it while you follow the match on the other one.',
       castTips: [
         'Turn on Do Not Disturb: when sharing the screen, TikTok streams your notifications too.',
         'Comments and hearts show up in TikTok, not here.',

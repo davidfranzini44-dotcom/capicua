@@ -50,7 +50,13 @@ function ShareQr({ url }: { url: string }) {
   );
 }
 
-export function ShareMatchSheet({ share, air, onClose }: { share: ShareLinkState; air?: AirControl; onClose: () => void }) {
+/**
+ * `role`: a player (their voice on air, links to turn off); a friend watching (their own link);
+ * or someone watching by link, who passes on the very link they have (nothing to turn off).
+ */
+export function ShareMatchSheet({ share, air, role = 'player', onClose }: {
+  share: ShareLinkState; air?: AirControl; role?: 'player' | 'spectator' | 'viewer'; onClose: () => void;
+}) {
   const { t } = useI18n();
   const titleId = useId();
   const [copied, setCopied] = useState<'watch' | 'cast' | null>(null);
@@ -132,7 +138,7 @@ export function ShareMatchSheet({ share, air, onClose }: { share: ShareLinkState
               <div className="share-cast-row">
                 <ShareQr key={castUrl} url={castUrl} />
                 <ol className="share-steps">
-                  {t.share.steps.map((s, i) => <li key={i}>{s}</li>)}
+                  {(role === 'player' ? t.share.steps : [t.share.keepWatching, ...t.share.steps.slice(1)]).map((s, i) => <li key={i}>{s}</li>)}
                 </ol>
               </div>
               <button className="btn ghost wide" onClick={() => window.open(castUrl, '_blank', 'noopener')}>{t.share.openBroadcast}</button>
@@ -141,13 +147,13 @@ export function ShareMatchSheet({ share, air, onClose }: { share: ShareLinkState
               </button>
             </section>
 
-            {air ? <AirRow air={air} /> : <p className="fine left">🔇 {t.share.airNone}</p>}
-            <p className="fine">{t.share.expiry}</p>
-            <button className="btn danger wide" onClick={share.revoke} disabled={share.busy}>{t.share.revoke}</button>
+            {role === 'player' && (air ? <AirRow air={air} /> : <p className="fine left">🔇 {t.share.airNone}</p>)}
+            <p className="fine">{role === 'viewer' ? t.share.reshareNote : t.share.expiry}</p>
+            {role !== 'viewer' && <button className="btn danger wide" onClick={share.revoke} disabled={share.busy}>{t.share.revoke}</button>}
           </>
         )}
 
-        {share.others.length > 0 && (
+        {role === 'player' && share.others.length > 0 && (
           <p className="fine share-others">
             {t.share.others.replace('{n}', String(share.others.length))}{' '}
             <button className="link-btn" onClick={share.revokeOthers} disabled={share.busy}>{t.share.revokeAll}</button>

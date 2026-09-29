@@ -3,12 +3,14 @@
 // see it: the normal spectator table, and (&modo=transmision) a clean 9:16 screen for a
 // second phone that TikTok LIVE screen-shares. Nobody's fichas ever reach this screen. At a
 // private table, the voices of the players who put theirs on air can be heard too.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChatCircleDotsIcon, SpeakerHighIcon } from '@phosphor-icons/react';
 import type { Seat } from '../../supabase/functions/_shared/domino.ts';
 import type { PublicState } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { leaveShared, redeemShare, ShareError, type LinkWatchers, type ShareTarget } from '../lib/shareMatch';
+import type { ShareLinkState } from '../lib/useShareLink';
+import { ShareMatchSheet } from './ShareMatchSheet';
 import { openSponsor, useSponsor, type TableSponsor } from '../lib/sponsor';
 import { supabase } from '../lib/supabase';
 import { useRoom } from '../lib/useRoom';
@@ -70,7 +72,7 @@ export default function SharedWatch({ target, onExit }: { target: ShareTarget | 
   const broadcast = target !== 'malformed' && target.broadcast;
   return broadcast
     ? <BroadcastScreen roomId={phase.roomId} uid={phase.uid} onLeave={() => exit(phase.roomId)} />
-    : <SharedTable roomId={phase.roomId} uid={phase.uid} onLeave={() => exit(phase.roomId)} />;
+    : <SharedTable roomId={phase.roomId} uid={phase.uid} token={target !== 'malformed' ? target.token : ''} onLeave={() => exit(phase.roomId)} />;
 }
 
 // ---------- states ----------
@@ -178,9 +180,18 @@ function useCountdown(until: number | null) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function SharedTable({ roomId, uid, onLeave }: { roomId: string; uid: string; onLeave: () => void }) {
+function SharedTable({ roomId, uid, token, onLeave }: { roomId: string; uid: string; token: string; onLeave: () => void }) {
   const { t } = useI18n();
   const { r, info, board, gameId, voice, onAir, speaking } = useSharedBoard(roomId, uid);
+  // Passing the match on is passing on this same link (whoever made it can still turn it off).
+  const [shareOpen, setShareOpen] = useState(false);
+  const endsAt = info?.ends_at;
+  const focus = info?.focus_seat;
+  const reshare = useMemo<ShareLinkState | null>(() => (token && endsAt && gameId && focus !== undefined ? {
+    link: { id: '', token, expiresAt: Date.parse(endsAt), focusSeat: focus, gameId },
+    busy: false, error: null, revoked: false, others: [],
+    create: async () => {}, revoke: async () => {}, revokeOthers: async () => {}, refreshOthers: async () => {},
+  } : null), [token, endsAt, gameId, focus]);
   const specChat = useSpectatorChat(roomId);
   const [specOpen, setSpecOpen] = useState(false);
   const specToast = useSpectatorToast(specChat.messages, uid, true);
@@ -202,22 +213,27 @@ function SharedTable({ roomId, uid, onLeave }: { roomId: string; uid: string; on
         watchers={watchers.list.map((w) => w.name)} watcherCount={watchers.count} unread={specUnread} notice={specToast}
         onWatchersTap={() => setSpecOpen(true)} onLeave={onLeave} onMessage={() => setSpecOpen(true)}
         onSponsorTap={board.sponsor ? () => openSponsor(board.sponsor!, gameId ?? undefined) : undefined}
-        speaking={speaking} listen={onAir.length > 0 || voice.status === 'on' ? <ListenButton voice={voice} /> : undefined} />
+        speaking={speaking} listen={onAir.length > 0 || voice.status === 'on' ? <ListenButton voice={voice} /> : undefined}
+        onShare={reshare && board.view.winner === null ? () => setShareOpen(true) : undefined} />
       {specOpen && (
         <SpectatorsSheet watchers={watchers.list} count={watchers.count} uid={uid} messages={specChat.messages}
-          onSend={canWrite ? specChat.send : undefined} readOnlyNote={t.share.readOnly} onClose={() => setSpecOpen(false)} />
+          onSend={canWrite ? specChat.send : undefined} readOnlyNote={t.share.readOnly} onClose={() => setSpecOpen(false)}
+          onShare={reshare ? () => { setSpecOpen(false); setShareOpen(true); } : undefined} />
       )}
+      {shareOpen && reshare && <ShareMatchSheet share={reshare} role="viewer" onClose={() => setShareOpen(false)} />}
     </>
   );
 }
 
 /** The normal spectator table for a shared match (also what the design preview draws). */
-export function SharedTableView({ board, status, endsAt, watchers, watcherCount, unread = 0, notice, onWatchersTap, onLeave, onMessage, onSponsorTap, speaking, listen }: {
+export function SharedTableView({ board, status, endsAt, watchers, watcherCount, unread = 0, notice, onWatchersTap, onLeave, onMessage, onSponsorTap, speaking, listen, onShare }: {
   board: SharedBoard; status: 'live' | 'reconnecting'; endsAt: number | null;
   watchers: string[]; watcherCount: number; unread?: number; notice?: string | null;
   onWatchersTap: () => void; onLeave: () => void; onMessage: () => void; onSponsorTap?: () => void;
   /** Voice by link: who is talking, and the listen button (private tables with a voice on air). */
   speaking?: Set<Seat>; listen?: ReactNode;
+  /** Pass the link on. */
+  onShare?: () => void;
 }) {
   const { t } = useI18n();
   const { view, focus } = board;
@@ -230,7 +246,7 @@ export function SharedTableView({ board, status, endsAt, watchers, watcherCount,
       view={view} myHand={[]} mySeat={focus} names={board.names} levels={board.levels} avatars={board.avatars}
       onPlay={noop} onNextHand={noop} onExit={onLeave} chat={board.chat} onChat={noop} away={board.away}
       pot={board.pot} turnDeadline={board.turnDeadline} sponsor={board.sponsor} onSponsorTap={onSponsorTap}
-      notice={hostAway ?? notice} speaking={speaking}
+      notice={hostAway ?? notice} speaking={speaking} onShare={onShare}
       watchers={watchers} watcherCount={watcherCount} onWatchersTap={onWatchersTap} watchersUnread={unread}
       resultNote={closesIn ? <p className="share-closes" role="timer">{t.share.closesIn.replace('{t}', closesIn)}</p> : undefined}
       endActions={<button className="btn primary" onClick={onLeave}>{t.share.goHome}</button>}

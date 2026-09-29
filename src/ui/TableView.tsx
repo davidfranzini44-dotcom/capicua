@@ -500,6 +500,13 @@ export function TableView(props: TableViewProps) {
           {myBubble && <span className="self-bubble">{myBubble.text}</span>}
         </div>
 
+        {/* Always in reach: in the felt's corner beside the bottom seat (also in the menu). */}
+        {props.onShare && !broadcast && (
+          <button type="button" className="table-share" onClick={props.onShare} aria-label={t.share.button}>
+            <ShareNetworkIcon size={18} weight="bold" aria-hidden /><span>{t.share.short}</span>
+          </button>
+        )}
+
       </div></div>
 
       {broadcast ? (

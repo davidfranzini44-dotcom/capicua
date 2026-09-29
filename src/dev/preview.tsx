@@ -360,7 +360,7 @@ function Screen({ s }: { s: string }) {
       tileUrl: s === 'sponsor-table-tile' ? FAKE_TILE_LOGO : null };
     return (
       <TableView view={publicState(g)} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
-        chat={{}} onChat={noop} endActions={null} sponsor={sponsor} onSponsorTap={noop} />
+        chat={{}} onChat={noop} endActions={null} sponsor={sponsor} onSponsorTap={noop} onShare={noop} />
     );
   }
   if (s === 'sponsor-cards') {
@@ -696,7 +696,7 @@ function Screen({ s }: { s: string }) {
       return <BroadcastCanvas board={board} overlay={null} onLeave={noop} speaking={new Set<Seat>([0])} voice={voice} />;
     }
     if (s.startsWith('broadcast')) return <BroadcastCanvas board={board} overlay={s === 'broadcast-lost' ? 'lost' : s === 'broadcast-ended' ? 'ended' : null} onLeave={noop} />;
-    if (s === 'share-match' || s === 'share-match-air') {
+    if (s === 'share-match' || s === 'share-match-air' || s === 'share-match-viewer' || s === 'share-match-spectator') {
       const share: ShareLinkState = {
         link: { id: 'l1', token: 'Q2FwaWN1YS1wcmV2aWV3LXRva2VuLW5vdC1yZWFs1234', expiresAt: Date.now() + 4 * 3600_000, focusSeat: 0, gameId: 'g1' },
         busy: false, error: null, revoked: false, others: [], create: async () => {}, revoke: async () => {}, revokeOthers: async () => {}, refreshOthers: async () => {},
@@ -706,6 +706,7 @@ function Screen({ s }: { s: string }) {
           <TableView view={view} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Wilfri', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
             chat={{}} onChat={noop} endActions={null} watchers={[]} onWatchersTap={noop} onShare={noop} />
           <ShareMatchSheet share={share} onClose={noop}
+            role={s === 'share-match-viewer' ? 'viewer' : s === 'share-match-spectator' ? 'spectator' : 'player'}
             air={s === 'share-match-air' ? { on: true, set: noop, busy: false, listeners: 3 } : undefined} />
         </>
       );
@@ -714,7 +715,8 @@ function Screen({ s }: { s: string }) {
     return (
       <SharedTableView board={board} status={s === 'shared-reconnecting' ? 'reconnecting' : 'live'} endsAt={Date.now() + 102_000}
         watchers={['Nadia', '3 con enlace']} watcherCount={4} unread={1} onWatchersTap={noop} onLeave={noop} onMessage={noop}
-        speaking={voiced ? new Set<Seat>([2]) : undefined} listen={voiced ? <ListenButton voice={fakeVoice({ status: 'on' })} /> : undefined} />
+        speaking={voiced ? new Set<Seat>([2]) : undefined} listen={voiced ? <ListenButton voice={fakeVoice({ status: 'on' })} /> : undefined}
+        onShare={noop} />
     );
   }
   if (s === 'watch' || s === 'watch-sponsor' || s === 'watch-sponsor-white' || s === 'watch-sponsor-light' || s === 'watched') {
@@ -724,7 +726,7 @@ function Screen({ s }: { s: string }) {
     const view = { ...publicState(g), turn: 2 as Seat };
     return s === 'watch' || s === 'watch-sponsor' || s === 'watch-sponsor-white' || s === 'watch-sponsor-light' ? (
       <TableView view={view} myHand={[]} mySeat={2} names={['Wilfri', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
-        chat={{}} onChat={noop} endActions={null} turnDeadline={Date.now() + 9000} watchers={['Papo', 'Wilfri']} onWatchersTap={noop} watchersUnread={2}
+        chat={{}} onChat={noop} endActions={null} turnDeadline={Date.now() + 9000} watchers={['Papo', 'Wilfri']} onWatchersTap={noop} watchersUnread={2} onShare={noop}
         notice="👁 Papo: ¡Esa capicúa viene!"
         sponsor={s === 'watch-sponsor' || s === 'watch-sponsor-white' ? { ...FAKE_SPONSOR, style: s === 'watch-sponsor-white' ? 'white' : 'color' }
           : s === 'watch-sponsor-light' ? { ...FAKE_SPONSOR, name: 'OsoFix', url: FAKE_LIGHT_LOGO } : undefined}

@@ -12,6 +12,8 @@ import { useVoice } from '../lib/useVoice';
 import { useSpectatorChat, useWatcherList } from '../lib/watch';
 import { ListenButton, SpectatorsSheet, useSpectatorToast, useUnread } from './Spectators';
 import { openSponsor, useSponsor } from '../lib/sponsor';
+import { useShareLink } from '../lib/useShareLink';
+import { ShareMatchSheet } from './ShareMatchSheet';
 
 export default function WatchScreen({ friendId, friendName, uid, onExit }: {
   friendId: string; friendName: string; uid: string; onExit: () => void;
@@ -57,6 +59,9 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
   const [specOpen, setSpecOpen] = useState(false);
   const specToast = useSpectatorToast(specChat.messages, uid, true);
   const specUnread = useUnread(specChat.messages, uid, specOpen);
+  // A friend watching shares the match too: their own link, shown from their friend's seat.
+  const share = useShareLink(roomId, r.game?.id ?? null);
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Stop counting as a watcher however this screen closes.
   useEffect(() => () => { supabase.rpc('stop_watching', { p_room: roomId }).then(() => {}); }, [roomId]);
@@ -89,6 +94,7 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
   const turnSeat = r.seats.find((s) => s.seat === view.turn);
   const turnDeadline = turnSeat && !turnSeat.is_bot && !turnSeat.away && game.auto_delay_ms === game.turn_ms ? r.receivedAt + game.turn_ms : null;
   const noop = () => {};
+  const canShare = r.room.phase === 'playing' && !game.settled && view.winner === null;
 
   return (
     <>
@@ -115,6 +121,7 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
       watchers={watcherList.map((w) => w.name)}
       onWatchersTap={() => setSpecOpen(true)}
       watchersUnread={specUnread}
+      onShare={canShare ? () => setShareOpen(true) : undefined}
       watching={{
         name: friendName, onLeave: leave,
         tools: (
@@ -126,8 +133,10 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
       }}
     />
     {specOpen && (
-      <SpectatorsSheet watchers={watcherList} uid={uid} messages={specChat.messages} onSend={specChat.send} onClose={() => setSpecOpen(false)} />
+      <SpectatorsSheet watchers={watcherList} uid={uid} messages={specChat.messages} onSend={specChat.send}
+        onShare={canShare ? () => { setSpecOpen(false); setShareOpen(true); } : undefined} onClose={() => setSpecOpen(false)} />
     )}
+    {shareOpen && <ShareMatchSheet share={share} role="spectator" onClose={() => setShareOpen(false)} />}
     </>
   );
 }

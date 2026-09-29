@@ -10,6 +10,7 @@ import SPECTATORS from '../supabase/migrations/20261008000000_spectators.sql?raw
 import SHARE from '../supabase/migrations/20261011000000_live_share.sql?raw';
 import VOICE from '../supabase/migrations/20261012000000_share_voice.sql?raw';
 import VOICE_ON from '../supabase/migrations/20261012000100_voice_air_default_on.sql?raw';
+import SPEC_SHARE from '../supabase/migrations/20261012000200_spectators_share.sql?raw';
 
 const U = {
   p0: '00000000-0000-4000-8000-000000000000', p1: '00000000-0000-4000-8000-000000000001',
@@ -45,7 +46,7 @@ type Link = { id: string; token: string; expires_at: string; focus_seat: number 
 
 beforeAll(async () => {
   db = new PGlite();
-  for (const sql of [BASE, WATCH, SPECTATORS, SHARE, VOICE, VOICE_ON]) await db.exec(sql);
+  for (const sql of [BASE, WATCH, SPECTATORS, SHARE, VOICE, VOICE_ON, SPEC_SHARE]) await db.exec(sql);
 
   const people: [string, string, boolean, boolean][] = [
     [U.p0, 'Robert', false, false], [U.p1, 'Yokasta', false, false], [U.p2, 'Wilfri', false, false], [U.p3, 'Kirsy', false, false],
@@ -264,5 +265,40 @@ describe('turning off, expiring, rematch, end of match', () => {
     await db.query('update public.rooms set current_game = $1 where id = $2', [G3, ROOM]);
     for (let i = 0; i < 10; i++) await rpc(U.p0, 'create_room_share_link', ROOM);
     await fails(rpc(U.p0, 'create_room_share_link', ROOM), 'too_many_links');
+  });
+});
+
+describe('spectators share too', () => {
+  const G4 = '20000000-0000-4000-8000-0000000000a4';
+  beforeAll(async () => {
+    await db.query('insert into public.games (id, room_id) values ($1, $2)', [G4, ROOM]);
+    await db.query('update public.rooms set current_game = $1 where id = $2', [G4, ROOM]);
+    await db.query(`insert into public.room_spectators (room_id, user_id) values ($1, $2)
+      on conflict (room_id, user_id) do update set expires_at = now() + interval '1 hour'`, [ROOM, U.friend]);
+  });
+
+  it("a friend watching makes a link, shown from their friend's seat, and can turn it off", async () => {
+    const link = await rpc<Link>(U.friend, 'create_room_share_link', ROOM);
+    expect(link.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(link.focus_seat).toBe(0); // Robert (p0) is the friend
+    expect(await rpc(U.named, 'watch_shared_match', link.token)).toMatchObject({ room_id: ROOM, focus_seat: 0, player: false });
+    // The players see it among the open links and can turn it off; so can the friend who made it.
+    expect((await rpc<{ id: string }[]>(U.p2, 'room_share_links_active', ROOM)).some((l) => l.id === link.id)).toBe(true);
+    await rpc(U.friend, 'revoke_room_share_link', link.id);
+    await fails(rpc(U.named, 'shared_room', ROOM), 'link_gone');
+  });
+
+  it('a spectator with no friend at the table, or whose watch ran out, makes none', async () => {
+    await db.query(`insert into public.room_spectators (room_id, user_id) values ($1, $2)`, [ROOM, U.stranger]);
+    await fails(rpc(U.stranger, 'create_room_share_link', ROOM), 'not_seated');
+    await db.query('delete from public.room_spectators where user_id = $1', [U.stranger]);
+    await db.query(`update public.room_spectators set expires_at = now() - interval '1 minute' where user_id = $1`, [U.friend]);
+    await fails(rpc(U.friend, 'create_room_share_link', ROOM), 'not_seated');
+  });
+
+  it('someone watching by link passes on the link they have, but makes no new one', async () => {
+    const link = await rpc<Link>(U.p0, 'create_room_share_link', ROOM);
+    await rpc(U.viewer, 'watch_shared_match', link.token);
+    await fails(rpc(U.viewer, 'create_room_share_link', ROOM), 'not_seated');
   });
 });

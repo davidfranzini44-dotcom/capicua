@@ -690,3 +690,19 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 /* The narrowest phones: "👁 0" would squeeze the team names — it shows once someone watches
    (sharing stays in the ☰ menu). */
 @media (max-width: 359px) { .table-header .watchers-btn.none { display: none; } }
+
+/* "Compartir" on the felt, in the corner beside the bottom seat. */
+.table-share {
+  position: absolute; right: 8px; bottom: 8px; z-index: 3;
+  display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 11px;
+  border-radius: 99px; border: 1px solid #f5c54299; background: #0b251be0; color: #ffe8a3;
+  font: 800 .78rem var(--font); cursor: pointer; box-shadow: 0 3px 10px #0006; touch-action: manipulation;
+}
+.table-share:active { transform: scale(.96); }
+/* 1 vs 1 keeps the pile in that corner: the other one. */
+.mode-1v1 .table-share { right: auto; left: 8px; }
+/* Narrow phones: just the icon, so it never reaches the bottom seat. */
+@media (max-width: 359px) {
+  .table-share { width: 36px; min-height: 36px; padding: 0; justify-content: center; }
+  .table-share span { display: none; }
+}
