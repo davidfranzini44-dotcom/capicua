@@ -50,6 +50,14 @@ describe('saving a sponsor', () => {
     expect(validateSponsor({ ...base, maxViews: 1.5 })).toBeNull();
   });
 
+  it('a second logo for the fichas is optional, and must be an uploaded image like the first', () => {
+    expect(validateSponsor(base)?.tileImagePath).toBeNull();
+    expect(validateSponsor({ ...base, tileImagePath: '' })?.tileImagePath).toBeNull();
+    expect(validateSponsor({ ...base, tileImagePath: 'k3j3-tile.png' })?.tileImagePath).toBe('k3j3-tile.png');
+    expect(validateSponsor({ ...base, tileImagePath: '../x.svg' })).toBeNull();
+    expect(validateSponsor({ ...base, tileImagePath: 'https://evil.example/x.png' })).toBeNull();
+  });
+
   it('offers the friendly tables and every sala', () => {
     expect(SPONSOR_SALAS).toEqual([0, 500, 1000, 1500, 2000]);
   });

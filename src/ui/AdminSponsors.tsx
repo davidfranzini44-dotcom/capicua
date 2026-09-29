@@ -6,11 +6,12 @@ import { FELTS } from '../../supabase/functions/_shared/cosmetics.ts';
 import { normalizeLink, SPONSOR_SALAS, validateSponsor, type SponsorInput } from '../../supabase/functions/_shared/sponsors.ts';
 import { useI18n } from '../i18n';
 import {
-  prepareSponsorLogo, removeSponsorLogo, sponsorImageUrl, sponsorReportUrl, sponsorStatus, uploadSponsorLogo, type PreparedLogo, type SponsorRow,
+  prepareSponsorLogo, removeSponsorLogo, sponsorImageUrl, sponsorReportUrl, sponsorStatus, TILE_LOGO_SIDE, uploadSponsorLogo, type PreparedLogo, type SponsorRow,
 } from '../lib/sponsor';
 import { api } from '../lib/supabase';
 import { useErrorText } from './common';
 import { describeTables, SponsorFelt } from './Sponsor';
+import { TileBack } from './Tile';
 
 export interface SponsorStatsRow extends SponsorRow {
   games: number; games_7d: number; players: number; views: number; views_7d: number; taps: number; tappers: number; taps_7d: number;
@@ -39,8 +40,9 @@ export function SponsorsView() {
   };
   const togglePause = (s: SponsorStatsRow) => act(() => api('admin_sponsor_save', { sponsor: { ...toInput(s), paused: !s.paused } }));
   const remove = (s: SponsorStatsRow) => confirm(t.admin.sp.delConfirm) && act(async () => {
-    const { imagePath } = await api<{ imagePath: string | null }>('admin_sponsor_delete', { id: s.id });
+    const { imagePath, tileImagePath } = await api<{ imagePath: string | null; tileImagePath?: string | null }>('admin_sponsor_delete', { id: s.id });
     if (imagePath) await removeSponsorLogo(imagePath);
+    if (tileImagePath) await removeSponsorLogo(tileImagePath);
   });
   const copy = async (key: string, text: string) => {
     try { await navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(null), 1500); } catch { prompt('', text); }
@@ -97,6 +99,14 @@ export function SponsorCard({ s, url, copied, onEdit, onPause, onReport, onDelet
                 <b>{s.name}</b>
                 <span className={`sp-status ${status}`}>{t.admin.sp.status[status]}</span>
               </div>
+              {s.tile_image_path && (
+                <small className="sp-where sp-tile-note">
+                  <span className="sp-backs inline" aria-hidden>
+                    <TileBack sponsor={{ url, style: s.style, tileUrl: sponsorImageUrl(s.tile_image_path) }} />
+                  </span>
+                  {t.admin.sp.tileOwn}
+                </small>
+              )}
               <small className="sp-where">{describeTables(s, t)} · {dateOnly(s.starts_at, lang)}{s.ends_at ? ` – ${dateOnly(s.ends_at, lang)}` : ''}</small>
               {s.link && <a className="sp-link" href={s.link} target="_blank" rel="noreferrer">{s.link}</a>}
               <div className="sp-stats">
@@ -132,8 +142,21 @@ export function SponsorCard({ s, url, copied, onEdit, onPause, onReport, onDelet
 
 type T = ReturnType<typeof useI18n>['t'];
 
+/** The sponsored fichas as a player sees them across the table (actual size), and one up close. */
+function SponsorBacks({ sponsor }: { sponsor: { url: string; style: 'color' | 'white'; tileUrl: string | null } }) {
+  const { t } = useI18n();
+  return (
+    <div className="sp-backs">
+      <span className="hand-of-backs">{Array.from({ length: 5 }, (_, i) => <TileBack key={i} sponsor={sponsor} />)}</span>
+      <small>{t.admin.sp.tileActual}</small>
+      <span className="close-up"><TileBack sponsor={sponsor} /></span>
+      <small>{t.admin.sp.tileZoom}</small>
+    </div>
+  );
+}
+
 const toInput = (s: SponsorRow): SponsorInput => ({
-  id: s.id, name: s.name, imagePath: s.image_path, link: s.link, style: s.style, opacity: s.opacity, size: s.size,
+  id: s.id, name: s.name, imagePath: s.image_path, tileImagePath: s.tile_image_path ?? null, link: s.link, style: s.style, opacity: s.opacity, size: s.size,
   salas: s.salas, custom: s.custom, tournaments: s.tournaments, tournamentCodes: s.tournament_codes, weight: s.weight,
   startsAt: s.starts_at, endsAt: s.ends_at, paused: s.paused, maxViews: s.max_views,
 });
@@ -149,7 +172,7 @@ export function SponsorEditor({ initial, onDone, onCancel, upload = uploadSponso
   const { t } = useI18n();
   const errText = useErrorText();
   const [f, setF] = useState<SponsorInput>(() => initial ? toInput(initial) : {
-    name: '', imagePath: '', link: null, style: 'color', opacity: 0.4, size: 0.6, salas: [], custom: false,
+    name: '', imagePath: '', tileImagePath: null, link: null, style: 'color', opacity: 0.4, size: 0.6, salas: [], custom: false,
     tournaments: false, tournamentCodes: [], weight: 1, startsAt: new Date().toISOString(), endsAt: null, paused: false, maxViews: null,
   });
   const [linkNote, setLinkNote] = useState<string | null>(null);
@@ -158,6 +181,10 @@ export function SponsorEditor({ initial, onDone, onCancel, upload = uploadSponso
   const [file, setFile] = useState<File | null>(null);
   const [clearBg, setClearBg] = useState(true);
   const [logo, setLogo] = useState<PreparedLogo | null>(null);
+  // The optional logo for the face-down fichas: its own file, background and preview.
+  const [tileFile, setTileFile] = useState<File | null>(null);
+  const [tileClearBg, setTileClearBg] = useState(true);
+  const [tileLogo, setTileLogo] = useState<PreparedLogo | null>(null);
   const [felt, setFelt] = useState('verde');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,7 +200,22 @@ export function SponsorEditor({ initial, onDone, onCancel, upload = uploadSponso
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file, clearBg]);
 
+  useEffect(() => {
+    if (!tileFile) return;
+    let live = true;
+    prepareSponsorLogo(tileFile, tileClearBg, TILE_LOGO_SIDE).then((l) => { if (live) setTileLogo((old) => { if (old) URL.revokeObjectURL(old.url); return l; }); })
+      .catch((e) => live && setError(errText(e)));
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tileFile, tileClearBg]);
+  const removeTile = () => {
+    setTileFile(null);
+    setTileLogo((old) => { if (old) URL.revokeObjectURL(old.url); return null; });
+    set('tileImagePath', null);
+  };
+
   const imageUrl = logo?.url ?? (f.imagePath ? sponsorImageUrl(f.imagePath) : null);
+  const tileUrl = tileLogo?.url ?? (f.tileImagePath ? sponsorImageUrl(f.tileImagePath) : null);
   const link = linkText.trim() ? normalizeLink(linkText) : null;
   const codes = codesText.split(/[\s,]+/).map((c) => c.trim().toUpperCase()).filter(Boolean);
   const draft = { ...f, link, tournamentCodes: codes, imagePath: f.imagePath || 'pending.webp' };
@@ -185,8 +227,11 @@ export function SponsorEditor({ initial, onDone, onCancel, upload = uploadSponso
     setError(null);
     try {
       const imagePath = logo ? await upload(logo) : f.imagePath;
-      await api('admin_sponsor_save', { sponsor: { ...draft, imagePath } });
+      const tileImagePath = tileLogo ? await upload(tileLogo) : f.tileImagePath ?? null;
+      await api('admin_sponsor_save', { sponsor: { ...draft, imagePath, tileImagePath } });
       if (logo && initial && initial.image_path !== imagePath) await removeSponsorLogo(initial.image_path);
+      // The fichas' old logo, when it was replaced or removed.
+      if (initial?.tile_image_path && initial.tile_image_path !== tileImagePath) await removeSponsorLogo(initial.tile_image_path);
       onDone();
     } catch (e) {
       setError(errText(e));
@@ -233,6 +278,23 @@ export function SponsorEditor({ initial, onDone, onCancel, upload = uploadSponso
       <label className="sp-slider">{t.admin.sp.size} <b>{Math.round(f.size * 100)}%</b>
         <input type="range" min={30} max={90} step={5} value={Math.round(f.size * 100)} onChange={(e) => set('size', Number(e.target.value) / 100)} />
       </label>
+
+      <label className="label">{t.admin.sp.tileLogo}</label>
+      <div className="sp-actions">
+        <label className="btn ghost sp-upload">
+          {tileUrl ? t.admin.sp.change : t.admin.sp.pick}
+          <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden onChange={(e) => { const x = e.target.files?.[0]; if (x) setTileFile(x); e.target.value = ''; }} />
+        </label>
+        {tileUrl && <button className="btn ghost" onClick={removeTile}>{t.admin.sp.tileRemove}</button>}
+      </div>
+      <p className="fine left">{t.admin.sp.tileHint}</p>
+      {tileLogo?.hasBackground && (
+        <label className="sp-check"><input type="checkbox" checked={tileClearBg} onChange={(e) => setTileClearBg(e.target.checked)} /> {t.admin.sp.clearBg}</label>
+      )}
+      {imageUrl && <>
+        <label className="label">{t.admin.sp.tilesPreview}</label>
+        <SponsorBacks sponsor={{ url: imageUrl, style: f.style, tileUrl }} />
+      </>}
 
       <label className="label">{t.admin.sp.link}</label>
       <input className="text-input" placeholder={t.admin.sp.linkPh} value={linkText} onChange={(e) => setLinkText(e.target.value)} />

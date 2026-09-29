@@ -58,6 +58,8 @@
 }
 .table-redesign .tile-back.sponsored img { width: 20px; height: 9px; max-width: none; object-fit: contain; transform: rotate(-90deg); user-select: none; }
 .table-redesign .tile-back.sponsored.white img { filter: brightness(0) invert(1); }
+/* The sponsor's own ficha logo: upright, filling the back, in its own colors. */
+.table-redesign .tile-back.sponsored.own-mark img { width: 100%; height: 100%; object-fit: contain; transform: none; }
 .table-redesign .tile-count { color: #c5d6c9; font-size: 11px; }
 .table-redesign .board-wrap { inset: 43% 10px 18%; }
 .board-scene { position: relative; height: 100%; width: 100%; }
@@ -585,6 +587,22 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 .sp-tiles { display: flex !important; align-items: flex-end; justify-content: center; gap: 2px; padding-bottom: 6%; }
 .sp-tiles > * { width: 34px; height: auto; transform: rotate(90deg); margin: 0 -6px; }
 .sp-row .seg button { font-size: 1.5rem; line-height: 1; }
+/* Admin: the sponsored fichas as players see them (a hand of backs), and one up close. */
+.sp-backs { display: flex; align-items: center; gap: 16px; padding: 12px 14px; border-radius: 14px; background: #0e4534; box-shadow: inset 0 0 18px #001b16a6; }
+.sp-backs .hand-of-backs { display: flex; gap: 3px; }
+.sp-backs .tile-back.sponsored {
+  width: 13px; height: 22px; display: grid; place-items: center; overflow: hidden; padding: 1px;
+  border: 1px solid #d8b855; border-radius: 3px; background: linear-gradient(155deg, #214f3c, #0b251b);
+  box-shadow: inset 0 0 0 1px #ffffff18, 0 2px 3px #0008;
+}
+.sp-backs .close-up .tile-back.sponsored { width: 46px; height: 80px; padding: 4px; border-radius: 8px; border-width: 2px; }
+.sp-backs .tile-back.sponsored img { max-width: none; user-select: none; }
+.sp-backs .tile-back.sponsored:not(.own-mark) img { width: 175%; height: 40%; object-fit: contain; transform: rotate(-90deg); }
+.sp-backs .tile-back.sponsored.white img { filter: brightness(0) invert(1); }
+.sp-backs .tile-back.sponsored.own-mark img { width: 100%; height: 100%; object-fit: contain; }
+.sp-backs small { color: #c9d8cc; font-size: .72rem; align-self: center; }
+.sp-backs.inline { display: inline-flex; padding: 0; gap: 0; background: none; box-shadow: none; vertical-align: middle; margin-right: 6px; }
+.sp-tile-note { display: flex; align-items: center; }
 
 /* Watching: no hand, so the footer is simply the watch bar, the status line (spectator
    messages show there), then one row of tools — at every size, short phones included. */

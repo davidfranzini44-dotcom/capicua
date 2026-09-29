@@ -25,6 +25,8 @@ export interface SponsorInput {
   name: string;
   /** Path of the prepared logo in the public `sponsors` bucket. */
   imagePath: string;
+  /** Optional logo for the face-down fichas (same bucket); none = they carry the felt logo. */
+  tileImagePath?: string | null;
   /** Where tapping "Patrocinado por…" goes (https only), or none. */
   link: string | null;
   /** 'color' = the logo as uploaded; 'white' = a white silhouette, like a print on the felt. */
@@ -77,11 +79,16 @@ const clamp = (v: number, [lo, hi]: readonly [number, number]) => Math.min(hi, M
 const isDate = (s: unknown) => typeof s === 'string' && !Number.isNaN(Date.parse(s));
 
 /** What the admin saves, checked and tidied; null if it can't be saved. */
+/** A logo file the admin panel uploaded to the `sponsors` bucket. */
+const LOGO_FILE = /^[\w-]{1,80}\.(png|webp|jpe?g)$/;
+
 export function validateSponsor(s: Partial<SponsorInput>): SponsorInput | null {
   const name = String(s.name ?? '').trim().replace(/\s+/g, ' ');
   if (name.length < 2 || name.length > 40) return null;
   const imagePath = String(s.imagePath ?? '');
-  if (!/^[\w-]{1,80}\.(png|webp|jpe?g)$/.test(imagePath)) return null;
+  if (!LOGO_FILE.test(imagePath)) return null;
+  const tileImagePath = s.tileImagePath ? String(s.tileImagePath) : null;
+  if (tileImagePath && !LOGO_FILE.test(tileImagePath)) return null;
   const link = s.link ? normalizeLink(s.link) : null;
   if (s.link && !link) return null;
   if (s.style !== 'color' && s.style !== 'white') return null;
@@ -99,7 +106,7 @@ export function validateSponsor(s: Partial<SponsorInput>): SponsorInput | null {
   if (maxViews !== null && (!Number.isInteger(maxViews) || maxViews < SPONSOR_LIMITS.maxViews[0] || maxViews > SPONSOR_LIMITS.maxViews[1])) return null;
   return {
     ...(s.id ? { id: String(s.id) } : {}),
-    name, imagePath, link, style: s.style,
+    name, imagePath, tileImagePath, link, style: s.style,
     opacity: Math.round(clamp(s.opacity!, SPONSOR_LIMITS.opacity) * 100) / 100,
     size: Math.round(clamp(s.size!, SPONSOR_LIMITS.size) * 100) / 100,
     salas, custom: !!s.custom, tournaments, tournamentCodes,

@@ -1639,7 +1639,7 @@ export const handlers = {
     const s = validateSponsor((sponsor ?? {}) as never);
     if (!s) throw new HttpError(400, 'bad_settings');
     const row = {
-      name: s.name, image_path: s.imagePath, link: s.link, style: s.style, opacity: s.opacity, size: s.size,
+      name: s.name, image_path: s.imagePath, tile_image_path: s.tileImagePath ?? null, link: s.link, style: s.style, opacity: s.opacity, size: s.size,
       salas: s.salas, custom: s.custom, tournaments: s.tournaments, tournament_codes: s.tournamentCodes,
       weight: s.weight, starts_at: s.startsAt, ends_at: s.endsAt, paused: s.paused, max_views: s.maxViews,
     };
@@ -1660,11 +1660,11 @@ export const handlers = {
     return { token: s.report_token as string };
   },
 
-  /** Remove a sponsor; games it was on just lose the link. Returns the logo path so the panel can delete the file. */
+  /** Remove a sponsor; games it was on just lose the link. Returns the logo paths so the panel can delete the files. */
   async admin_sponsor_delete(uid: string, { id }: { id: string }) {
     await adminOnly(uid);
-    const [d] = await sql`delete from sponsors where id = ${id} returning image_path`;
-    return { imagePath: d?.image_path ?? null };
+    const [d] = await sql`delete from sponsors where id = ${id} returning image_path, tile_image_path`;
+    return { imagePath: d?.image_path ?? null, tileImagePath: d?.tile_image_path ?? null };
   },
 
   /** Shut a table down: stakes and open side bets go back to everyone. */

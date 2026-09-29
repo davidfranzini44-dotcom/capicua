@@ -50,12 +50,16 @@ const FAKE_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="htt
   <circle cx="90" cy="100" r="78" fill="#d62828"/><text x="90" y="122" font-family="Arial Black,Arial" font-weight="900" font-size="64" fill="#fff" text-anchor="middle">LE</text>
   <text x="185" y="92" font-family="Arial Black,Arial" font-weight="900" font-size="46" fill="#f5c542">COLMADO</text>
   <text x="185" y="146" font-family="Arial Black,Arial" font-weight="900" font-size="40" fill="#ffffff">LA ESQUINA</text></svg>`)}`;
+/** The same made-up sponsor's square mark, for the face-down fichas. */
+const FAKE_TILE_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 200">
+  <circle cx="60" cy="62" r="52" fill="#d62828"/><text x="60" y="84" font-family="Arial Black,Arial" font-weight="900" font-size="46" fill="#fff" text-anchor="middle">LE</text>
+  <rect x="14" y="128" width="92" height="56" rx="10" fill="#f5c542"/><text x="60" y="168" font-family="Arial Black,Arial" font-weight="900" font-size="34" fill="#1c271b" text-anchor="middle">LE</text></svg>`)}`;
 const FAKE_SPONSOR: TableSponsor = {
   id: 'sp1', name: 'Colmado La Esquina', url: FAKE_LOGO, link: 'https://wa.me/18095551234',
   style: 'color', opacity: 0.45, size: 0.62,
 };
 const fakeSponsorRow = (over: Partial<SponsorStatsRow> = {}): SponsorStatsRow => ({
-  id: 'sp1', name: 'Colmado La Esquina', image_path: 'x.webp', link: 'https://wa.me/18095551234', style: 'color', opacity: 0.45, size: 0.6,
+  id: 'sp1', name: 'Colmado La Esquina', image_path: 'x.webp', tile_image_path: null, link: 'https://wa.me/18095551234', style: 'color', opacity: 0.45, size: 0.6,
   salas: [0, 500, 1000], custom: true, tournaments: false, tournament_codes: [], weight: 1,
   starts_at: new Date(Date.now() - 9 * 86_400_000).toISOString(), ends_at: new Date(Date.now() + 21 * 86_400_000).toISOString(),
   max_views: 5000, views_used: 3920, report_token: 'demo',
@@ -339,12 +343,13 @@ function Screen({ s }: { s: string }) {
   }
   if (s === 'reveal') return <ChestReveal reward={{ kind: 'gold', chips: 850, xp: 60 }} onClose={noop} />;
   if (s === 'shop') return <div className="game-shell"><main className="game-body"><ShopTab profile={profile} guest={false} onLinkGoogle={noop} /></main></div>;
-  if (s === 'sponsor-table' || s === 'sponsor-table-white' || s === 'sponsor-table-1v1') {
+  if (s === 'sponsor-table' || s === 'sponsor-table-white' || s === 'sponsor-table-1v1' || s === 'sponsor-table-tile') {
     // A sponsored table mid-hand: the logo printed on the felt under the dominoes.
     const mode = s === 'sponsor-table-1v1' ? '1v1' : '2v2';
     let g = newGame(Math.random, publicRules(mode));
     for (let i = 0; i < 9 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
-    const sponsor = { ...FAKE_SPONSOR, style: (s === 'sponsor-table-white' ? 'white' : 'color') as 'color' | 'white', opacity: s === 'sponsor-table-white' ? 0.28 : 0.45 };
+    const sponsor = { ...FAKE_SPONSOR, style: (s === 'sponsor-table-white' ? 'white' : 'color') as 'color' | 'white', opacity: s === 'sponsor-table-white' ? 0.28 : 0.45,
+      tileUrl: s === 'sponsor-table-tile' ? FAKE_TILE_LOGO : null };
     return (
       <TableView view={publicState(g)} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
         chat={{}} onChat={noop} endActions={null} sponsor={sponsor} onSponsorTap={noop} />

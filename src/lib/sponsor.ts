@@ -8,6 +8,8 @@ export interface SponsorRow {
   id: string;
   name: string;
   image_path: string;
+  /** Logo for the face-down fichas; null = they carry the felt logo. */
+  tile_image_path: string | null;
   link: string | null;
   style: 'color' | 'white';
   opacity: number;
@@ -43,6 +45,8 @@ export interface TableSponsor {
   id: string;
   name: string;
   url: string;
+  /** The logo on the face-down fichas, when the sponsor has one of its own. */
+  tileUrl?: string | null;
   link: string | null;
   style: 'color' | 'white';
   opacity: number;
@@ -51,8 +55,9 @@ export interface TableSponsor {
 
 export const sponsorImageUrl = (path: string) => supabase.storage.from('sponsors').getPublicUrl(path).data.publicUrl;
 
-export const toTableSponsor = (s: Pick<SponsorRow, 'id' | 'name' | 'image_path' | 'link' | 'style' | 'opacity' | 'size'>): TableSponsor => ({
+export const toTableSponsor = (s: Pick<SponsorRow, 'id' | 'name' | 'image_path' | 'link' | 'style' | 'opacity' | 'size'> & { tile_image_path?: string | null }): TableSponsor => ({
   id: s.id, name: s.name, url: sponsorImageUrl(s.image_path), link: s.link, style: s.style, opacity: s.opacity, size: s.size,
+  tileUrl: s.tile_image_path ? sponsorImageUrl(s.tile_image_path) : null,
 });
 
 const cache = new Map<string, TableSponsor | null>();
@@ -64,7 +69,7 @@ export function useSponsor(id: string | null | undefined): TableSponsor | null {
     if (!id || !onlineEnabled || cache.has(id)) return;
     let live = true;
     // Players may read only what prints the logo (not the report link or the package).
-    supabase.from('sponsors').select('id, name, image_path, link, style, opacity, size').eq('id', id).maybeSingle().then(({ data }) => {
+    supabase.from('sponsors').select('id, name, image_path, tile_image_path, link, style, opacity, size').eq('id', id).maybeSingle().then(({ data }) => {
       const s = data ? toTableSponsor(data) : null;
       cache.set(id, s);
       if (live) setLoaded({ id, s });
@@ -106,8 +111,9 @@ export function openSponsor(s: TableSponsor, gameId?: string) {
 
 // ---------- admin: preparing a logo ----------
 
-/** Longest side of the saved logo. */
+/** Longest side of the saved logo (the one on the fichas is tiny: 256 is plenty). */
 const MAX_SIDE = 800;
+export const TILE_LOGO_SIDE = 256;
 /** How close a pixel's color must be to the background to be cleared (0–441). */
 const BG_TOLERANCE = 48;
 /** Up to this far, edge pixels fade out instead of a hard cut. */
@@ -141,7 +147,7 @@ const dist = (d: Uint8ClampedArray, i: number, c: [number, number, number]) =>
  * touching the edges, so white letters inside the logo stay), trims the empty
  * margins, and shrinks it to at most 800 px, keeping transparency.
  */
-export async function prepareSponsorLogo(file: File, clearBackground: boolean): Promise<PreparedLogo> {
+export async function prepareSponsorLogo(file: File, clearBackground: boolean, maxSide = MAX_SIDE): Promise<PreparedLogo> {
   const src = URL.createObjectURL(file);
   try {
     const img = await loadImage(src);
@@ -216,7 +222,7 @@ export async function prepareSponsorLogo(file: File, clearBackground: boolean): 
     x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
     const cw = x1 - x0 + 1;
     const ch = y1 - y0 + 1;
-    const out = Math.min(1, MAX_SIDE / Math.max(cw, ch));
+    const out = Math.min(1, maxSide / Math.max(cw, ch));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(cw * out));
     canvas.height = Math.max(1, Math.round(ch * out));

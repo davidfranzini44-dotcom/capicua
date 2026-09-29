@@ -3,6 +3,8 @@ import { arrowPath, OWNER_ARROW, ownerBadgePoint, type OwnerRole } from './owner
 type TileBackSponsor = {
   url: string;
   style: 'color' | 'white';
+  /** The sponsor's own mark for the fichas, shown upright and as uploaded. */
+  tileUrl?: string | null;
 };
 
 const P = 0.26;
@@ -99,11 +101,15 @@ export function HandTile({ tile, className }: { tile: [number, number]; classNam
   );
 }
 
-/** Face-down tile for opponents' hands. Sponsored hands carry the current logo. */
+/**
+ * Face-down tile for opponents' hands. Sponsored hands carry the sponsor's mark:
+ * its own ficha logo when it has one, otherwise the felt logo turned along the long edge.
+ */
 export function TileBack({ sponsor }: { sponsor?: TileBackSponsor | null }) {
+  const own = sponsor?.tileUrl;
   return (
-    <span className={`tile-back ${sponsor ? `sponsored ${sponsor.style}` : ''}`} aria-hidden>
-      {sponsor && <img src={sponsor.url} alt="" draggable={false} />}
+    <span className={`tile-back ${sponsor ? `sponsored ${own ? 'own-mark' : sponsor.style}` : ''}`} aria-hidden>
+      {sponsor && <img src={own || sponsor.url} alt="" draggable={false} />}
     </span>
   );
 }
