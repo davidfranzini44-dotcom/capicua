@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import {
   canRescue, isPollona, legalMoves, lockedFor, playerCount, sameTile, sideOf, standings,
-  type GameEvent, type GameState, type Move, type Power, type Seat, type Tile,
+  type GameEvent, type GameState, type HandResult, type Move, type Power, type Seat, type Tile,
 } from '../../supabase/functions/_shared/domino.ts';
 import { gameXp, LEAVER_XP, type PublicState } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
@@ -343,6 +343,7 @@ export function TableView(props: TableViewProps) {
     if (pw) return { text: `${t.arcade.bubble[pw.power].replace('{name}', pw.target !== undefined ? name(pw.target as Seat) : '')}`, chat: true };
     if (recentEarns.some((ev) => ev.seat === s)) return { text: '⚡+1', chat: true };
     const e = [...recent].reverse().find((ev) => ev.seat === s);
+    if (e?.kind === 'redeal') return { text: t.redealBubble.replace('{n}', String(e.doubles)), chat: true };
     if (e?.kind === 'pass') return { text: t.passed, chat: false };
     if (e?.kind === 'draw') return { text: t.drew, chat: false };
     return null;
@@ -662,6 +663,24 @@ function Scores({ view, mySeat, name, colorOf, pot, watchers, watching, onWatche
   );
 }
 
+/** Why a tranque went the way it did: who blocked and who they were counted against (patio), or the pair totals (general). */
+function TranqueWhy({ r, mySeat, name }: { r: HandResult; mySeat: Seat; name: (s: Seat) => string }) {
+  const { t } = useI18n();
+  const q = r.tranque!;
+  if (q.rule === 'patio' && q.blocker !== undefined && q.versus !== undefined) {
+    const line = q.blocker === mySeat ? t.tranquePatioMe : t.tranquePatio.replace('{a}', name(q.blocker));
+    return <p className="note">{line.replace('{x}', String(r.counts[q.blocker]))
+      .replace('{b}', q.versus === mySeat ? t.tranqueVsMe : name(q.versus)).replace('{y}', String(r.counts[q.versus]))}</p>;
+  }
+  if (q.rule === 'team') {
+    const mine = sideOf('2v2', mySeat);
+    const total = (side: number) => r.counts.reduce((a, c, p) => (sideOf('2v2', p) === side ? a + c : a), 0);
+    return <p className="note">{t.tranqueTeam.replace('{us}', t.us).replace('{x}', String(total(mine)))
+      .replace('{them}', t.them).replace('{y}', String(total(1 - mine)))}</p>;
+  }
+  return null;
+}
+
 function MiniScore({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div className="score mini">
@@ -838,6 +857,7 @@ function ResultSheet({
           <>
             <h2>{title}</h2>
             <p className="who">{r.winnerSeat === mySeat ? t.youWonHand : `${name(r.winnerSeat)} ${t.wonHand}`}</p>
+            {r.tranque && <TranqueWhy r={r} mySeat={mySeat} name={name} />}
             {r.tieToMano && <p className="note">{t.tieToMano}</p>}
           </>
         )}

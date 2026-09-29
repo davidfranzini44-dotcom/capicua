@@ -75,7 +75,7 @@ export function validateTournament(s: Partial<TournamentSettings>, now = Date.no
 export const checkInOpen = (startsAt: number, now: number) => now >= startsAt - TOURNAMENT.checkInMs;
 
 export const tournamentRules = (s: Pick<TournamentSettings, 'mode' | 'target'>): Rules =>
-  ({ mode: s.mode, target: s.target, capicuaBonus: 25, paseCorridoBonus: 25, paseSalidaBonus: paseSalidaFor(s.mode) });
+  ({ mode: s.mode, target: s.target, capicuaBonus: 25, paseCorridoBonus: 25, paseSalidaBonus: paseSalidaFor(s.mode), tranque: 'patio' });
 
 /** Smallest power of two that fits every entry: the first round's slot count. */
 export function bracketSize(entries: number): number {

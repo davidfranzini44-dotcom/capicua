@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Mode, Ruleset } from '../../supabase/functions/_shared/domino.ts';
-import { botsAllowed, CHIPS, levelFromXp, MODES, TURN_SECONDS, xpForLevel, type CustomSettings } from '../../supabase/functions/_shared/table.ts';
+import { BONUS_POINTS, botsAllowed, CHIPS, levelFromXp, MODES, REGLAS, TURN_SECONDS, xpForLevel, type CustomSettings } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { forgetTable, lastTable } from '../lib/lastTable';
 import { api, ApiError, authReturnUrl, canClaimDaily, onlineEnabled, supabase, useProfile, useSession, type Profile } from '../lib/supabase';
@@ -712,7 +712,7 @@ function NamePrompt() {
   );
 }
 
-interface OpenTable { id: string; code: string; mode: Mode; stake: number; rules: { target: number; ruleset?: Ruleset }; seated: number; host: string }
+interface OpenTable { id: string; code: string; mode: Mode; stake: number; rules: { target: number; ruleset?: Ruleset; tranque?: string }; seated: number; host: string }
 
 function OpenTables({ guest, onJoin }: { guest: boolean; onJoin: (roomId: string) => void }) {
   const { t } = useI18n();
@@ -743,7 +743,7 @@ function OpenTables({ guest, onJoin }: { guest: boolean; onJoin: (roomId: string
       {tables?.length === 0 && <p className="fine">{t.noOpenTables}</p>}
       {tables?.map((r) => (
         <button key={r.id} className={`open-table ${guest && r.stake ? 'locked' : ''}`} disabled={guest && r.stake > 0} onClick={() => onJoin(r.id)}>
-          <span>{r.rules.ruleset === 'arcade' ? <b>⚡ {t.arcade.name} · {t.arcade.goal}</b> : <><b>{t.modes[r.mode].name}</b> · {t.targetLbl} {r.rules.target}</>}</span>
+          <span>{r.rules.ruleset === 'arcade' ? <b>⚡ {t.arcade.name} · {t.arcade.goal}</b> : <><b>{t.modes[r.mode].name}</b> · {t.targetLbl} {r.rules.target}{r.rules.tranque === 'team' ? ` · ${t.reglasChip.general}` : ''}</>}</span>
           <span className="fine">{r.host} · {r.seated}/{r.mode === '1v1' ? 2 : 4} {t.players}</span>
           <span className="ot-stake">{r.stake ? `${guest ? '🔒' : '🪙'} ${r.stake.toLocaleString()}` : t.free}</span>
         </button>
@@ -797,8 +797,9 @@ export function CustomForm({ profile, guest = false, onBack, onCreated }: { prof
   const errText = useErrorText();
   const [c, setC] = useState<CustomSettings>({
     ruleset: 'traditional', mode: '2v2', stake: guest ? 0 : 500, target: 200, capicuaBonus: true, paseCorridoBonus: true, paseSalidaBonus: true,
-    turnSeconds: TURN_SECONDS.customDefault, visibility: 'private',
+    turnSeconds: TURN_SECONDS.customDefault, visibility: 'private', reglas: 'patio', redeal5: false, bonusPoints: 25,
   });
+  const bonus = c.bonusPoints ?? 25;
   const arcade = c.ruleset === 'arcade';
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -834,6 +835,11 @@ export function CustomForm({ profile, guest = false, onBack, onCreated }: { prof
         {arcade ? <p className="fine left">{t.arcade.tagline}</p> : <>
         <label className="label">{t.modeLbl}</label>
         <Seg value={c.mode} options={MODES.map((m) => [m, t.modes[m].name])} onChange={(v) => set('mode', v)} />
+        {c.mode === '2v2' && <>
+          <label className="label">{t.reglasLbl}</label>
+          <Seg value={c.reglas ?? 'patio'} options={REGLAS.map((r) => [r, t.reglas[r]])} onChange={(v) => set('reglas', v)} />
+          <p className="fine left">{t.reglasHelp[c.reglas ?? 'patio']}</p>
+        </>}
         <label className="label">{t.stakePerPlayer}</label>
         {guest ? (
           <p className="fine left people-only">🔒 {t.guestFreeOnly}</p>
@@ -850,14 +856,21 @@ export function CustomForm({ profile, guest = false, onBack, onCreated }: { prof
         <Seg value={c.target} options={[[100, '100'], [150, '150'], [200, '200']]} onChange={(v) => set('target', v)} />
         <label className="label">{t.bonusesLbl}</label>
         <div className="seg">
-          <button className={c.capicuaBonus ? 'on' : ''} onClick={() => set('capicuaBonus', !c.capicuaBonus)}>{c.capicuaBonus ? '✓ ' : ''}{t.capicuaBonusLbl}</button>
-          <button className={c.paseCorridoBonus ? 'on' : ''} onClick={() => set('paseCorridoBonus', !c.paseCorridoBonus)}>{c.paseCorridoBonus ? '✓ ' : ''}{t.paseBonusLbl}</button>
+          <button className={c.capicuaBonus ? 'on' : ''} onClick={() => set('capicuaBonus', !c.capicuaBonus)}>{c.capicuaBonus ? '✓ ' : ''}{t.capicuaBonusLbl} +{bonus}</button>
+          <button className={c.paseCorridoBonus ? 'on' : ''} onClick={() => set('paseCorridoBonus', !c.paseCorridoBonus)}>{c.paseCorridoBonus ? '✓ ' : ''}{t.paseBonusLbl} +{bonus}</button>
         </div>
         {c.mode === '2v2' && (
           <div className="seg">
             <button className={c.paseSalidaBonus ? 'on' : ''} onClick={() => set('paseSalidaBonus', !c.paseSalidaBonus)}>{c.paseSalidaBonus ? '✓ ' : ''}{t.paseSalidaLbl}</button>
           </div>
         )}
+        {(c.capicuaBonus || c.paseCorridoBonus) && <>
+          <label className="label">{t.bonusPointsLbl}</label>
+          <Seg value={bonus} options={BONUS_POINTS.map((p) => [p, `+${p}`])} onChange={(v) => set('bonusPoints', v)} />
+        </>}
+        <div className="seg">
+          <button className={c.redeal5 ? 'on' : ''} onClick={() => set('redeal5', !c.redeal5)}>{c.redeal5 ? '✓ ' : ''}{t.redeal5Lbl}</button>
+        </div>
         </>}
         <label className="label">{t.turnTimerLbl}</label>
         <Seg value={c.turnSeconds} options={[[15, '15s'], [25, '25s'], [40, '40s']]} onChange={(v) => set('turnSeconds', v)} />

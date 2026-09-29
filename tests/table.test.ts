@@ -186,6 +186,27 @@ describe('levels & matchmaking', () => {
     expect(customRules(validateCustom({ ...base, ruleset: 'arcade' })!).paseSalidaBonus).toBe(0);
   });
 
+  it('house rules: patio by default everywhere; hosts can pick Regla General, 5 doubles and 25/30 bonuses', () => {
+    expect(publicRules('2v2')).toMatchObject({ tranque: 'patio' });
+    expect(tournamentRules({ mode: '2v2', target: 150 })).toMatchObject({ tranque: 'patio' });
+    const base = { stake: 0, target: 150, turnSeconds: 25, visibility: 'private' as const };
+    const patio = customRules(validateCustom({ ...base, mode: '2v2' })!);
+    expect(patio).toMatchObject({ tranque: 'patio', capicuaBonus: 25, paseCorridoBonus: 25 });
+    expect(patio.scoring).toBeUndefined();
+    expect(patio.redeal5).toBeUndefined();
+    expect(customRules(validateCustom({ ...base, mode: '2v2', reglas: 'general', redeal5: true, bonusPoints: 30 })!))
+      .toMatchObject({ tranque: 'team', scoring: 'losers', redeal5: true, capicuaBonus: 30, paseCorridoBonus: 30, paseSalidaBonus: 30 });
+    // Regla General only changes a pairs game.
+    expect(customRules(validateCustom({ ...base, mode: '1v1', reglas: 'general' })!)).toMatchObject({ tranque: 'patio' });
+    expect(customRules(validateCustom({ ...base, mode: '2v2', capicuaBonus: false, bonusPoints: 30 })!)).toMatchObject({ capicuaBonus: 0, paseCorridoBonus: 30 });
+    expect(validateCustom({ ...base, mode: '2v2', reglas: 'casa' as never })).toBeNull();
+    expect(validateCustom({ ...base, mode: '2v2', bonusPoints: 20 as never })).toBeNull();
+    expect(validateCustom({ ...base, mode: '2v2', redeal5: 'yes' as never })).toBeNull();
+    // Side bets: priced for the default rules only.
+    expect(sideBetMultiplier(customRules(validateCustom({ ...base, mode: '2v2', reglas: 'general' })!), 'pollona')).toBeNull();
+    expect(sideBetMultiplier(patio, 'pollona')).not.toBeNull();
+  });
+
   it('voice: full table in custom, team-only in public 2v2, none in public 1v1/ffa', () => {
     expect(voiceRoomFor('custom', 'ffa', 'ABCD', 3)).toBe('capicua-ABCD');
     expect(voiceRoomFor('public', '2v2', 'ABCD', 3)).toBe('capicua-ABCD-team1');

@@ -70,7 +70,7 @@ describe('2v2 (classic)', () => {
     expect(() => applyMove(p, { type: 'draw' })).toThrow();
   });
 
-  it('tranque goes to the lowest count; a cross-team tie goes to la mano', () => {
+  it('patio tranque: a tie between the blocker and the rival on their right goes to la mano', () => {
     const blocked = stateWith(
       [[[5, 4], [1, 1]], [[0, 0], [0, 2]], [[6, 6], [0, 1]], [[2, 2], [0, 3]]],
       [[4, 5]], 0, { mano: 1 },
@@ -78,6 +78,86 @@ describe('2v2 (classic)', () => {
     const u = applyMove(blocked, { type: 'play', tile: [5, 4], side: 'L' });
     expect(u.handResult).toMatchObject({ kind: 'tranque', winnerSeat: 1, side: 1, tieToMano: true, points: 24 });
     expect(u.tally.tranques).toEqual([0, 1]);
+  });
+});
+
+describe('tranque rules (2v2)', () => {
+  // Seat 0 plays 5-4 → ends 5|5 and nobody holds a 5 → tranque. Seat 0 blocked; seat 1 is on their right.
+  const block = (hands: Tile[][], rules: Rules = CLASSIC_DR, mano: Seat = 0) =>
+    applyMove(stateWith(hands, [[4, 5]], 0, { rules, mano }), { type: 'play', tile: [5, 4], side: 'L' }).handResult!;
+
+  it('patio: the blocker counts only against the rival on their right (not the lowest hand at the table)', () => {
+    // After the play: seat 0 has 6, seat 1 12, seat 2 8, seat 3 just 1.
+    const r = block([[[5, 4], [3, 3]], [[6, 6]], [[2, 2], [1, 3]], [[0, 1]]]);
+    expect(r).toMatchObject({ kind: 'tranque', winnerSeat: 0, side: 0, tieToMano: false, points: 27, tranque: { rule: 'patio', blocker: 0, versus: 1 } });
+  });
+
+  it('patio: blocking with more than the rival on your right loses the hand', () => {
+    const r = block([[[5, 4], [6, 6]], [[0, 1]], [[2, 2]], [[3, 3]]]);
+    expect(r).toMatchObject({ winnerSeat: 1, side: 1, tieToMano: false });
+  });
+
+  it('patio: a tie between them goes to la mano\'s side', () => {
+    const hands: Tile[][] = [[[5, 4], [1, 1]], [[0, 2]], [[6, 6]], [[3, 3]]];
+    expect(block(hands, CLASSIC_DR, 0)).toMatchObject({ winnerSeat: 0, side: 0, tieToMano: true });
+    expect(block(hands, CLASSIC_DR, 3)).toMatchObject({ winnerSeat: 1, side: 1, tieToMano: true });
+  });
+
+  it('general: each pair adds up both hands (32 vs 22 → the pair with 22), and its lower hand opens next', () => {
+    const hands: Tile[][] = [[[5, 4], [1, 1]], [[4, 6]], [[6, 6], [6, 6], [3, 3]], [[6, 6]]];
+    const r = block(hands, { ...CLASSIC_DR, tranque: 'team' });
+    expect(r).toMatchObject({ winnerSeat: 1, side: 1, tieToMano: false, points: 2 + 10 + 30 + 12, tranque: { rule: 'team' } });
+    // The single lowest hand (seat 0's 2) would have given it to the other pair.
+    expect(block(hands, { ...CLASSIC_DR, tranque: undefined })).toMatchObject({ winnerSeat: 0, side: 0, tranque: { rule: 'lowest' } });
+  });
+
+  it('general: pair totals tied → la mano\'s pair', () => {
+    const r = block([[[5, 4], [2, 2]], [[1, 1]], [[1, 1]], [[2, 2]]], { ...CLASSIC_DR, tranque: 'team' }, 1);
+    expect(r).toMatchObject({ side: 1, tieToMano: true });
+  });
+
+  it('general scoring: the winners collect only the losers\' tiles', () => {
+    const losers: Rules = { ...CLASSIC_DR, scoring: 'losers' };
+    const s = stateWith([[[5, 6]], [[6, 6]], [[4, 4]], [[1, 2]]], [[5, 3]], 0, { rules: losers });
+    expect(applyMove(s, { type: 'play', tile: [5, 6], side: 'L' }).handResult).toMatchObject({ kind: 'domino', points: 12 + 3 });
+    const r = block([[[5, 4], [1, 1]], [[4, 6]], [[6, 6], [6, 6], [3, 3]], [[6, 6]]], { ...losers, tranque: 'team' });
+    expect(r).toMatchObject({ side: 1, points: 2 + 30 });
+  });
+
+  it('1v1 and free-for-all keep the lowest hand whatever the table says', () => {
+    const b = stateWith(
+      [[[5, 4], [6, 6]], [[0, 0], [0, 2]], [[6, 4], [0, 1]], [[1, 1]]],
+      [[4, 5]], 0, { rules: { ...rulesOf('ffa'), tranque: 'patio' }, mano: 0 },
+    );
+    expect(applyMove(b, { type: 'play', tile: [5, 4], side: 'L' }).handResult).toMatchObject({ winnerSeat: 1, tranque: { rule: 'lowest' } });
+  });
+});
+
+describe('five doubles: deal again', () => {
+  const doubles = (h: Tile[]) => h.filter((t) => t[0] === t[1]).length;
+  it('no hand starts with 5+ doubles, the table is told who had them, and the 6-6 still opens', () => {
+    let redeals = 0;
+    let wouldHave = 0;
+    for (let i = 0; i < 1500; i++) {
+      const plain = newGame(seeded(i));
+      if (plain.hands.some((h) => doubles(h) >= 5)) wouldHave++;
+      const g = newGame(seeded(i), { ...CLASSIC_DR, redeal5: true });
+      for (const h of g.hands) expect(doubles(h)).toBeLessThan(5);
+      for (const e of g.events) {
+        expect(e).toMatchObject({ kind: 'redeal' });
+        if (e.kind === 'redeal') expect(e.doubles).toBeGreaterThanOrEqual(5);
+        redeals++;
+      }
+      expect(g.hands[g.turn]).toContainEqual([6, 6]);
+    }
+    expect(wouldHave).toBeGreaterThan(0);
+    expect(redeals).toBeGreaterThanOrEqual(wouldHave);
+  });
+
+  it('off by default', () => {
+    let seen = 0;
+    for (let i = 0; i < 1500; i++) if (newGame(seeded(i)).hands.some((h) => doubles(h) >= 5)) seen++;
+    expect(seen).toBeGreaterThan(0);
   });
 });
 

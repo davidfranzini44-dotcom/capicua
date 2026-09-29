@@ -50,7 +50,9 @@ export type GameEvent =
   /** Arcade: a power earned — `block` (my play left the next rival without a play) or `comeback` (my team lost a hand). */
   | { kind: 'earn'; seat: Seat; reason: 'block' | 'comeback' }
   | { kind: 'callPass'; seat: Seat; target: Seat }
-  | { kind: 'callPassResult'; seat: Seat; target: Seat; success: boolean; gained: number };
+  | { kind: 'callPassResult'; seat: Seat; target: Seat; success: boolean; gained: number }
+  /** The deal was thrown in: `seat` got `doubles` doubles (tables with `redeal5`). First events of the new hand. */
+  | { kind: 'redeal'; seat: Seat; doubles: number };
 
 export interface HandResult {
   kind: 'domino' | 'tranque';
@@ -66,7 +68,18 @@ export interface HandResult {
   hands: Tile[][];
   /** Tranque tied across sides; broken in favor of la mano. */
   tieToMano: boolean;
+  /** Tranque: the rule that decided it, and (patio) who blocked and the rival on their right they were counted against. */
+  tranque?: { rule: TranqueRule; blocker?: Seat; versus?: Seat };
 }
+
+/**
+ * Who wins a blocked 2v2 hand (1v1 and free-for-all: always the lowest hand).
+ *  patio  — Regla de Patio: the player who blocked counts against the rival on their right.
+ *  team   — Regla General: each pair adds up both hands.
+ *  lowest — the single lowest hand at the table (games from before these rules).
+ * Every tie goes to la mano's side.
+ */
+export type TranqueRule = 'patio' | 'team' | 'lowest';
 
 export interface Rules {
   mode: Mode;
@@ -78,12 +91,18 @@ export interface Rules {
   paseSalidaBonus?: number;
   /** Missing on everything created before Arcade existed: those are traditional. */
   ruleset?: Ruleset;
+  /** How a blocked 2v2 hand is decided. Missing = 'lowest' (games started before 2026-09-29). */
+  tranque?: TranqueRule;
+  /** Whose tiles the winners collect: 'all' left on the table (patio), or only the 'losers' (Regla General). Missing = all. */
+  scoring?: 'all' | 'losers';
+  /** A hand where someone is dealt five or more doubles is thrown in and dealt again. */
+  redeal5?: boolean;
 }
 
 /** Points for a pase de salida, where it's played (2v2 only). */
 export const PASE_SALIDA = 30;
 
-export const CLASSIC_DR: Rules = { mode: '2v2', target: 200, capicuaBonus: 25, paseCorridoBonus: 25, paseSalidaBonus: PASE_SALIDA };
+export const CLASSIC_DR: Rules = { mode: '2v2', target: 200, capicuaBonus: 25, paseCorridoBonus: 25, paseSalidaBonus: PASE_SALIDA, tranque: 'patio' };
 
 /** Arcade's public, per-match power state. */
 export interface ArcadeState {
@@ -224,8 +243,18 @@ function firstOpener(hands: Tile[][]): { seat: Seat; tile: Tile } {
   return best;
 }
 
+/** Five or more doubles in one hand: with `redeal5` that deal is thrown in (the table sees who and how many). */
+const REDEAL_DOUBLES = 5;
+
 function startHand(prev: Pick<GameState, 'rules' | 'scores' | 'handNo' | 'tally' | 'arcade' | 'seatStats'>, rng: Rng, mano: Seat | null): GameState {
-  const { hands, boneyard } = deal(prev.rules.mode, rng);
+  let { hands, boneyard } = deal(prev.rules.mode, rng);
+  const events: GameEvent[] = [];
+  for (let tries = 0; prev.rules.redeal5 && tries < 20; tries++) {
+    const seat = hands.findIndex((h) => h.filter(isDouble).length >= REDEAL_DOUBLES);
+    if (seat < 0) break;
+    events.push({ kind: 'redeal', seat: seat as Seat, doubles: hands[seat].filter(isDouble).length });
+    ({ hands, boneyard } = deal(prev.rules.mode, rng));
+  }
   let mustOpen: Tile | null = null;
   if (mano === null) {
     const opener = firstOpener(hands);
@@ -246,7 +275,7 @@ function startHand(prev: Pick<GameState, 'rules' | 'scores' | 'handNo' | 'tally'
     passesSinceLastPlay: 0,
     mustOpen,
     voids: hands.map(() => []),
-    events: [],
+    events,
     handResult: null,
     winner: null,
     tally: structuredClone(prev.tally),
@@ -473,10 +502,30 @@ export function applyMove(prev: GameState, move: Move, rng: Rng = Math.random): 
 function finishTranque(s: GameState): GameState {
   const mode = s.rules.mode;
   const counts = s.hands.map(handCount);
-  const min = Math.min(...counts);
-  // Tied seats, in turn order starting from la mano.
   const n = playerCount(mode);
   const order = Array.from({ length: n }, (_, i) => ((s.mano + i) % n) as Seat);
+  const manoSide = sideOf(mode, s.mano);
+  const rule: TranqueRule = mode === '2v2' ? s.rules.tranque ?? 'lowest' : 'lowest';
+  if (rule === 'patio' && s.lastPlayer !== null) {
+    // Regla de Patio: whoever blocked counts against the rival on their right.
+    const blocker = s.lastPlayer;
+    const versus = nextSeat(s, blocker);
+    const tie = counts[blocker] === counts[versus];
+    const winnerSeat = tie ? (sideOf(mode, blocker) === manoSide ? blocker : versus) : counts[blocker] < counts[versus] ? blocker : versus;
+    return finishHand(s, 'tranque', winnerSeat, false, tie, { rule, blocker, versus });
+  }
+  if (rule === 'team') {
+    // Regla General: each pair adds up both hands; the pair's lower hand opens the next one.
+    const totals = [0, 0];
+    counts.forEach((c, p) => { totals[sideOf(mode, p)] += c; });
+    const tie = totals[0] === totals[1];
+    const side = tie ? manoSide : totals[0] < totals[1] ? 0 : 1;
+    const pair = order.filter((p) => sideOf(mode, p) === side);
+    const winnerSeat = pair.reduce((best, p) => (counts[p] < counts[best] ? p : best));
+    return finishHand(s, 'tranque', winnerSeat, false, tie, { rule });
+  }
+  const min = Math.min(...counts);
+  // Tied seats, in turn order starting from la mano.
   const tied = order.filter((p) => counts[p] === min);
   let winnerSeat = tied[0];
   let tieToMano = false;
@@ -484,18 +533,21 @@ function finishTranque(s: GameState): GameState {
     tieToMano = true;
     winnerSeat = tied.find((p) => sideOf(mode, p) === sideOf(mode, s.mano)) ?? tied[0];
   }
-  return finishHand(s, 'tranque', winnerSeat, false, tieToMano);
+  return finishHand(s, 'tranque', winnerSeat, false, tieToMano, { rule: 'lowest' });
 }
 
-function finishHand(s: GameState, kind: 'domino' | 'tranque', winnerSeat: Seat, capicua: boolean, tieToMano = false): GameState {
+function finishHand(s: GameState, kind: 'domino' | 'tranque', winnerSeat: Seat, capicua: boolean, tieToMano = false,
+  tranque?: HandResult['tranque']): GameState {
   // A final-tile play by the targeted rival settles the wager before scoring.
   if (s.arcade?.call) resolveCall(s, s.arcade.call.target, false);
   const counts = s.hands.map(handCount);
   const arcade = isArcade(s.rules);
-  // Arcade: every hand is worth one star, capicúa included (it only gets a celebration).
-  const points = arcade ? 1 : counts.reduce((a, b) => a + b, 0);
-  const bonus = !arcade && capicua ? s.rules.capicuaBonus : 0;
   const side = sideOf(s.rules.mode, winnerSeat);
+  // Arcade: every hand is worth one star, capicúa included (it only gets a celebration).
+  // Otherwise the winners collect every tile left, or (Regla General) only the losers' tiles.
+  const collected = s.rules.scoring === 'losers' ? counts.filter((_, p) => sideOf(s.rules.mode, p) !== side) : counts;
+  const points = arcade ? 1 : collected.reduce((a, b) => a + b, 0);
+  const bonus = !arcade && capicua ? s.rules.capicuaBonus : 0;
   s.scores[side] += points + bonus;
   s.tally.hands[side]++;
   if (capicua) s.tally.capicuas[side]++;
@@ -506,6 +558,7 @@ function finishHand(s: GameState, kind: 'domino' | 'tranque', winnerSeat: Seat, 
   s.handResult = {
     kind, winnerSeat, side, points, capicua, bonus, total: points + bonus,
     counts, hands: s.hands.map((h) => h.map((t) => [...t] as Tile)), tieToMano,
+    ...(kind === 'tranque' && tranque ? { tranque } : {}),
   };
   if (s.arcade) {
     s.arcade.call = null;

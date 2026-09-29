@@ -110,7 +110,7 @@ export const TARGETS = [100, 150, 200] as const;
 export const paseSalidaFor = (mode: Mode, on = true) => (on && mode === '2v2' ? PASE_SALIDA : 0);
 
 export const publicRules = (mode: Mode): Rules =>
-  ({ mode, target: 100, capicuaBonus: 25, paseCorridoBonus: 25, paseSalidaBonus: paseSalidaFor(mode) });
+  ({ mode, target: 100, capicuaBonus: 25, paseCorridoBonus: 25, paseSalidaBonus: paseSalidaFor(mode), tranque: 'patio' });
 
 /** Arcade is free, 2v2 only: no stakes, side bets or tournaments (yet). */
 export const RULESETS: Ruleset[] = ['traditional', 'arcade'];
@@ -132,7 +132,19 @@ export interface CustomSettings {
   paseSalidaBonus: boolean;
   turnSeconds: number;
   visibility: 'public' | 'private';
+  /** 2v2 house rules: 'patio' (default — the blocker counts against the rival on their right, every tile counts)
+   *  or 'general' (pairs add up both hands at a tranque; only the losers' tiles count). */
+  reglas?: Reglas;
+  /** Someone dealt five or more doubles: that deal is thrown in. */
+  redeal5?: boolean;
+  /** Points for capicúa and pase corrido (pase de salida stays 30). */
+  bonusPoints?: BonusPoints;
 }
+
+export type Reglas = 'patio' | 'general';
+export const REGLAS: Reglas[] = ['patio', 'general'];
+export type BonusPoints = 25 | 30;
+export const BONUS_POINTS: BonusPoints[] = [25, 30];
 
 export const CUSTOM_LIMITS = { maxStake: 100_000, turnSeconds: [15, 25, 40] };
 
@@ -151,19 +163,34 @@ export function validateCustom(c: Partial<CustomSettings>): CustomSettings | nul
   if (!TARGETS.includes(c.target as 100)) return null;
   if (!CUSTOM_LIMITS.turnSeconds.includes(c.turnSeconds!)) return null;
   if (c.visibility !== 'public' && c.visibility !== 'private') return null;
+  if (c.reglas !== undefined && !REGLAS.includes(c.reglas)) return null;
+  if (c.redeal5 !== undefined && typeof c.redeal5 !== 'boolean') return null;
+  if (c.bonusPoints !== undefined && !BONUS_POINTS.includes(c.bonusPoints)) return null;
   return {
     mode: c.mode, stake: c.stake!, target: c.target!, turnSeconds: c.turnSeconds!, visibility: c.visibility,
     capicuaBonus: c.capicuaBonus !== false, paseCorridoBonus: c.paseCorridoBonus !== false,
     paseSalidaBonus: c.mode === '2v2' && c.paseSalidaBonus !== false,
+    // Regla General only changes a pairs game.
+    reglas: c.mode === '2v2' && c.reglas === 'general' ? 'general' : 'patio',
+    redeal5: c.redeal5 === true,
+    bonusPoints: c.bonusPoints ?? 25,
   };
 }
 
-export const customRules = (c: CustomSettings): Rules => c.ruleset === 'arcade' ? arcadeRules() : ({
-  mode: c.mode, target: c.target,
-  capicuaBonus: c.capicuaBonus ? 25 : 0,
-  paseCorridoBonus: c.paseCorridoBonus ? 25 : 0,
-  paseSalidaBonus: paseSalidaFor(c.mode, c.paseSalidaBonus),
-});
+export const customRules = (c: CustomSettings): Rules => {
+  if (c.ruleset === 'arcade') return arcadeRules();
+  const general = c.mode === '2v2' && c.reglas === 'general';
+  const bonus = c.bonusPoints ?? 25;
+  return {
+    mode: c.mode, target: c.target,
+    capicuaBonus: c.capicuaBonus ? bonus : 0,
+    paseCorridoBonus: c.paseCorridoBonus ? bonus : 0,
+    paseSalidaBonus: paseSalidaFor(c.mode, c.paseSalidaBonus),
+    tranque: general ? 'team' : 'patio',
+    ...(general ? { scoring: 'losers' as const } : {}),
+    ...(c.redeal5 ? { redeal5: true } : {}),
+  };
+};
 
 // ---------- chips ----------
 
@@ -278,15 +305,16 @@ export const SIDE_BET_KINDS: SideBetKind[] = ['cap1', 'cap2', 'pollona'];
 /**
  * Chance that YOUR side hits each bet, from 4,000 simulated bot games per
  * mode/target (2026-09-25; 2v2 re-run with pase de salida +30 on 2026-09-26,
- * which makes games shorter). Re-tune from real results once people play.
+ * which makes games shorter, and again on 2026-09-29 with the patio tranque —
+ * 14,000 games per target). Re-tune from real results once people play.
  */
 const SIDE_BET_ODDS: Record<string, Record<SideBetKind, number>> = {
   '1v1@100': { cap1: 0.3068, cap2: 0.0367, pollona: 0.0757 },
   '1v1@150': { cap1: 0.4125, cap2: 0.086, pollona: 0.0267 },
   '1v1@200': { cap1: 0.489, cap2: 0.1323, pollona: 0.014 },
-  '2v2@100': { cap1: 0.2308, cap2: 0.0185, pollona: 0.1465 },
-  '2v2@150': { cap1: 0.3093, cap2: 0.0455, pollona: 0.0828 },
-  '2v2@200': { cap1: 0.3942, cap2: 0.078, pollona: 0.0382 },
+  '2v2@100': { cap1: 0.2185, cap2: 0.0204, pollona: 0.1521 },
+  '2v2@150': { cap1: 0.3032, cap2: 0.0473, pollona: 0.0809 },
+  '2v2@200': { cap1: 0.3886, cap2: 0.0812, pollona: 0.0426 },
   'ffa@100': { cap1: 0.142, cap2: 0.0107, pollona: 0.0305 },
   'ffa@150': { cap1: 0.2185, cap2: 0.0285, pollona: 0.008 },
   'ffa@200': { cap1: 0.3085, cap2: 0.0597, pollona: 0.0047 },
@@ -297,7 +325,9 @@ const HOUSE_EDGE = 0.15;
 const MAX_MULTIPLIER = 50;
 
 /** Total returned per chip bet (includes the chip itself), e.g. 3.5 → bet 100, get 350. */
-export function sideBetMultiplier(rules: Pick<Rules, 'mode' | 'target'>, kind: SideBetKind): number | null {
+export function sideBetMultiplier(rules: Pick<Rules, 'mode' | 'target' | 'scoring' | 'tranque'>, kind: SideBetKind): number | null {
+  // Regla General plays longer games: these odds weren't simulated for it, so no side bets there.
+  if (rules.scoring === 'losers' || rules.tranque === 'team') return null;
   const p = SIDE_BET_ODDS[`${rules.mode}@${rules.target}`]?.[kind];
   if (!p) return null;
   return Math.min(MAX_MULTIPLIER, Math.floor(((1 - HOUSE_EDGE) / p) * 10) / 10);

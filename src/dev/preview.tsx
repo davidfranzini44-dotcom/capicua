@@ -2,9 +2,9 @@
 // Renders the online screens with sample data so layouts can be checked without a backend.
 import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { applyMove, forcedMove, fullSet, legalMoves, newGame, nextHand, type Seat } from '../../supabase/functions/_shared/domino.ts';
+import { applyMove, forcedMove, fullSet, legalMoves, newGame, nextHand, type GameEvent, type Rules, type Seat } from '../../supabase/functions/_shared/domino.ts';
 import { chooseMove } from '../../supabase/functions/_shared/bot.ts';
-import { publicRules, publicState } from '../../supabase/functions/_shared/table.ts';
+import { customRules, publicRules, publicState } from '../../supabase/functions/_shared/table.ts';
 import { LangContext, strings, type Lang } from '../i18n';
 import type { Profile } from '../lib/supabase';
 import type { Voice } from '../lib/useVoice';
@@ -504,6 +504,45 @@ function Screen({ s }: { s: string }) {
       receivedAt: Date.now() - 4000,
     });
     return <OnlineTable r={r} uid="me" voice={null} onLeave={noop} onPlayAnother={noop} />;
+  }
+  if (s === 'tranque-patio' || s === 'tranque-general') {
+    // A blocked hand just ended: who blocked and who they were counted against, or (general) the pair totals.
+    const rules: Rules = s === 'tranque-general' ? { ...publicRules('2v2'), tranque: 'team', scoring: 'losers' } : publicRules('2v2');
+    let g = newGame(Math.random, rules);
+    for (let tries = 0; tries < 300; tries++) {
+      g = newGame(Math.random, rules);
+      for (let i = 0; i < 400 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
+      if (g.handResult?.kind === 'tranque' && !g.handResult.tieToMano) break;
+    }
+    const pub = { ...publicState(g), winner: null, nextReady: [1] as Seat[] };
+    const r = data({
+      room: room({ phase: 'playing', current_game: 'g1', rules }),
+      seats: [seat(0, 'Wilfri', 4), seat(1, 'Yokasta', 13), seat(2, 'Robert', 6), seat(3, 'Kirsy', 5)],
+      online: new Set(['me', 'u-Yokasta', 'u-Robert', 'u-Kirsy']),
+      game: { id: 'g1', public_state: pub, version: 9, stake: 0, pot: 0, turn_ms: 15000, auto_delay_ms: 25_000, settled: false },
+      hand: [],
+      receivedAt: Date.now() - 4000,
+    });
+    return <OnlineTable r={r} uid="me" voice={null} onLeave={noop} onPlayAnother={noop} />;
+  }
+  if (s === 'redeal') {
+    // Someone was dealt five doubles on a table that throws that deal in: the table hears who.
+    const g = newGame(() => 0.37, { ...publicRules('2v2'), redeal5: true });
+    const view = { ...publicState(g), events: [{ kind: 'redeal', seat: 1, doubles: 5 }] as GameEvent[] };
+    return (
+      <TableView view={view} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
+        chat={{}} onChat={noop} endActions={null} turnDeadline={Date.now() + 12_000} />
+    );
+  }
+  if (s === 'custom-general') {
+    // A host's table with house rules: Regla General, 5 doubles and +30 bonuses, with chips on it.
+    const r = data({
+      room: room({ kind: 'custom', phase: 'lobby', phase_ends_at: null, host: 'me', stake: 500, turn_seconds: 25,
+        rules: customRules({ mode: '2v2', stake: 500, target: 200, turnSeconds: 25, visibility: 'private', capicuaBonus: true,
+          paseCorridoBonus: true, paseSalidaBonus: true, reglas: 'general', redeal5: true, bonusPoints: 30 }) }),
+      seats: [seat(0, 'Wilfri', 4, { user_id: 'me' }), seat(1, 'Yokasta', 13, { ready: true }), seat(2, 'Robert', 6)],
+    });
+    return <Pregame r={r} uid="me" profile={profile} voice={null} onLeave={noop} />;
   }
   if (s === 'ready') {
     const r = data({

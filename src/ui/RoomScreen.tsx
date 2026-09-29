@@ -208,6 +208,11 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
           </> : <>
             <span>{t.modes[mode].name}</span>
             <span>{t.targetLbl} {room.rules.target}</span>
+            {mode === '2v2' && room.rules.tranque && room.rules.tranque !== 'lowest' && (
+              <span>{t.reglasChip[room.rules.tranque === 'team' ? 'general' : 'patio']}</span>
+            )}
+            {room.rules.redeal5 && <span>{t.redeal5Lbl}</span>}
+            {(room.rules.capicuaBonus === 30 || room.rules.paseCorridoBonus === 30) && <span>{t.bonusesLbl} +30</span>}
           </>}
           <span>{room.stake ? `🪙 ${room.stake.toLocaleString()}` : t.free}</span>
           <span>⏱ {room.turn_seconds}s</span>
@@ -400,6 +405,7 @@ function SideBets({ r, mode, profile, onError }: { r: RoomData; mode: Mode; prof
   const used = open.reduce((a, b) => a + b.amount, 0);
   const limit = sideBetLimit(room.stake);
   if (!room.stake) return <p className="fine">{t.noSideBets}</p>;
+  if (SIDE_BET_KINDS.every((k) => !sideBetMultiplier(room.rules, k))) return <p className="fine">{t.noSideBetsGeneral}</p>;
   const amounts = [0.1, 0.25, 0.5, 1].map((f) => Math.max(10, Math.round((room.stake * f) / 10) * 10));
   const solo = mode !== '2v2';
 
