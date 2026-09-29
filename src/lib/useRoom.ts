@@ -5,6 +5,7 @@ import type { PublicState, SideBetKind } from '../../supabase/functions/_shared/
 import { playPhrase, type PhraseId } from '../quickchat';
 import { OUT_OF_APP_MS, type TableAlert } from './fairPlay';
 import type { ChatBubbles } from '../ui/TableView';
+import { loadSharedRoom, ShareError, type SharedRoomInfo } from './shareMatch';
 import { onlineEnabled, supabase } from './supabase';
 
 export interface RoomRow {
@@ -61,13 +62,27 @@ const ROOM_COLS = 'id, code, kind, mode, rules, stake, turn_seconds, visibility,
 const SEAT_COLS = 'seat, user_id, is_bot, name, level, ready, away, left_game';
 const GAME_COLS = 'id, public_state, version, stake, pot, turn_ms, auto_delay_ms, settled, sponsor_id';
 
+export interface RoomOptions {
+  /**
+   * Watching through a share link: the table comes from shared_room() (no join code),
+   * the game is the link's own, there are no tiles, bets or alerts of mine to load, and
+   * this screen doesn't add itself to the table's presence. Checked again every 20 s,
+   * which also keeps the viewer counted; `gone` once the link stops opening the game.
+   */
+  shared?: boolean;
+}
+
+/** Link viewers re-check the link (and get counted) this often. */
+const SHARED_REFRESH_MS = 20_000;
+
 /**
  * Live view of one table: room, seats, the current game, my own tiles, my
  * side bets, and sound-button chatter. Reads go straight to Postgres
  * (RLS-scoped); changes arrive over Realtime, and a full reload runs whenever
  * the connection (re)subscribes or the tab comes back into view.
  */
-export function useRoom(roomId: string, uid: string) {
+export function useRoom(roomId: string, uid: string, opts: RoomOptions = {}) {
+  const shared = !!opts.shared;
   const [room, setRoom] = useState<RoomRow | null>(null);
   const [seats, setSeats] = useState<SeatRow[]>([]);
   const [game, setGame] = useState<GameRow | null>(null);
@@ -85,6 +100,10 @@ export function useRoom(roomId: string, uid: string) {
   /** Fair play: each player's latest "left the app / came back / screenshot", and the newest one to announce. */
   const [alerts, setAlerts] = useState<Record<string, TableAlert>>({});
   const [lastAlert, setLastAlert] = useState<TableAlert | null>(null);
+  /** Realtime link: 'live' once subscribed, 'reconnecting' while it (or the phone's connection) is down. */
+  const [status, setStatus] = useState<'connecting' | 'live' | 'reconnecting'>('connecting');
+  /** Link viewers: what shared_room() adds (players' photos, link watchers, when the link ends). */
+  const [sharedInfo, setSharedInfo] = useState<SharedRoomInfo | null>(null);
 
   const gameId = useRef<string | null>(null);
   const version = useRef(-1);
@@ -101,11 +120,11 @@ export function useRoom(roomId: string, uid: string) {
   const loadGame = useCallback(async (id: string) => {
     const [{ data: g }, { data: h }] = await Promise.all([
       supabase.from('games').select(GAME_COLS).eq('id', id).maybeSingle(),
-      supabase.from('game_hands').select('tiles').eq('game_id', id).eq('user_id', uid).maybeSingle(),
+      shared ? Promise.resolve({ data: null }) : supabase.from('game_hands').select('tiles').eq('game_id', id).eq('user_id', uid).maybeSingle(),
     ]);
     if (g) acceptGame(g as GameRow);
     setHand((h?.tiles as Tile[]) ?? []);
-  }, [acceptGame, uid]);
+  }, [acceptGame, uid, shared]);
 
   const loadSeats = useCallback(async () => {
     const { data } = await supabase.from('room_seats').select(SEAT_COLS).eq('room_id', roomId).order('seat');
@@ -114,25 +133,46 @@ export function useRoom(roomId: string, uid: string) {
 
   /** After a reload: who is still out of the app (no announcement for old news). */
   const loadAlerts = useCallback(async (id: string) => {
+    if (shared) return;
     const { data } = await supabase.from('table_alerts').select('id, user_id, seat, kind, seconds, created_at')
       .eq('game_id', id).gte('created_at', new Date(Date.now() - OUT_OF_APP_MS).toISOString()).order('id');
     const latest: Record<string, TableAlert> = {};
     for (const a of data ?? []) latest[a.user_id] = { ...a, at: Date.parse(a.created_at) } as TableAlert;
     setAlerts(latest);
-  }, []);
+  }, [shared]);
 
   const loadBets = useCallback(async () => {
+    if (shared) return;
     const { data } = await supabase.from('side_bets').select('kind, amount, multiplier, status, payout, game_id').eq('room_id', roomId).eq('user_id', uid);
     if (data) setBets(data.map((b) => ({ ...b, multiplier: Number(b.multiplier), payout: Number(b.payout) })) as SideBetRow[]);
-  }, [roomId, uid]);
+  }, [roomId, uid, shared]);
+
+  /** Link viewers: the table through shared_room(); null when it can't be read right now. */
+  const loadSharedTable = useCallback(async (): Promise<RoomRow | null> => {
+    try {
+      const info = await loadSharedRoom(roomId);
+      setSharedInfo(info);
+      // The link's own game — never whatever the table moved on to.
+      return { ...info.room, current_game: info.game_id, code: '', visibility: 'private', host: null, phase_ends_at: null };
+    } catch (e) {
+      if (e instanceof ShareError && e.code === 'link_gone') setGone(true);
+      return null;
+    }
+  }, [roomId]);
 
   const loadAll = useCallback(async () => {
-    const { data } = await supabase.from('rooms').select(ROOM_COLS).eq('id', roomId).maybeSingle();
-    if (!data) {
-      setGone(true);
-      return;
+    let data: RoomRow | null;
+    if (shared) {
+      data = await loadSharedTable();
+      if (!data) return;
+    } else {
+      data = (await supabase.from('rooms').select(ROOM_COLS).eq('id', roomId).maybeSingle()).data as RoomRow | null;
+      if (!data) {
+        setGone(true);
+        return;
+      }
     }
-    setRoom(data as RoomRow);
+    setRoom(data);
     await Promise.all([loadSeats(), loadBets()]);
     if (data.current_game) {
       if (data.current_game !== gameId.current) version.current = -1;
@@ -142,7 +182,7 @@ export function useRoom(roomId: string, uid: string) {
       setGame(null);
       setHand([]);
     }
-  }, [roomId, loadSeats, loadBets, loadGame, loadAlerts]);
+  }, [roomId, shared, loadSharedTable, loadSeats, loadBets, loadGame, loadAlerts]);
 
   useEffect(() => {
     const ch = supabase
@@ -179,20 +219,31 @@ export function useRoom(roomId: string, uid: string) {
         setChat((c) => ({ ...c, [seat]: { id, at: Date.now() } }));
         playPhrase(id, seat);
       })
-      .subscribe((status) => {
-        if (status !== 'SUBSCRIBED') return;
+      .subscribe((s) => {
+        if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT' || s === 'CLOSED') setStatus('reconnecting');
+        if (s !== 'SUBSCRIBED') return;
+        setStatus(navigator.onLine === false ? 'reconnecting' : 'live');
         loadAll();
-        ch.track({ at: Date.now(), voice: myVoice.current });
+        // A link viewer isn't one of the table's people: it doesn't show up in its presence.
+        if (!shared) ch.track({ at: Date.now(), voice: myVoice.current });
       });
     channel.current = ch;
 
     const onVisible = () => document.visibilityState === 'visible' && loadAll();
+    const onOffline = () => setStatus('reconnecting');
+    const onOnline = () => { setStatus('live'); loadAll(); };
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    const every = shared ? setInterval(loadAll, SHARED_REFRESH_MS) : undefined;
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+      clearInterval(every);
       supabase.removeChannel(ch);
     };
-  }, [roomId, uid, loadAll, loadSeats, loadBets, loadGame, acceptGame]);
+  }, [roomId, uid, shared, loadAll, loadSeats, loadBets, loadGame, acceptGame]);
 
   const sendChat = useCallback((seat: Seat, id: PhraseId) => {
     setChat((c) => ({ ...c, [seat]: { id, at: Date.now() } }));
@@ -207,7 +258,7 @@ export function useRoom(roomId: string, uid: string) {
     channel.current?.track({ at: Date.now(), voice: on });
   }, []);
 
-  return { room, seats, game, hand, bets, chat, gone, online, inVoice, receivedAt, alerts, lastAlert, sendChat, setVoicePresence, reload: loadAll };
+  return { room, seats, game, hand, bets, chat, gone, online, inVoice, receivedAt, alerts, lastAlert, status, sharedInfo, sendChat, setVoicePresence, reload: loadAll };
 }
 
 export type RoomData = ReturnType<typeof useRoom>;

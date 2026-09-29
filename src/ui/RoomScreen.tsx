@@ -9,7 +9,9 @@ import { forgetTable, rememberTable } from '../lib/lastTable';
 import { api, ApiError, supabase, type Profile } from '../lib/supabase';
 import { usePlayerStats, useRoom, type PlayerStats, type RoomData, type SeatRow } from '../lib/useRoom';
 import { useSocial } from '../lib/social';
-import { useSpectatorChat, useWatcherList } from '../lib/watch';
+import { allWatchers, useLinkWatchers, useSpectatorChat, useWatcherList } from '../lib/watch';
+import { ShareMatchSheet } from './ShareMatchSheet';
+import { useShareLink } from '../lib/useShareLink';
 import { SpectatorsSheet, useShowSpectatorMessages, useSpectatorToast, useUnread } from './Spectators';
 import { openSponsor, useSponsor } from '../lib/sponsor';
 import { useVoice, type Voice } from '../lib/useVoice';
@@ -471,10 +473,16 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
   const room = r.room!;
   const game = r.game!;
   // Spectators: who's watching, what they say, and whether they may hear me (on unless I turn it off).
-  const watcherList = useWatcherList(room.id);
+  const friendWatchers = useWatcherList(room.id);
+  // …and people watching by link, when a player shared the match.
+  const linkWatchers = useLinkWatchers(room.id, room.phase === 'playing');
+  const { list: watcherList, count: watcherCount } = allWatchers(friendWatchers, linkWatchers, (n) => t.share.byLink.replace('{n}', String(n)));
   const watchers = watcherList.map((w) => w.name);
   const specChat = useSpectatorChat(room.id);
   const [specOpen, setSpecOpen] = useState(false);
+  // "Compartir partida": one link per game, kept while the table is open.
+  const share = useShareLink(room.id, game.id);
+  const [shareOpen, setShareOpen] = useState(false);
   const [showSpecMessages, setShowSpecMessages] = useShowSpectatorMessages();
   const specToast = useSpectatorToast(specChat.messages, uid, showSpecMessages);
   const specUnread = useUnread(specChat.messages, uid, specOpen);
@@ -488,6 +496,8 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
   const view = game.public_state;
   const me = r.seats.find((s) => s.user_id === uid);
   const mySeat = (me?.seat ?? 0) as Seat;
+  /** Sharing is for someone still playing a game that isn't over. */
+  const canShare = !!me && !me.left_game && room.phase === 'playing' && !game.settled && view.winner === null;
 
   const seatOf = useMemo(() => {
     const m = new Map<string, Seat>();
@@ -689,9 +699,11 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
         outOfApp={outOfApp}
         exitConfirm={t.exitConfirmOnline}
         notice={error ?? fairNotice ?? specToast}
-        onWatchersTap={watcherList.length || specChat.messages.length ? () => setSpecOpen(true) : undefined}
+        onWatchersTap={() => setSpecOpen(true)}
         watchersUnread={showSpecMessages ? specUnread : 0}
         watchers={watchers}
+        watcherCount={watcherCount}
+        onShare={canShare ? () => setShareOpen(true) : undefined}
         showXp
       />
       {card && cardStats && (
@@ -711,10 +723,12 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
         />
       )}
       {specOpen && (
-        <SpectatorsSheet watchers={watcherList} uid={uid} listeners={voice?.listeners} messages={specChat.messages}
+        <SpectatorsSheet watchers={watcherList} count={watcherCount} uid={uid} listeners={voice?.listeners} messages={specChat.messages}
+          onShare={canShare ? () => { setSpecOpen(false); setShareOpen(true); } : undefined}
           player={hear ? { hear: hear.on, onHear: hear.set, showMessages: showSpecMessages, onShowMessages: setShowSpecMessages } : undefined}
           onClose={() => setSpecOpen(false)} />
       )}
+      {shareOpen && <ShareMatchSheet share={share} onClose={() => setShareOpen(false)} />}
       {me?.away && room.phase === 'playing' && (
         <div className="away-banner">
           <span>{t.awayBanner}<small>{t.tapToReturn}</small></span>

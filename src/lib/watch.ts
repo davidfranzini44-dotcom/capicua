@@ -2,6 +2,7 @@
 // and what they say to it (20261008000000_spectators).
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, onlineEnabled, supabase } from './supabase';
+import { loadLinkWatchers, type LinkWatchers } from './shareMatch';
 
 export interface Watcher { id: string; name: string }
 
@@ -35,8 +36,35 @@ export function useWatcherList(roomId: string | null): Watcher[] {
   return names;
 }
 
+/**
+ * People watching this table through share links (migration 20261011000000): how many, and
+ * the names of those who have one — never who they are otherwise. Checked every 20 s.
+ */
+export function useLinkWatchers(roomId: string | null, on = true): LinkWatchers {
+  const [w, setW] = useState<LinkWatchers>({ count: 0, names: [] });
+  useEffect(() => {
+    if (!roomId || !on || !onlineEnabled) return;
+    let alive = true;
+    const load = () => loadLinkWatchers(roomId).then((r) => { if (alive) setW(r ?? { count: 0, names: [] }); }, () => {});
+    load();
+    const every = setInterval(load, 20_000);
+    return () => { alive = false; clearInterval(every); };
+  }, [roomId, on]);
+  return w;
+}
+
+/** Everyone watching, for the 👁 panel: friends by name, then link viewers (named, then "n by link"). */
+export function allWatchers(friends: Watcher[], link: LinkWatchers, byLinkLabel: (n: number) => string): { list: Watcher[]; count: number } {
+  const named = link.names.filter((n) => !friends.some((f) => f.name === n)).map((name, i) => ({ id: `link-${i}`, name }));
+  const rest = Math.max(0, link.count - link.names.length);
+  return {
+    list: [...friends, ...named, ...(rest ? [{ id: 'link-rest', name: byLinkLabel(rest) }] : [])],
+    count: friends.length + link.count,
+  };
+}
+
 export interface SpectatorMessage { id: number; user_id: string; name: string; body: string; created_at: string }
-const SPECTATOR_ERRORS = ['not_watching', 'bad_message', 'too_fast', 'banned'];
+const SPECTATOR_ERRORS = ['not_watching', 'bad_message', 'too_fast', 'banned', 'name_required'];
 
 /** What spectators have said at this table (the last 30), live; `send` is for spectators only. */
 export function useSpectatorChat(roomId: string | null) {

@@ -30,19 +30,29 @@ export async function api<T = { ok: true }>(action: string, payload: Record<stri
 }
 
 /**
- * Where Google sends the player back: this page, keeping only invite codes
- * (?sala= table, ?torneo= tournament). Leftovers from an earlier try
- * (?error=…, #access_token=…) must not ride along — supabase-js sees an error
- * in the URL and throws the new login away.
+ * What a sign-in round trip keeps of the page address: invite codes (?sala= table,
+ * ?torneo= tournament) and a shared match (?ver=<token>, with ?modo=transmision only
+ * alongside it). Leftovers from an earlier try (?error=…, #access_token=…) must not
+ * ride along — supabase-js sees an error in the URL and throws the new login away.
  */
-export function authReturnUrl() {
-  const from = new URLSearchParams(location.search);
+export function keptAuthParams(search: string): string {
+  const from = new URLSearchParams(search);
   const keep = new URLSearchParams();
   for (const k of ['sala', 'torneo']) {
     const v = from.get(k);
     if (v) keep.set(k, v);
   }
-  const qs = keep.toString();
+  const ver = from.get('ver');
+  if (ver && /^[A-Za-z0-9_-]{40,64}$/.test(ver)) {
+    keep.set('ver', ver);
+    if (from.get('modo') === 'transmision') keep.set('modo', 'transmision');
+  }
+  return keep.toString();
+}
+
+/** Where Google sends the player back: this page, with only what keptAuthParams keeps. */
+export function authReturnUrl() {
+  const qs = keptAuthParams(location.search);
   return `${location.origin}${location.pathname}${qs ? `?${qs}` : ''}`;
 }
 

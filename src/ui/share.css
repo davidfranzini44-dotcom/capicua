@@ -1,0 +1,101 @@
+/* ---------- Compartir partida (the player's sheet) ---------- */
+.share-sheet { gap: 12px; max-height: min(92dvh, 860px); overflow-y: auto; }
+.share-sheet h2 { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 1.6rem; line-height: 1.1; }
+.share-sheet .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.share-reassure { margin: 0; text-align: center; }
+.share-watch, .share-cast { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.share-cast { padding: 12px; border: 1px solid #ffffff1f; border-radius: 16px; background: #ffffff08; }
+.share-cast h3 { margin: 0; font-size: 1rem; text-align: center; }
+.share-cast-row { display: grid; grid-template-columns: 168px minmax(0, 1fr); align-items: center; gap: 12px; }
+.share-qr { width: 168px; height: 168px; display: grid; place-items: center; border-radius: 12px; background: #fffdf5; color: #0b251b; }
+.share-qr img { width: 100%; height: 100%; border-radius: 12px; image-rendering: pixelated; }
+.share-qr-failed { margin: 0; color: #ff9b8a; font-size: .85rem; }
+.share-steps { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; font-size: .84rem; line-height: 1.35; text-align: left; }
+.share-url { font-size: .76rem; color: var(--muted); }
+.share-status { margin: 0; min-height: 1.3em; }
+.share-error, .share-revoked { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.share-error p { margin: 0; color: #ff9b8a; }
+.share-others { margin: 0; }
+.share-open { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+@media (max-width: 380px) {
+  .share-cast-row { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .share-qr { width: 200px; height: 200px; }
+}
+
+/* ---------- watching a shared match ---------- */
+.live-pill {
+  display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 2px 9px; border-radius: 999px;
+  font: 800 .7rem/1.5 var(--font); letter-spacing: .05em; text-transform: uppercase; background: #c62828; color: #fff;
+}
+.live-pill.live::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: live-dot 1.6s ease-in-out infinite; }
+.live-pill.reconnecting { background: #5c4d14; color: #ffe8a3; }
+@keyframes live-dot { 50% { opacity: .3; } }
+.share-closes { margin: 4px 0 0; font-weight: 800; color: #f5c542; }
+.share-message { gap: 12px; padding: 24px 16px; text-align: center; }
+.share-message h2 { margin: 0; }
+.share-message .fine { max-width: 360px; }
+.share-message-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+
+/* ---------- the second-phone broadcast ---------- */
+.cast-setup { max-width: 460px; margin: auto; gap: 12px; padding: 24px 16px; }
+.cast-setup h2 { margin: 0; }
+.cast-setup > h2, .cast-setup > .fine, .cast-setup .cast-tips { width: 100%; text-align: left; }
+.cast-tips { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; text-align: left; line-height: 1.35; }
+.cast-wake small { display: block; }
+
+html.broadcast-mode, html.broadcast-mode body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+.broadcast-canvas {
+  position: fixed; inset: 0; overflow: hidden; background: #071e19;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+/* TikTok draws its own LIVE overlay over the top strip, the right edge and the lowest
+   quarter of the screen: the table keeps out of them (the bottom quarter stays quiet). */
+.table-redesign.table-focus.table-broadcast {
+  height: 100dvh; min-height: 0; max-width: none; overflow: hidden;
+  padding: max(7dvh, env(safe-area-inset-top)) 11vw 25dvh 3vw;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.table-redesign.table-focus.table-broadcast .table-header { display: block; width: 100%; padding: 0 0 6px; }
+.table-redesign.table-focus.table-broadcast .table-topbar { display: flex; justify-content: center; margin: 0 0 4px; }
+.table-redesign.table-focus.table-broadcast .table-wordmark { display: block; font-size: 20px; }
+.table-redesign.table-focus.table-broadcast .table-header .scores { width: 100%; margin: 0 auto; }
+.table-redesign.table-focus.table-broadcast .table-rail { width: 100%; }
+/* The board is the star: a slimmer scoreboard, and the bottom player's photo beside the
+   name and fichas instead of above them. */
+.table-redesign.table-focus.table-broadcast .table-wordmark { font-size: 18px; }
+.table-redesign.table-focus.table-broadcast .table-header .score b { font-size: 24px; }
+.table-redesign.table-focus.table-broadcast .self-seat {
+  display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; align-items: center;
+  column-gap: 8px; row-gap: 2px; bottom: 8px; min-width: 0; padding: 5px 12px 5px 5px;
+}
+.table-redesign.table-focus.table-broadcast .self-seat .avatar { grid-row: 1 / 3; width: 40px; height: 40px; }
+.table-redesign.table-focus.table-broadcast .self-seat > b { justify-self: start; }
+.table-redesign.table-focus.table-broadcast .board-wrap { bottom: max(15%, 70px); }
+.table-broadcast .self-backs { display: inline-flex; align-items: center; gap: 4px; justify-self: start; }
+.table-broadcast .self-backs .backs { display: flex; gap: 2px; }
+/* The sponsor's lower third sits just above the quarter TikTok's comments cover. */
+.broadcast-foot { display: flex; flex-direction: column; align-items: stretch; padding-top: 1.2dvh; }
+.broadcast-foot:empty { padding: 0; }
+.broadcast-sponsor {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: 14px; background: #10291fe6; border: 1px solid #d8b85566; color: #fff8de;
+}
+.broadcast-sponsor .sponsor-card-logo { width: 40px; height: 40px; }
+.cast-card {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 12px; text-align: center;
+  padding: 0 11vw 25dvh 3vw; color: #f2e4bd; font: 800 1.3rem var(--font);
+}
+.cast-card p { margin: 0; }
+.cast-banner {
+  position: absolute; top: max(7dvh, env(safe-area-inset-top)); left: 3vw; right: 11vw; margin: 0; padding: 6px 10px;
+  border-radius: 12px; background: #5c4d14f2; color: #ffe8a3; font: 700 .85rem var(--font); text-align: center;
+}
+.cast-exit {
+  position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 10px;
+  padding: 16px; border-radius: 18px; background: #0b251bf2; border: 1px solid #ffffff2e; box-shadow: 0 12px 30px #000a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-pill.live::before { animation: none; }
+}

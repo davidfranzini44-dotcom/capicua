@@ -43,6 +43,10 @@ import '../ui/table.css';
 import { SponsorCard, SponsorEditor, type SponsorStatsRow } from '../ui/AdminSponsors';
 import { SponsorReportView } from '../ui/SponsorReport';
 import { ListenButton, SpectatorsSheet } from '../ui/Spectators';
+import { ShareMatchSheet } from '../ui/ShareMatchSheet';
+import type { ShareLinkState } from '../lib/useShareLink';
+import { BroadcastCanvas, BroadcastSetup, ShareProblem, SharedTableView, type SharedBoard } from '../ui/SharedWatch';
+import '../ui/share.css';
 import { ChatCircleDotsIcon } from '@phosphor-icons/react';
 import type { SponsorReport, TableSponsor } from '../lib/sponsor';
 
@@ -654,6 +658,42 @@ function Screen({ s }: { s: string }) {
   if (s === 'settings-push') {
     return <SettingsSheet onClose={noop} extra={<><PushRow push={fakePush('off')} /><PushRow push={fakePush('install')} /></>} />;
   }
+  if (s.startsWith('share') || s.startsWith('broadcast') || s === 'shared-watch' || s === 'shared-reconnecting') {
+    // Sharing a live match: the player's sheet, the link viewer's table, the TikTok screen.
+    const long = s.includes('long');
+    let g = newGame(() => 0.37, publicRules('2v2'));
+    for (let i = 0; i < (s === 'share-ended' ? 400 : 17) && !g.handResult; i++) g = applyMove(g, forcedMove(g, g.turn) ?? chooseMove(g, g.turn, () => 0.5));
+    let view = { ...publicState(g), turn: (s === 'share-ended' ? g.turn : 3) as Seat };
+    if (s === 'share-ended') view = { ...view, scores: [104, 57], winner: 0 };
+    const sponsor = s.includes('nosponsor') ? null : { ...FAKE_SPONSOR, tileUrl: FAKE_TILE_LOGO };
+    const board: SharedBoard = {
+      view, focus: 0,
+      names: long ? ['Maximiliano Rodríguez', 'Yokasta Altagracia', 'Wilfri de los Santos', 'Kirsy Mercedes'] : ['Robert', 'Yokasta', 'Wilfri', 'Kirsy'],
+      levels: [7, 13, 6, 5], avatars: [null, face('#c0487a'), null, face('#2d8a5f')], away: new Set<Seat>(),
+      sponsor, turnDeadline: Date.now() + 11_000, chat: {}, pot: 3000,
+    };
+    if (s === 'share-invalid') return <ShareProblem p="invalid" onHome={noop} />;
+    if (s === 'share-gone') return <ShareProblem p="gone" onHome={noop} />;
+    if (s === 'broadcast-setup') return <BroadcastSetup fullscreen wake keepAwake onKeepAwake={noop} onStart={noop} onLeave={noop} />;
+    if (s.startsWith('broadcast')) return <BroadcastCanvas board={board} overlay={s === 'broadcast-lost' ? 'lost' : s === 'broadcast-ended' ? 'ended' : null} onLeave={noop} />;
+    if (s === 'share-match') {
+      const share: ShareLinkState = {
+        link: { id: 'l1', token: 'Q2FwaWN1YS1wcmV2aWV3LXRva2VuLW5vdC1yZWFs1234', expiresAt: Date.now() + 4 * 3600_000, focusSeat: 0, gameId: 'g1' },
+        busy: false, error: null, revoked: false, others: [], create: async () => {}, revoke: async () => {}, revokeOthers: async () => {}, refreshOthers: async () => {},
+      };
+      return (
+        <>
+          <TableView view={view} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Wilfri', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
+            chat={{}} onChat={noop} endActions={null} watchers={[]} onWatchersTap={noop} onShare={noop} />
+          <ShareMatchSheet share={share} onClose={noop} />
+        </>
+      );
+    }
+    return (
+      <SharedTableView board={board} status={s === 'shared-reconnecting' ? 'reconnecting' : 'live'} endsAt={Date.now() + 102_000}
+        watchers={['Nadia', '3 con enlace']} watcherCount={4} unread={1} onWatchersTap={noop} onLeave={noop} onMessage={noop} />
+    );
+  }
   if (s === 'watch' || s === 'watch-sponsor' || s === 'watched') {
     // watch: I'm watching Robert (seat 2). watched: I'm playing and two friends are watching.
     let g = newGame(() => 0.37, publicRules('2v2'));
@@ -820,7 +860,8 @@ const ChestArtPreview = () => <ChestArt kind="silver" className="bounce-in" />;
 };
 
 function App() {
-  const [lang, setLang] = useState<Lang>('es');
+  // &lang=en shows any scenario in English.
+  const [lang, setLang] = useState<Lang>(() => (new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'es'));
   const s = new URLSearchParams(location.search).get('s') ?? 'countdown';
   return (
     <LangContext.Provider value={{ lang, t: strings(lang), setLang }}>

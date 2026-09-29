@@ -55,8 +55,14 @@ export function useUnread(messages: SpectatorMessage[], uid: string, open: boole
   return messages.filter((m) => m.id > readUpTo && m.user_id !== uid).length;
 }
 
-export function SpectatorsSheet({ watchers, uid, listeners, messages, onSend, player, onClose }: {
+export function SpectatorsSheet({ watchers, count, uid, listeners, messages, onSend, readOnlyNote, onShare, player, onClose }: {
   watchers: Watcher[]; uid: string;
+  /** Everyone watching, when some aren't listed one by one (people watching by link). */
+  count?: number;
+  /** Shown instead of the message box when this spectator can only read. */
+  readOnlyNote?: string;
+  /** Players: "Compartir partida". */
+  onShare?: () => void;
   /** Watchers listening to the voice right now (players see it). */
   listeners?: Set<string>;
   messages: SpectatorMessage[];
@@ -91,7 +97,8 @@ export function SpectatorsSheet({ watchers, uid, listeners, messages, onSend, pl
 
   return (
     <Sheet onClose={onClose} className="spec-sheet">
-      <h2>👁 {t.spec.title} · {watchers.length}</h2>
+      <h2>👁 {t.spec.title} · {count ?? watchers.length}</h2>
+      {onShare && <button className="btn primary wide share-open" onClick={onShare}>{t.share.button}</button>}
       {watchers.length === 0 ? <p className="fine">{t.spec.none}</p> : (
         <div className="spec-watchers">
           {watchers.map((w) => (
@@ -121,6 +128,7 @@ export function SpectatorsSheet({ watchers, uid, listeners, messages, onSend, pl
           <p key={m.id} className={m.user_id === uid ? 'mine' : ''}><b>{m.name}</b> {m.body}</p>
         ))}
       </div>
+      {!onSend && readOnlyNote && <p className="fine left">{readOnlyNote}</p>}
       {onSend && (
         <form className="spec-form" onSubmit={send}>
           <input className="text-input" maxLength={80} placeholder={t.spec.chatPh} value={text} onChange={(e) => setText(e.target.value)} />
