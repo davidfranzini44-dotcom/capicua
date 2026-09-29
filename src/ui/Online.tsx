@@ -16,6 +16,7 @@ import { ShopTab } from './Shop';
 import { TournamentForm, TournamentScreen, TournamentsSection } from './Tournament';
 import { FriendsSection, InviteToast, joinInvitedRoom, LastSeenRow, PushRow, QuickInviteSheet } from './Friends';
 import { usePresenceHeartbeat } from '../lib/presence';
+import { SpectatorsHearRow } from './Spectators';
 import { MissionsSheet } from './Missions';
 import { useMissions } from '../lib/missions';
 import { usePush } from '../lib/push';
@@ -404,6 +405,7 @@ export function MainScreen(p: MainProps) {
           <>
             {p.online && <PushRow push={push} />}
             {p.online && <LastSeenRow />}
+            {p.online && <SpectatorsHearRow initial={p.profile?.spectators_hear ?? true} />}
             {admin && <button className="btn primary wide" onClick={() => { setSheet(null); p.onAdmin?.(); }}>🛡️ {t.admin.title}</button>}
             <button className="link-btn signout" onClick={() => supabase.auth.signOut()}>{t.signOut}</button>
           </>

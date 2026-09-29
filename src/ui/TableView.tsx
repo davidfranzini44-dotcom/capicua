@@ -75,10 +75,14 @@ export interface TableViewProps {
   showXp?: boolean;
   /** A short message (e.g. a refused move) shown in the line under the hand, never over the table. */
   notice?: string | null;
-  /** Watching a friend's game: their seat is "mine", their hand stays face down, no playing. */
-  watching?: { name: string; onLeave: () => void };
+  /** Watching a friend's game: their seat is "mine", their hand stays face down, no playing. `tools`: listen / message. */
+  watching?: { name: string; onLeave: () => void; tools?: ReactNode };
   /** Friends watching this table (the players can always see who). */
   watchers?: string[];
+  /** Tap 👁: who's watching and what they say. */
+  onWatchersTap?: () => void;
+  /** Spectator messages since the panel was last opened. */
+  watchersUnread?: number;
   /** Board look: the Focus Table (default) or the classic board, kept for the design comparison preview. */
   presentation?: 'classic' | 'focus';
   /** The sponsor printed on this table's felt, if any. */
@@ -408,7 +412,8 @@ export function TableView(props: TableViewProps) {
             if (confirm(exitConfirm ?? t.exitConfirm)) onExit();
           }}><XIcon size={25} /></button>
         </div>
-        <Scores view={view} mySeat={mySeat} name={name} colorOf={colorOf} pot={pot} watchers={watchers} watching={!!watching} />
+        <Scores view={view} mySeat={mySeat} name={name} colorOf={colorOf} pot={pot} watchers={watchers} watching={!!watching}
+          onWatchersTap={props.onWatchersTap} unread={props.watchersUnread} />
       </header>
 
       <div className="table-rail"><div className="felt">
@@ -468,7 +473,7 @@ export function TableView(props: TableViewProps) {
 
       </div></div>
 
-      <footer className="my-area">
+      <footer className={`my-area ${watching ? 'watching' : ''}`}>
         {powersOpen && arcade && (
           <PowersPanel state={mine} seat={mySeat} onPick={pickPower}
             onCallPass={() => { setPowersOpen(false); setPending(null); setCallArmed(true); }}
@@ -537,7 +542,8 @@ export function TableView(props: TableViewProps) {
         )}
         {watching ? (
           <div className="table-tools watch-tools">
-            <button className="btn ghost" onClick={watching.onLeave}>{t.watch.stop}</button>
+            {watching.tools}
+            <button className="btn ghost" onClick={watching.onLeave} aria-label={t.watch.stop}>{watching.tools ? t.watch.stopShort : t.watch.stop}</button>
           </div>
         ) : (
           <div className="table-tools">
@@ -595,9 +601,9 @@ export function TableView(props: TableViewProps) {
   );
 }
 
-function Scores({ view, mySeat, name, colorOf, pot, watchers, watching }: {
+function Scores({ view, mySeat, name, colorOf, pot, watchers, watching, onWatchersTap, unread = 0 }: {
   view: PublicState; mySeat: Seat; name: (s: Seat) => string; colorOf: (s: Seat) => string; pot?: number;
-  watchers?: string[]; watching?: boolean;
+  watchers?: string[]; watching?: boolean; onWatchersTap?: () => void; unread?: number;
 }) {
   const { t, lang } = useI18n();
   const mode = view.rules.mode;
@@ -613,7 +619,14 @@ function Scores({ view, mySeat, name, colorOf, pot, watchers, watching }: {
   const middle = (
     <div className="target">
       {t.to} {view.rules.target}
-      <small>{t.hand} {view.handNo}{watchers?.length ? <span className="watchers" title={`${t.watch.watchedBy}: ${watchers.join(', ')}`} aria-label={`${t.watch.watchedBy}: ${watchers.join(', ')}`}> · 👁 {watchers.length}</span> : null}</small>
+      <small>{t.hand} {view.handNo}{(watchers?.length || (watching && onWatchersTap)) ? (
+        onWatchersTap ? (
+          <button type="button" className="watchers watchers-btn" onClick={onWatchersTap}
+            aria-label={`${t.spec.title}: ${watchers?.join(', ') ?? ''}${unread ? ` · ${unread}` : ''}`}>
+            👁 {watchers?.length ?? 0}{unread > 0 && <i className="watchers-dot" aria-hidden />}
+          </button>
+        ) : <span className="watchers" title={`${t.watch.watchedBy}: ${watchers!.join(', ')}`} aria-label={`${t.watch.watchedBy}: ${watchers!.join(', ')}`}> · 👁 {watchers!.length}</span>
+      ) : null}</small>
       {pot ? <span className="pot">🪙 {pot.toLocaleString()}</span> : null}
     </div>
   );

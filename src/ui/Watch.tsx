@@ -1,12 +1,16 @@
 // Watching a friend's game: the board from their seat, their hand face down,
 // nobody's tiles revealed. Loaded on demand (like the table screen).
 import { useEffect, useState } from 'react';
+import { ChatCircleDotsIcon } from '@phosphor-icons/react';
 import type { Seat } from '../../supabase/functions/_shared/domino.ts';
 import { useI18n } from '../i18n';
 import { ApiError, supabase } from '../lib/supabase';
 import { usePlayerStats, useRoom } from '../lib/useRoom';
 import { useErrorText } from './common';
 import { TableView } from './TableView';
+import { useVoice } from '../lib/useVoice';
+import { useSpectatorChat, useWatcherList } from '../lib/watch';
+import { ListenButton, SpectatorsSheet, useSpectatorToast, useUnread } from './Spectators';
 import { openSponsor, useSponsor } from '../lib/sponsor';
 
 export default function WatchScreen({ friendId, friendName, uid, onExit }: {
@@ -46,6 +50,13 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
   const r = useRoom(roomId, uid);
   const stats = usePlayerStats(r.seats.filter((s) => s.user_id && !s.is_bot).map((s) => s.user_id!));
   const sponsor = useSponsor(r.game?.sponsor_id);
+  // Spectators: see each other, write to the table, listen to the players who allow it (never talk).
+  const voice = useVoice(roomId, { watching: friendId });
+  const watcherList = useWatcherList(roomId);
+  const specChat = useSpectatorChat(roomId);
+  const [specOpen, setSpecOpen] = useState(false);
+  const specToast = useSpectatorToast(specChat.messages, uid, true);
+  const specUnread = useUnread(specChat.messages, uid, specOpen);
 
   // Stop counting as a watcher however this screen closes.
   useEffect(() => () => { supabase.rpc('stop_watching', { p_room: roomId }).then(() => {}); }, [roomId]);
@@ -74,11 +85,13 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
     return (id && stats[id]?.avatar_url) || null;
   });
   const away = new Set(r.seats.filter((s) => s.away).map((s) => s.seat));
+  const speaking = new Set(r.seats.filter((s) => s.user_id && voice.speaking.has(s.user_id)).map((s) => s.seat as Seat));
   const turnSeat = r.seats.find((s) => s.seat === view.turn);
   const turnDeadline = turnSeat && !turnSeat.is_bot && !turnSeat.away && game.auto_delay_ms === game.turn_ms ? r.receivedAt + game.turn_ms : null;
   const noop = () => {};
 
   return (
+    <>
     <TableView
       view={view}
       myHand={[]}
@@ -97,7 +110,24 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
       sponsor={sponsor}
       onSponsorTap={sponsor ? () => openSponsor(sponsor, game.id) : undefined}
       endActions={<button className="btn primary" onClick={leave}>{t.watch.stop}</button>}
-      watching={{ name: friendName, onLeave: leave }}
+      speaking={speaking}
+      notice={specToast}
+      watchers={watcherList.map((w) => w.name)}
+      onWatchersTap={() => setSpecOpen(true)}
+      watchersUnread={specUnread}
+      watching={{
+        name: friendName, onLeave: leave,
+        tools: (
+          <>
+            <ListenButton voice={voice} />
+            <button className="btn ghost watch-msg" onClick={() => setSpecOpen(true)}><ChatCircleDotsIcon size={20} weight="fill" />{t.spec.message}{specUnread > 0 && <i className="watchers-dot" aria-hidden />}</button>
+          </>
+        ),
+      }}
     />
+    {specOpen && (
+      <SpectatorsSheet watchers={watcherList} uid={uid} messages={specChat.messages} onSend={specChat.send} onClose={() => setSpecOpen(false)} />
+    )}
+    </>
   );
 }

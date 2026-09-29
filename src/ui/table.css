@@ -508,3 +508,13 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 .sp-tiles { display: flex !important; align-items: flex-end; justify-content: center; gap: 2px; padding-bottom: 6%; }
 .sp-tiles > * { width: 34px; height: auto; transform: rotate(90deg); margin: 0 -6px; }
 .sp-row .seg button { font-size: 1.5rem; line-height: 1; }
+
+/* Watching: no hand, so the footer is simply the watch bar, the status line (spectator
+   messages show there), then one row of tools — at every size, short phones included. */
+.my-area.watching { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.my-area.watching > .table-instruction { margin: 0; justify-content: center; }
+.my-area.watching .table-tools.watch-tools { display: flex; flex-wrap: nowrap; justify-content: center; gap: 8px; }
+.my-area.watching .watch-tools > * { flex: 1 1 0; min-width: 0; white-space: nowrap; padding-inline: 8px; font-size: .88rem; }
+.my-area.watching .watch-tools svg { flex: none; }
+.my-area.watching .watch-tools > * { padding-inline: 6px; gap: 4px; font-size: .82rem; }
+@media (max-width: 360px) { .my-area.watching .watch-tools svg { display: none; } .my-area.watching .watch-tools > * { font-size: .78rem; } }

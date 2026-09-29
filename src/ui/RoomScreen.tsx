@@ -9,7 +9,8 @@ import { forgetTable, rememberTable } from '../lib/lastTable';
 import { api, ApiError, supabase, type Profile } from '../lib/supabase';
 import { usePlayerStats, useRoom, type PlayerStats, type RoomData, type SeatRow } from '../lib/useRoom';
 import { useSocial } from '../lib/social';
-import { useWatchers } from '../lib/watch';
+import { useSpectatorChat, useWatcherList } from '../lib/watch';
+import { SpectatorsSheet, useShowSpectatorMessages, useSpectatorToast, useUnread } from './Spectators';
 import { openSponsor, useSponsor } from '../lib/sponsor';
 import { useVoice, type Voice } from '../lib/useVoice';
 import { COOLDOWN_MS, type PhraseId } from '../quickchat';
@@ -34,7 +35,13 @@ export function RoomScreen({ roomId, uid, profile, onLeave, onBrokeUp, onRequeue
   const me = r.seats.find((s) => s.user_id === uid);
   const myVoiceRoom = r.room && me ? voiceRoomFor(r.room.kind, r.room.mode, r.room.code, me.seat) : null;
   const voiceOk = myVoiceRoom !== null;
-  const voice = useVoice(voiceOk ? roomId : null);
+  // Spectators hear me unless I turn it off (saved on my profile; my own app enforces it in the call).
+  const [spectatorsHear, setHearState] = useState(profile.spectators_hear ?? true);
+  const setSpectatorsHear = (v: boolean) => {
+    setHearState(v);
+    supabase.rpc('set_spectators_hear', { p_on: v }).then(({ error }) => { if (error) setHearState(!v); });
+  };
+  const voice = useVoice(voiceOk ? roomId : null, { spectatorsHear });
 
   // Let the table know I'm on voice, so their "Voz" button lights up.
   const { setVoicePresence } = r;
@@ -92,6 +99,7 @@ export function RoomScreen({ roomId, uid, profile, onLeave, onBrokeUp, onRequeue
     return (
       <OnlineTable
         r={r} uid={uid} voice={voiceOk ? voice : null} voiceControl={voiceControl} onLeave={leave} onForfeit={forfeit}
+        hear={{ on: spectatorsHear, set: setSpectatorsHear }}
         onTournament={tournamentId ? () => { voice.leave(); forgetTable(); onTournament(tournamentId); } : undefined}
         onPlayAnother={async () => {
           voice.leave();
@@ -439,8 +447,10 @@ export { ProfileCard };
 
 // ---------- the table ----------
 
-export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, onPlayAnother, onTournament }: {
+export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, onPlayAnother, onTournament, hear }: {
   r: RoomData; uid: string; voice: Voice | null; voiceControl?: ReactNode;
+  /** May spectators hear my voice (and the switch for it). */
+  hear?: { on: boolean; set: (v: boolean) => void };
   onLeave: () => void; onPlayAnother: () => void; onTournament?: () => void;
   /** Give the game up for good and be free to play another. */
   onForfeit?: () => void;
@@ -454,7 +464,14 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
   const [chest, setChest] = useState<ChestKind | null>(null);
   const room = r.room!;
   const game = r.game!;
-  const watchers = useWatchers(room.id);
+  // Spectators: who's watching, what they say, and whether they may hear me (on unless I turn it off).
+  const watcherList = useWatcherList(room.id);
+  const watchers = watcherList.map((w) => w.name);
+  const specChat = useSpectatorChat(room.id);
+  const [specOpen, setSpecOpen] = useState(false);
+  const [showSpecMessages, setShowSpecMessages] = useShowSpectatorMessages();
+  const specToast = useSpectatorToast(specChat.messages, uid, showSpecMessages);
+  const specUnread = useUnread(specChat.messages, uid, specOpen);
   const sponsor = useSponsor(game.sponsor_id);
   // Messages at the table fade on their own (they show under the hand, not over the board).
   useEffect(() => {
@@ -665,7 +682,9 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
         offline={offline}
         outOfApp={outOfApp}
         exitConfirm={t.exitConfirmOnline}
-        notice={error ?? fairNotice}
+        notice={error ?? fairNotice ?? specToast}
+        onWatchersTap={watcherList.length || specChat.messages.length ? () => setSpecOpen(true) : undefined}
+        watchersUnread={showSpecMessages ? specUnread : 0}
         watchers={watchers}
         showXp
       />
@@ -684,6 +703,11 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
             </>
           )}
         />
+      )}
+      {specOpen && (
+        <SpectatorsSheet watchers={watcherList} uid={uid} listeners={voice?.listeners} messages={specChat.messages}
+          player={hear ? { hear: hear.on, onHear: hear.set, showMessages: showSpecMessages, onShowMessages: setShowSpecMessages } : undefined}
+          onClose={() => setSpecOpen(false)} />
       )}
       {me?.away && room.phase === 'playing' && (
         <div className="away-banner">

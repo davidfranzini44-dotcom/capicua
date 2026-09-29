@@ -1706,7 +1706,13 @@ export const handlers = {
   // --- voice ---
 
   /** LiveKit access: whole table in custom rooms, teammates only in public 2v2, none in public 1v1/ffa. */
-  async voice_token(uid: string, { roomId }: { roomId: string }) {
+  /**
+   * A LiveKit token for the table's voice. Players talk and listen; a spectator
+   * (`watching` = the friend they came to see) only listens, in that friend's
+   * voice room, as `spec-<id>` — each player's own app decides whether
+   * spectators may hear them.
+   */
+  async voice_token(uid: string, { roomId, watching }: { roomId: string; watching?: string }) {
     const key = Deno.env.get('LIVEKIT_API_KEY');
     const secret = Deno.env.get('LIVEKIT_API_SECRET');
     const url = Deno.env.get('LIVEKIT_URL');
@@ -1714,6 +1720,20 @@ export const handlers = {
     const [row] = await sql`
       select r.code, r.kind, r.mode, s.seat, s.name from rooms r join room_seats s on s.room_id = r.id
       where r.id = ${roomId} and s.user_id = ${uid}`;
+    if (!row && watching) {
+      const [w] = await sql`
+        select r.code, r.kind, r.mode, s.seat, (select display_name from profiles where id = ${uid}) as name
+        from rooms r
+        join room_spectators v on v.room_id = r.id and v.user_id = ${uid} and v.expires_at > now()
+        join room_seats s on s.room_id = r.id and s.user_id = ${watching}
+        where r.id = ${roomId}`;
+      if (!w) throw new HttpError(403, 'not_in_room');
+      const listenRoom = voiceRoomFor(w.kind, w.mode, w.code, w.seat);
+      if (!listenRoom) throw new HttpError(403, 'voice_disabled');
+      const at = new AccessToken(key, secret, { identity: `spec-${uid}`, name: w.name ?? '', ttl: '3h' });
+      at.addGrant({ room: listenRoom, roomJoin: true, canPublish: false, canSubscribe: true, canPublishData: false });
+      return { url, token: await at.toJwt(), listenOnly: true };
+    }
     if (!row) throw new HttpError(403, 'not_in_room');
     const voiceRoom = voiceRoomFor(row.kind, row.mode, row.code, row.seat);
     if (!voiceRoom) throw new HttpError(403, 'voice_disabled');

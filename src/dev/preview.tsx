@@ -41,6 +41,8 @@ import { feltById, tilesById } from '../../supabase/functions/_shared/cosmetics.
 import '../ui/table.css';
 import { SponsorCard, SponsorEditor, type SponsorStatsRow } from '../ui/AdminSponsors';
 import { SponsorReportView } from '../ui/SponsorReport';
+import { ListenButton, SpectatorsSheet } from '../ui/Spectators';
+import { ChatCircleDotsIcon } from '@phosphor-icons/react';
 import type { SponsorReport } from '../lib/sponsor';
 
 /** A made-up sponsor logo (transparent SVG) for the sponsored-table previews. */
@@ -97,7 +99,7 @@ function PreviewLook({ children, felt = 'verde', tiles = 'marfil', xp = 1_500 }:
 }
 /** A pretend voice session in a given state, for the voice button previews. */
 const fakeVoice = (over: Partial<Voice>): Voice => ({
-  status: 'off', micOn: false, micBlocked: false, speaking: new Set(), mutedPeers: new Set(), needsTap: false,
+  status: 'off', micOn: false, micBlocked: false, speaking: new Set(), mutedPeers: new Set(), needsTap: false, listeners: new Set(), listenOnly: false,
   join: async () => {}, leave: () => {}, setMic: async () => false, enableAudio: () => {}, togglePeer: () => {}, ...over,
 });
 const inFuture = (s: number) => new Date(Date.now() + s * 1000).toISOString();
@@ -577,11 +579,26 @@ function Screen({ s }: { s: string }) {
     const view = { ...publicState(g), turn: 2 as Seat };
     return s === 'watch' ? (
       <TableView view={view} myHand={[]} mySeat={2} names={['Wilfri', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
-        chat={{}} onChat={noop} endActions={null} turnDeadline={Date.now() + 9000} watching={{ name: 'Robert', onLeave: noop }} />
+        chat={{}} onChat={noop} endActions={null} turnDeadline={Date.now() + 9000} watchers={['Papo', 'Wilfri']} onWatchersTap={noop} watchersUnread={2}
+        notice="👁 Papo: ¡Esa capicúa viene!"
+        watching={{ name: 'Robert', onLeave: noop, tools: <><ListenButton voice={fakeVoice({ status: 'on' })} /><button className="btn ghost watch-msg"><ChatCircleDotsIcon size={20} weight="fill" />Mensaje<i className="watchers-dot" /></button></> }} />
     ) : (
       <TableView view={view} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
-        chat={{}} onChat={noop} endActions={null} watchers={['Papo', 'Chelo']} />
+        chat={{}} onChat={noop} endActions={null} watchers={['Papo', 'Chelo']} onWatchersTap={noop} watchersUnread={1} />
     );
+  }
+  if (s === 'spectators' || s === 'spectators-watcher') {
+    // The 👁 panel: a player's view (switches, who's listening) or a spectator's (can write).
+    const watchers = [{ id: 'u1', name: 'Papo' }, { id: 'u2', name: 'Chelo' }, { id: 'me', name: 'Wilfri' }];
+    const msgs = [
+      { id: 1, user_id: 'u1', name: 'Papo', body: '¡Qué tranque tan bueno!', created_at: '' },
+      { id: 2, user_id: 'u2', name: 'Chelo', body: 'Robert está en llamas hoy 🔥', created_at: '' },
+      { id: 3, user_id: 'me', name: 'Wilfri', body: 'Dale que ya casi', created_at: '' },
+    ];
+    return s === 'spectators'
+      ? <SpectatorsSheet watchers={watchers.slice(0, 2)} uid="me" listeners={new Set(['u1'])} messages={msgs.slice(0, 2)} onClose={noop}
+          player={{ hear: true, onHear: noop, showMessages: true, onShowMessages: noop }} />
+      : <SpectatorsSheet watchers={watchers} uid="me" messages={msgs} onSend={async () => {}} onClose={noop} />;
   }
   if (s === 'one-move') {
     // My turn with exactly one legal tile; the server never answers (onPlay only counts), so a

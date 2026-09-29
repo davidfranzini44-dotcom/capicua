@@ -5,14 +5,31 @@ import { api, ApiError } from './supabase';
 
 export type VoiceStatus = 'off' | 'connecting' | 'on' | 'error' | 'unavailable';
 
+/** Spectators join as `spec-<user id>`, listening only. */
+export const SPECTATOR_PREFIX = 'spec-';
+const isSpectator = (identity: string) => identity.startsWith(SPECTATOR_PREFIX);
+
+export interface VoiceOptions {
+  /** Watching this friend's game: join their voice room, listening only. */
+  watching?: string;
+  /** A player: may spectators hear me? (Enforced here, on my own published tracks.) */
+  spectatorsHear?: boolean;
+}
+
 /**
  * Table voice chat over LiveKit. The `game` edge function decides who hears
  * whom (whole table in custom and tournament rooms, teammates only in public
- * 2v2, nobody in public 1v1/ffa) and only hands tokens to people seated at the
- * table. Participant identity = Supabase user id.
+ * 2v2, nobody in public 1v1/ffa) and hands talking tokens only to people
+ * seated at the table; a watching friend gets a listen-only one. Participant
+ * identity = Supabase user id (spectators: `spec-<id>`).
  */
-export function useVoice(roomId: string | null) {
+export function useVoice(roomId: string | null, opts: VoiceOptions = {}) {
   const room = useRef<Room | null>(null);
+  const hearRef = useRef(opts.spectatorsHear ?? true);
+  /** Spectators listening right now (user ids), for the players to see. */
+  const [listeners, setListeners] = useState<Set<string>>(new Set());
+  /** I'm a spectator: no mic, ever. */
+  const [listenOnly, setListenOnly] = useState(false);
   /** Made on the tap that joins (a user gesture), so it's allowed to run; feeds the mic leveler. */
   const audioCtx = useRef<AudioContext | null>(null);
   const [status, setStatus] = useState<VoiceStatus>('off');
@@ -33,6 +50,23 @@ export function useVoice(roomId: string | null) {
     setMicBlocked(false);
     setSpeaking(new Set());
     setNeedsTap(false);
+    setListeners(new Set());
+    setListenOnly(false);
+  }, []);
+
+  /**
+   * Who may subscribe to my voice: everyone, or — if I turned spectators off —
+   * only the other players. LiveKit enforces it on the server for my tracks.
+   */
+  const applyPermissions = useCallback((r: Room) => {
+    if (!r.localParticipant.permissions?.canPublish) return;
+    const others = [...r.remoteParticipants.values()];
+    setListeners(new Set(others.filter((p) => isSpectator(p.identity)).map((p) => p.identity.slice(SPECTATOR_PREFIX.length))));
+    if (hearRef.current) r.localParticipant.setTrackSubscriptionPermissions(true);
+    else {
+      r.localParticipant.setTrackSubscriptionPermissions(false,
+        others.filter((p) => !isSpectator(p.identity)).map((p) => ({ participantIdentity: p.identity, allowAll: true })));
+    }
   }, []);
 
   /** Quiet talkers get levelled up before they're sent (see micLeveler). Skipped if the browser can't. */
@@ -76,7 +110,8 @@ export function useVoice(roomId: string | null) {
       }
     } catch { /* no Web Audio: voice still works, just without levelling */ }
     try {
-      const { url, token } = await api<{ url: string; token: string }>('voice_token', { roomId });
+      const { url, token, listenOnly: listening } = await api<{ url: string; token: string; listenOnly?: boolean }>(
+        'voice_token', { roomId, watching: opts.watching });
       const r = new Room({
         adaptiveStream: true,
         dynacast: true,
@@ -91,18 +126,33 @@ export function useVoice(roomId: string | null) {
         .on(RoomEvent.TrackUnsubscribed, (track) => track.detach().forEach((el) => el.remove()))
         .on(RoomEvent.ActiveSpeakersChanged, (ps: Participant[]) => setSpeaking(new Set(ps.map((p) => p.identity))))
         .on(RoomEvent.AudioPlaybackStatusChanged, () => setNeedsTap(!r.canPlaybackAudio))
+        .on(RoomEvent.ParticipantConnected, () => applyPermissions(r))
+        .on(RoomEvent.ParticipantDisconnected, () => applyPermissions(r))
         .on(RoomEvent.Disconnected, reset);
       await r.connect(url, token);
       room.current = r;
       setNeedsTap(!r.canPlaybackAudio);
       setStatus('on');
+      if (listening) {
+        setListenOnly(true);
+        return;
+      }
+      applyPermissions(r);
       await openMic(r);
+      applyPermissions(r);
     } catch (e) {
       room.current?.disconnect();
       room.current = null;
       setStatus(e instanceof ApiError && (e.code === 'voice_not_configured' || e.code === 'voice_disabled') ? 'unavailable' : 'error');
     }
-  }, [roomId, reset, openMic]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, opts.watching, reset, openMic, applyPermissions]);
+
+  // The player changed "spectators can hear me": apply it now.
+  useEffect(() => {
+    hearRef.current = opts.spectatorsHear ?? true;
+    if (room.current) applyPermissions(room.current);
+  }, [opts.spectatorsHear, applyPermissions]);
 
   const leave = useCallback(() => {
     room.current?.disconnect();
@@ -112,13 +162,13 @@ export function useVoice(roomId: string | null) {
   /** Mute / unmute. Unmuting after the browser refused the mic asks again; false if it's still refused. */
   const setMic = useCallback(async (on: boolean) => {
     const r = room.current;
-    if (!r) return false;
+    if (!r || listenOnly) return false;
     if (on && micBlocked) return openMic(r);
     await r.localParticipant.setMicrophoneEnabled(on);
     setMicOn(on);
     if (on) await levelMic(r);
     return true;
-  }, [micBlocked, openMic, levelMic]);
+  }, [micBlocked, openMic, levelMic, listenOnly]);
 
   const enableAudio = useCallback(() => {
     audioCtx.current?.resume().catch(() => {});
@@ -158,7 +208,7 @@ export function useVoice(roomId: string | null) {
     audioCtx.current?.close().catch(() => {});
   }, [roomId]);
 
-  return { status, micOn, micBlocked, speaking, mutedPeers, needsTap, join, leave, setMic, enableAudio, togglePeer };
+  return { status, micOn, micBlocked, speaking, mutedPeers, needsTap, listeners, listenOnly, join, leave, setMic, enableAudio, togglePeer };
 }
 
 export type Voice = ReturnType<typeof useVoice>;

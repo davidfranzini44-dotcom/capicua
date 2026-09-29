@@ -1266,3 +1266,30 @@ button:disabled { cursor: default; }
 .leave-choice.danger b { color: var(--them); }
 .leave-choice:hover { border-color: rgba(255,255,255,.3); }
 .leave-sheet > .btn { width: 100%; }
+
+/* Spectators: the 👁 button in the header, their panel, and their tools at the bottom. */
+.watchers-btn {
+  position: relative; margin-left: 4px; padding: 1px 7px; border-radius: 999px; cursor: pointer;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); color: inherit; font: inherit;
+}
+.watchers-dot, .watch-msg .watchers-dot {
+  position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--them); box-shadow: 0 0 0 2px #0b2a1f;
+}
+.watch-msg { position: relative; }
+.spec-sheet { gap: 10px; }
+.spec-sheet h2 { color: var(--text); }
+.spec-watchers { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.spec-chip { background: rgba(255,255,255,.08); border-radius: 999px; padding: 4px 10px; font-size: .85rem; }
+.spec-messages {
+  width: 100%; max-height: 38dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
+  background: rgba(0,0,0,.2); border-radius: 12px; padding: 10px;
+}
+.spec-messages p { margin: 0; font-size: .88rem; overflow-wrap: anywhere; }
+.spec-messages p b { margin-right: 6px; color: var(--us); }
+.spec-messages p.mine b { color: #6fb7ff; }
+.spec-form { width: 100%; display: flex; gap: 8px; }
+.spec-form .text-input { flex: 1; min-width: 0; }
+.watch-tools { flex-wrap: wrap; justify-content: center; gap: 8px; }
+.spec-sheet h2 { font-size: 1.35rem; line-height: 1.2; text-align: center; }
+.watch-msg { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
