@@ -7,11 +7,12 @@ import { chooseMove } from '../../supabase/functions/_shared/bot.ts';
 import { customRules, publicRules, publicState } from '../../supabase/functions/_shared/table.ts';
 import { LangContext, strings, type Lang } from '../i18n';
 import type { Profile } from '../lib/supabase';
+import { nameKey, setNameRpc } from '../lib/names';
 import type { Voice } from '../lib/useVoice';
 import { VoiceButton } from '../ui/VoiceButton';
 import type { RoomData, RoomRow, SeatRow } from '../lib/useRoom';
 import '../index.css';
-import { CustomForm, MainScreen, PhotoPicker, QueueScreen } from '../ui/Online';
+import { CustomForm, MainScreen, NamePrompt, PhotoPicker, QueueScreen, RenameSheet } from '../ui/Online';
 import { OnlineTable, Pregame, ProfileCard } from '../ui/RoomScreen';
 import { ChestReveal, ChestSlots } from '../ui/Chests';
 import { ShopTab } from '../ui/Shop';
@@ -483,6 +484,23 @@ function Screen({ s }: { s: string }) {
   if (s === 'photo' || s === 'photo-none') {
     const p = { ...profile, avatar_url: s === 'photo' ? profile.avatar_url : null };
     return <div className="game-shell"><main className="game-body"><div className="tab-page profile-page"><PhotoPicker profile={p} level={7} /><h2 className="tab-title">{p.display_name}</h2></div></main></div>;
+  }
+  if (s === 'name-prompt' || s === 'name-new' || s === 'rename' || s === 'rename-wait') {
+    // Picking a name: "David" is taken (Google's first name, or a clash), "Papo" is a bot's; the rest are free.
+    const taken = ['david', 'pope', 'robert'];
+    setNameRpc(async (_fn, { p_name }) => {
+      const name = p_name.trim();
+      const key = nameKey(name);
+      await new Promise((r) => setTimeout(r, 200));
+      const suggestions = [`${name} RD`, `${name} DR`, `${name}27`];
+      if (name.length < 2) return { data: { ok: false, error: 'name_length' }, error: null };
+      if (['papo', 'chelo', 'jugador'].includes(key)) return { data: { ok: false, error: 'name_reserved', suggestions }, error: null };
+      if (taken.includes(key)) return { data: { ok: false, error: 'name_taken', suggestions }, error: null };
+      return { data: { ok: true, name }, error: null };
+    });
+    if (s === 'name-prompt') return <NamePrompt profile={{ ...profile, display_name: 'David', needs_name: true }} />;
+    if (s === 'name-new') return <NamePrompt profile={{ ...profile, display_name: 'Jugador', needs_name: true }} />;
+    return <RenameSheet profile={{ ...profile, name_changed_at: s === 'rename-wait' ? new Date(Date.now() - 2 * 86_400_000).toISOString() : null }} onClose={noop} />;
   }
   // queue: after 20 s alone in line, the "few players" card offers practice with bots or a private table.
   if (s === 'queue' || s === 'queue-friendly') {

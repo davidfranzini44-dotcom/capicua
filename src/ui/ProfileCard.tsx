@@ -32,6 +32,7 @@ export function ProfileCard({ stats, onClose, actions, loading = false, online }
       <div className="sheet profile-card" onClick={(e) => e.stopPropagation()}>
         <div className="avatar big"><Avatar name={stats.display_name} url={stats.avatar_url} /></div>
         <h2>{stats.display_name}</h2>
+        {stats.friend_code && <small className="player-code" title={t.names.codeTitle}>#{stats.friend_code}</small>}
         {presence}
         <LevelBadge xp={stats.xp} big />
         <AddFriendButton userId={stats.id} />

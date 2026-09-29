@@ -88,7 +88,17 @@ export interface Profile {
   tiles?: string;
   /** Spectators (watching friends) may hear my voice — on unless I turn it off. */
   spectators_hear?: boolean;
+  /** Still has to pick a name (new account, or another player had it first). */
+  needs_name?: boolean;
+  /** Last name change (a new one is allowed 7 days later). */
+  name_changed_at?: string | null;
 }
+
+/** A player still choosing their name (older rows: the "Jugador" default). */
+export const needsName = (p: Pick<Profile, 'display_name' | 'needs_name'>) => p.needs_name ?? p.display_name === 'Jugador';
+
+/** Ask the signed-in player's profile to load again (after a change the live update may not have brought yet). */
+export const reloadProfile = () => window.dispatchEvent(new Event('capicua:profile'));
 
 /** profiles.avatar_url → an <img> src: Google photos are full URLs, uploads live in the public `avatars` bucket. */
 export const avatarSrc = (avatar: string | null | undefined) =>
@@ -99,14 +109,15 @@ export function useProfile(uid: string | undefined) {
   useEffect(() => {
     if (!uid) return;
     const load = () =>
-      supabase.from('profiles').select('id, display_name, chips, xp, last_daily, last_rescue, avatar_url, friend_code, felt, tiles, spectators_hear').eq('id', uid).single()
+      supabase.from('profiles').select('id, display_name, chips, xp, last_daily, last_rescue, avatar_url, friend_code, felt, tiles, spectators_hear, needs_name, name_changed_at').eq('id', uid).single()
         .then(({ data }) => data && setProfile({ ...data, chips: Number(data.chips) }));
     load();
+    window.addEventListener('capicua:profile', load);
     const ch = supabase
       .channel(`profile:${uid}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${uid}` }, load)
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => { supabase.removeChannel(ch); window.removeEventListener('capicua:profile', load); };
   }, [uid]);
   return profile;
 }

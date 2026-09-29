@@ -901,6 +901,18 @@ button:disabled { cursor: default; }
 /* Other tabs */
 .tab-page { padding: 18px 16px 28px; display: flex; flex-direction: column; gap: 12px; max-width: 480px; margin: 0 auto; }
 .tab-title { margin: 0; font-family: var(--display); font-weight: 400; font-size: 1.4rem; color: var(--us); text-align: center; }
+/* A player's code under their name, and picking a name. */
+.player-code { margin-top: -4px; color: var(--muted); font-size: .8rem; font-weight: 700; letter-spacing: .08em; }
+.rename-btn { margin: 0; font-size: .88rem; }
+.name-why { max-width: 360px; margin: 0 auto 4px; text-align: center; }
+.name-editor { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.name-status { margin: 0; min-height: 1.3em; font-size: .88rem; font-weight: 700; color: var(--muted); text-align: left; }
+.name-status.ok { color: #7ed69a; }
+.name-status.bad { color: #ff9b8a; }
+.name-suggest { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.name-suggest small { color: var(--muted); }
+.name-suggest button { border: 1px solid var(--us); background: transparent; color: var(--text); border-radius: 999px; padding: 6px 12px; font: 700 .85rem var(--font); cursor: pointer; }
+.rename-sheet { gap: 12px; }
 .tab-actions { display: flex; gap: 8px; }
 .tab-actions .btn { flex: 1; }
 .tab-empty { align-items: center; justify-content: center; min-height: 60%; text-align: center; color: var(--muted); }

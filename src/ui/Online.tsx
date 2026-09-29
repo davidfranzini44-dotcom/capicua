@@ -3,7 +3,9 @@ import type { Mode, Ruleset } from '../../supabase/functions/_shared/domino.ts';
 import { BONUS_POINTS, botsAllowed, CHIPS, levelFromXp, MODES, REGLAS, TURN_SECONDS, xpForLevel, type CustomSettings } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { forgetTable, lastTable } from '../lib/lastTable';
-import { api, ApiError, authReturnUrl, canClaimDaily, onlineEnabled, supabase, useProfile, useSession, type Profile } from '../lib/supabase';
+import { api, ApiError, authReturnUrl, canClaimDaily, needsName, onlineEnabled, reloadProfile, supabase, useProfile, useSession, type Profile } from '../lib/supabase';
+import { nextRename, RENAME_DAYS } from '../lib/names';
+import { NameEditor } from './NameEditor';
 import { usePlayerStats } from '../lib/useRoom';
 import { setAvatar, uploadAvatar } from '../lib/avatar';
 import { Avatar, ChipBalance, LevelBadge, useErrorText } from './common';
@@ -59,7 +61,7 @@ export function Online() {
   const [resolved, setResolved] = useState(false);
   const errText = useErrorText();
   const { t } = useI18n();
-  const signedIn = !!session && !!profile && profile.display_name !== 'Jugador';
+  const signedIn = !!session && !!profile && !needsName(profile);
   /** Friends see me as busy while I'm at a table. */
   const social = useSocialState(signedIn ? uid : undefined, view.kind === 'room' ? 'playing' : 'online');
   usePresenceHeartbeat(signedIn);
@@ -137,7 +139,7 @@ export function Online() {
   }, [uid]);
 
   useEffect(() => {
-    if (!uid || !profile || profile.display_name === 'Jugador' || resolved) return;
+    if (!uid || !profile || needsName(profile) || resolved) return;
     setResolved(true);
     resolve();
   }, [uid, profile, resolved, resolve]);
@@ -169,7 +171,7 @@ export function Online() {
       );
     }
     if (!profile) return <Loading />;
-    if (profile.display_name === 'Jugador') return <NamePrompt />;
+    if (needsName(profile)) return <NamePrompt profile={profile} />;
 
     switch (view.kind) {
       case 'room':
@@ -545,6 +547,7 @@ function TablesTab({ guest, onCustom, onRoom, onCode, tournaments, friends }: {
 
 function ProfileTab({ profile, guest, onLinkGoogle }: { profile: Profile; guest: boolean; onLinkGoogle: () => void }) {
   const { t } = useI18n();
+  const [renaming, setRenaming] = useState(false);
   const stats = usePlayerStats([profile.id])[profile.id];
   const level = levelFromXp(profile.xp);
   const from = xpForLevel(level);
@@ -554,6 +557,9 @@ function ProfileTab({ profile, guest, onLinkGoogle }: { profile: Profile; guest:
     <div className="tab-page profile-page">
       <PhotoPicker profile={profile} level={level} />
       <h2 className="tab-title">{profile.display_name}</h2>
+      {profile.friend_code && <small className="player-code" title={t.names.codeTitle}>#{profile.friend_code}</small>}
+      <button className="link-btn rename-btn" onClick={() => setRenaming(true)}>✏️ {t.names.change}</button>
+      {renaming && <RenameSheet profile={profile} onClose={() => setRenaming(false)} />}
       <LevelBadge xp={profile.xp} big />
       <div className="xp-bar wide"><span style={{ width: `${(100 * (profile.xp - from)) / (to - from)}%` }} /></div>
       <small className="fine">{(to - profile.xp).toLocaleString()} {t.xpToNext} {level + 1}</small>
@@ -695,19 +701,41 @@ function SignIn({ onBack }: { onBack: () => void }) {
   );
 }
 
-function NamePrompt() {
+/**
+ * Before playing: pick a name. Google's first name comes filled in; a player whose
+ * name another player had first sees it here too, marked as taken, with free ones to tap.
+ */
+export function NamePrompt({ profile }: { profile: Profile }) {
   const { t } = useI18n();
-  const [name, setName] = useState('');
-  const save = async () => {
-    if (name.trim()) await supabase.rpc('set_display_name', { p_name: name.trim() });
-  };
+  const prefilled = profile.display_name === 'Jugador' ? '' : profile.display_name;
   return (
     <div className="screen">
       <h1 className="logo small">Capicúa</h1>
       <h2 className="screen-title">{t.yourName}</h2>
+      <p className="fine name-why">{t.names.unique}</p>
       <div className="menu">
-        <input className="text-input" value={name} maxLength={20} autoFocus onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} />
-        <button className="btn primary big-btn" onClick={save} disabled={!name.trim()}>{t.save}</button>
+        <NameEditor initial={prefilled} submitLabel={t.save} onSaved={reloadProfile} />
+      </div>
+    </div>
+  );
+}
+
+/** Perfil → Cambiar nombre: once every 7 days (the first change after picking it is free). */
+export function RenameSheet({ profile, onClose }: { profile: Profile; onClose: () => void }) {
+  const { t, lang } = useI18n();
+  const next = nextRename(profile.name_changed_at);
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet rename-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2>{t.names.change}</h2>
+        {next ? (
+          <p className="fine">{t.names.cooldown.replace('{date}', new Date(next).toLocaleDateString(lang === 'es' ? 'es-DO' : 'en-US', { day: 'numeric', month: 'long' }))}</p>
+        ) : <>
+          <p className="fine">{t.names.every.replace('{n}', String(RENAME_DAYS))}</p>
+          <NameEditor initial={profile.display_name} current={profile.display_name} submitLabel={t.save} onSaved={() => { reloadProfile(); onClose(); }} />
+        </>}
+        {profile.friend_code && <p className="fine">{t.names.codeStays.replace('{code}', profile.friend_code)}</p>}
+        <button className="btn ghost wide" onClick={onClose}>{t.close}</button>
       </div>
     </div>
   );
