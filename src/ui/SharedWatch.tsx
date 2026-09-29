@@ -1,9 +1,10 @@
 // A shared match (…/?ver=<token>): anyone with the link watches the board live — no
 // friendship, no sign-up (a guest session is made quietly when there's none). Two ways to
 // see it: the normal spectator table, and (&modo=transmision) a clean 9:16 screen for a
-// second phone that TikTok LIVE screen-shares. Nobody's fichas ever reach this screen.
+// second phone that TikTok LIVE screen-shares. Nobody's fichas ever reach this screen. At a
+// private table, the voices of the players who put theirs on air can be heard too.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChatCircleDotsIcon } from '@phosphor-icons/react';
+import { ChatCircleDotsIcon, SpeakerHighIcon } from '@phosphor-icons/react';
 import type { Seat } from '../../supabase/functions/_shared/domino.ts';
 import type { PublicState } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
@@ -11,8 +12,10 @@ import { leaveShared, redeemShare, ShareError, type LinkWatchers, type ShareTarg
 import { openSponsor, useSponsor, type TableSponsor } from '../lib/sponsor';
 import { supabase } from '../lib/supabase';
 import { useRoom } from '../lib/useRoom';
+import { useVoice, type Voice } from '../lib/useVoice';
+import { airVoices } from '../lib/voiceAccess';
 import { allWatchers, useSpectatorChat } from '../lib/watch';
-import { SpectatorsSheet, useSpectatorToast, useUnread } from './Spectators';
+import { ListenButton, SpectatorsSheet, useSpectatorToast, useUnread } from './Spectators';
 import { TableView, type ChatBubbles } from './TableView';
 import './share.css';
 
@@ -132,6 +135,13 @@ export interface SharedBoard {
 function useSharedBoard(roomId: string, uid: string) {
   const r = useRoom(roomId, uid, { shared: true });
   const info = r.sharedInfo;
+  // Voice by link: private tables only, and only the players who put theirs on air.
+  const isPrivate = info?.room.kind === 'custom';
+  const onAir = (isPrivate ? info?.watchers?.on_air ?? [] : []) as Seat[];
+  const listenTo = airVoices(onAir, r.seats);
+  const voice = useVoice(isPrivate ? roomId : null, { listenTo });
+  const seatOfUser = (id: string) => r.seats.find((x) => x.user_id === id)?.seat;
+  const speaking = new Set([...voice.speaking].filter((id) => listenTo.includes(id)).map(seatOfUser).filter((x): x is Seat => x !== undefined));
   const sponsor = useSponsor(r.game?.sponsor_id);
   const game = r.game;
   let board: SharedBoard | null = null;
@@ -152,7 +162,7 @@ function useSharedBoard(roomId: string, uid: string) {
       pot: game.pot || undefined,
     };
   }
-  return { r, info, board, gameId: game?.id ?? null };
+  return { r, info, board, gameId: game?.id ?? null, voice, isPrivate, onAir, speaking };
 }
 
 /** "m:ss" until a moment, ticking. */
@@ -170,7 +180,7 @@ function useCountdown(until: number | null) {
 
 function SharedTable({ roomId, uid, onLeave }: { roomId: string; uid: string; onLeave: () => void }) {
   const { t } = useI18n();
-  const { r, info, board, gameId } = useSharedBoard(roomId, uid);
+  const { r, info, board, gameId, voice, onAir, speaking } = useSharedBoard(roomId, uid);
   const specChat = useSpectatorChat(roomId);
   const [specOpen, setSpecOpen] = useState(false);
   const specToast = useSpectatorToast(specChat.messages, uid, true);
@@ -191,7 +201,8 @@ function SharedTable({ roomId, uid, onLeave }: { roomId: string; uid: string; on
       <SharedTableView board={board} status={r.status === 'live' ? 'live' : 'reconnecting'} endsAt={Date.parse(info.ends_at)}
         watchers={watchers.list.map((w) => w.name)} watcherCount={watchers.count} unread={specUnread} notice={specToast}
         onWatchersTap={() => setSpecOpen(true)} onLeave={onLeave} onMessage={() => setSpecOpen(true)}
-        onSponsorTap={board.sponsor ? () => openSponsor(board.sponsor!, gameId ?? undefined) : undefined} />
+        onSponsorTap={board.sponsor ? () => openSponsor(board.sponsor!, gameId ?? undefined) : undefined}
+        speaking={speaking} listen={onAir.length > 0 || voice.status === 'on' ? <ListenButton voice={voice} /> : undefined} />
       {specOpen && (
         <SpectatorsSheet watchers={watchers.list} count={watchers.count} uid={uid} messages={specChat.messages}
           onSend={canWrite ? specChat.send : undefined} readOnlyNote={t.share.readOnly} onClose={() => setSpecOpen(false)} />
@@ -201,10 +212,12 @@ function SharedTable({ roomId, uid, onLeave }: { roomId: string; uid: string; on
 }
 
 /** The normal spectator table for a shared match (also what the design preview draws). */
-export function SharedTableView({ board, status, endsAt, watchers, watcherCount, unread = 0, notice, onWatchersTap, onLeave, onMessage, onSponsorTap }: {
+export function SharedTableView({ board, status, endsAt, watchers, watcherCount, unread = 0, notice, onWatchersTap, onLeave, onMessage, onSponsorTap, speaking, listen }: {
   board: SharedBoard; status: 'live' | 'reconnecting'; endsAt: number | null;
   watchers: string[]; watcherCount: number; unread?: number; notice?: string | null;
   onWatchersTap: () => void; onLeave: () => void; onMessage: () => void; onSponsorTap?: () => void;
+  /** Voice by link: who is talking, and the listen button (private tables with a voice on air). */
+  speaking?: Set<Seat>; listen?: ReactNode;
 }) {
   const { t } = useI18n();
   const { view, focus } = board;
@@ -217,16 +230,19 @@ export function SharedTableView({ board, status, endsAt, watchers, watcherCount,
       view={view} myHand={[]} mySeat={focus} names={board.names} levels={board.levels} avatars={board.avatars}
       onPlay={noop} onNextHand={noop} onExit={onLeave} chat={board.chat} onChat={noop} away={board.away}
       pot={board.pot} turnDeadline={board.turnDeadline} sponsor={board.sponsor} onSponsorTap={onSponsorTap}
-      notice={hostAway ?? notice}
+      notice={hostAway ?? notice} speaking={speaking}
       watchers={watchers} watcherCount={watcherCount} onWatchersTap={onWatchersTap} watchersUnread={unread}
       resultNote={closesIn ? <p className="share-closes" role="timer">{t.share.closesIn.replace('{t}', closesIn)}</p> : undefined}
       endActions={<button className="btn primary" onClick={onLeave}>{t.share.goHome}</button>}
       watching={{
         name: board.names[focus], onLeave, status,
         tools: (
-          <button className="btn ghost watch-msg" onClick={onMessage}>
-            <ChatCircleDotsIcon size={20} weight="fill" />{t.spec.message}{unread > 0 && <i className="watchers-dot" aria-hidden />}
-          </button>
+          <>
+            {listen}
+            <button className="btn ghost watch-msg" onClick={onMessage}>
+              <ChatCircleDotsIcon size={20} weight="fill" />{t.spec.message}{unread > 0 && <i className="watchers-dot" aria-hidden />}
+            </button>
+          </>
         ),
       }}
     />
@@ -271,27 +287,46 @@ function useWakeLock(on: boolean): 'on' | 'off' | 'unsupported' {
   return !supported ? 'unsupported' : held && on ? 'on' : 'off';
 }
 
+/** The table's voice on the broadcast: on or off, and who can be heard (private tables only). */
+export interface CastVoice { isPrivate: boolean; names: string[]; on: boolean; set: (v: boolean) => void }
+
 function BroadcastScreen({ roomId, uid, onLeave }: { roomId: string; uid: string; onLeave: () => void }) {
   const [started, setStarted] = useState(false);
   const [keepAwake, setKeepAwake] = useState(true);
   const wake = useWakeLock(started && keepAwake);
   const [fsFailed, setFsFailed] = useState(false);
+  const { r, info, board, voice, isPrivate, onAir, speaking } = useSharedBoard(roomId, uid);
+  const [voiceOn, setVoiceOn] = useState(true);
+  const wantVoice = started && voiceOn && isPrivate && onAir.length > 0;
+  // Joins on "start" (a tap, so the phone lets it play) — or later, once someone goes on air.
+  const { join, leave, status: voiceStatus } = voice;
+  useEffect(() => {
+    if (wantVoice && voiceStatus === 'off') void join();
+  }, [wantVoice, voiceStatus, join]);
+  const setCastVoice = (v: boolean) => {
+    setVoiceOn(v);
+    if (!v) leave();
+  };
   const start = async (full: boolean) => {
     if (full) {
       try { await enterFullscreen(); } catch { setFsFailed(true); }
     }
     setStarted(true);
   };
+  const castVoice: CastVoice | undefined = info && voice.status !== 'unavailable'
+    ? { isPrivate, names: board ? onAir.map((s) => board.names[s]).filter(Boolean) : [], on: voiceOn, set: setCastVoice } : undefined;
   if (!started) {
     return <BroadcastSetup fullscreen={fullscreenSupported() && !fsFailed} wake={wake !== 'unsupported'} keepAwake={keepAwake}
-      onKeepAwake={setKeepAwake} onStart={start} onLeave={onLeave} />;
+      onKeepAwake={setKeepAwake} voice={castVoice} onStart={start} onLeave={onLeave} />;
   }
-  return <BroadcastLive roomId={roomId} uid={uid} onLeave={onLeave} />;
+  const overlay = r.gone ? 'ended' : r.status === 'reconnecting' ? 'lost' : null;
+  return <BroadcastCanvas board={board} overlay={overlay} onLeave={onLeave} speaking={speaking}
+    voice={castVoice?.isPrivate ? { ...castVoice, needsTap: voice.needsTap, enableAudio: voice.enableAudio } : undefined} />;
 }
 
-export function BroadcastSetup({ fullscreen, wake, keepAwake, onKeepAwake, onStart, onLeave }: {
+export function BroadcastSetup({ fullscreen, wake, keepAwake, onKeepAwake, voice, onStart, onLeave }: {
   fullscreen: boolean; wake: boolean; keepAwake: boolean; onKeepAwake: (v: boolean) => void;
-  onStart: (fullscreen: boolean) => void; onLeave: () => void;
+  voice?: CastVoice; onStart: (fullscreen: boolean) => void; onLeave: () => void;
 }) {
   const { t } = useI18n();
   return (
@@ -306,6 +341,15 @@ export function BroadcastSetup({ fullscreen, wake, keepAwake, onKeepAwake, onSta
           <input type="checkbox" checked={keepAwake} onChange={(e) => onKeepAwake(e.target.checked)} />
         </label>
       ) : <p className="fine left">{t.share.noWake}</p>}
+      {voice && (voice.isPrivate ? (
+        <label className="setting-row push-row cast-wake">
+          <span>
+            🔊 {t.share.castVoice}
+            <small>{voice.names.length ? t.share.castVoiceWho.replace('{names}', voice.names.join(', ')) : t.share.castVoiceNobody} {t.share.castVoiceTip}</small>
+          </span>
+          <input type="checkbox" checked={voice.on} onChange={(e) => voice.set(e.target.checked)} />
+        </label>
+      ) : <p className="fine left">🔇 {t.share.castNoVoice}</p>)}
       {fullscreen ? (
         <>
           <button className="btn primary big-btn" onClick={() => onStart(true)}>{t.share.fullscreen}</button>
@@ -322,14 +366,11 @@ export function BroadcastSetup({ fullscreen, wake, keepAwake, onKeepAwake, onSta
   );
 }
 
-function BroadcastLive({ roomId, uid, onLeave }: { roomId: string; uid: string; onLeave: () => void }) {
-  const { r, board } = useSharedBoard(roomId, uid);
-  const overlay = r.gone ? 'ended' : r.status === 'reconnecting' ? 'lost' : null;
-  return <BroadcastCanvas board={board} overlay={overlay} onLeave={onLeave} />;
-}
-
-/** The clean 9:16 canvas TikTok captures: the table only; press and hold to leave. */
-export function BroadcastCanvas({ board, overlay, onLeave }: { board: SharedBoard | null; overlay: 'ended' | 'lost' | null; onLeave: () => void }) {
+/** The clean 9:16 canvas TikTok captures: the table only; press and hold to leave (or to mute the table). */
+export function BroadcastCanvas({ board, overlay, onLeave, speaking, voice }: {
+  board: SharedBoard | null; overlay: 'ended' | 'lost' | null; onLeave: () => void;
+  speaking?: Set<Seat>; voice?: CastVoice & Pick<Voice, 'needsTap' | 'enableAudio'>;
+}) {
   const { t } = useI18n();
   const [exitOpen, setExitOpen] = useState(false);
   const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -351,8 +392,13 @@ export function BroadcastCanvas({ board, overlay, onLeave }: { board: SharedBoar
         <TableView presentation="broadcast"
           view={board.view} myHand={[]} mySeat={board.focus} names={board.names} levels={board.levels} avatars={board.avatars}
           onPlay={noop} onNextHand={noop} onExit={onLeave} chat={board.chat} onChat={noop} away={board.away}
-          turnDeadline={board.turnDeadline} sponsor={board.sponsor} endActions={null}
+          turnDeadline={board.turnDeadline} sponsor={board.sponsor} endActions={null} speaking={speaking}
           watching={{ name: board.names[board.focus], onLeave }} />
+      )}
+      {voice?.on && voice.needsTap && (
+        <button className="voice-pill hear pulse cast-hear" onPointerDown={(e) => e.stopPropagation()} onClick={voice.enableAudio}>
+          <SpeakerHighIcon size={22} />{t.voice.tapToHear}
+        </button>
       )}
       {overlay === 'ended' && (
         <div className="cast-card"><h1 className="table-wordmark">CAPICÚA</h1><p>{t.share.castEnded}</p></div>
@@ -361,6 +407,12 @@ export function BroadcastCanvas({ board, overlay, onLeave }: { board: SharedBoar
       {exitOpen && (
         <div className="cast-exit" role="dialog" aria-modal="true" aria-label={t.share.castExit} onPointerDown={(e) => e.stopPropagation()}>
           <button className="btn danger" onClick={onLeave}>{t.share.castExit}</button>
+          {voice && (
+            <label className="setting-row push-row cast-voice-row">
+              <span>🔊 {t.share.castVoice}</span>
+              <input type="checkbox" checked={voice.on} onChange={(e) => voice.set(e.target.checked)} />
+            </label>
+          )}
           <button className="btn primary" onClick={() => setExitOpen(false)} autoFocus>{t.share.castKeep}</button>
         </div>
       )}

@@ -10,8 +10,8 @@ export { BROADCAST_MODE, MODE_PARAM, parseShareSearch, SHARE_PARAM, shareUrl, ty
 
 export type ShareErrorCode =
   | 'not_signed_in' | 'not_seated' | 'no_live_game' | 'too_many_links' | 'link_invalid' | 'link_gone'
-  | 'not_allowed' | 'offline' | 'server_error';
-const KNOWN: ShareErrorCode[] = ['not_signed_in', 'not_seated', 'no_live_game', 'too_many_links', 'link_invalid', 'link_gone', 'not_allowed'];
+  | 'not_allowed' | 'air_private_only' | 'offline' | 'server_error';
+const KNOWN: ShareErrorCode[] = ['not_signed_in', 'not_seated', 'no_live_game', 'too_many_links', 'link_invalid', 'link_gone', 'not_allowed', 'air_private_only'];
 
 /** A failure the screens can word plainly — never the database's own message. */
 export class ShareError extends Error {
@@ -48,8 +48,12 @@ export async function redeemShare(token: string): Promise<Redeemed> {
   return { roomId: r.room_id, gameId: r.game_id, focusSeat: r.focus_seat as Seat, player: r.player };
 }
 
-/** How many watch by link (not counting friends already listed), and the names of those who have one. */
-export interface LinkWatchers { count: number; names: string[] }
+/**
+ * How many watch by link (not counting friends already listed), and the names of those who
+ * have one; the seats whose voice is on air for them (migration 20261012000000_share_voice);
+ * and, for the table's players only, the voice identities of everyone watching by link now.
+ */
+export interface LinkWatchers { count: number; names: string[]; on_air?: number[]; air?: string[] | null }
 
 /** The table as a link viewer may see it: no join code, the players' faces, the link's end. */
 export interface SharedRoomInfo {
@@ -64,6 +68,8 @@ export interface SharedRoomInfo {
 /** Also keeps the viewer counted; fails with link_gone once the link stops opening the game. */
 export const loadSharedRoom = (roomId: string) => call<SharedRoomInfo>('shared_room', { p_room: roomId });
 export const loadLinkWatchers = (roomId: string) => call<LinkWatchers | null>('room_share_watchers', { p_room: roomId });
+/** "Mi voz al aire" at this (private) table, on or off. */
+export const setVoiceOnAir = (roomId: string, on: boolean) => call<boolean>('set_voice_on_air', { p_room: roomId, p_on: on });
 export const leaveShared = (roomId: string) => supabase.rpc('leave_shared_match', { p_room: roomId }).then(() => {}, () => {});
 
 // ---------- sending it ----------

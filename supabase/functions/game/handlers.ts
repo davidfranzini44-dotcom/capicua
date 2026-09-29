@@ -1710,9 +1710,12 @@ export const handlers = {
    * A LiveKit token for the table's voice. Players talk and listen; a spectator
    * (`watching` = the friend they came to see) only listens, in that friend's
    * voice room, as `spec-<id>` — each player's own app decides whether
-   * spectators may hear them.
+   * spectators may hear them. Someone watching by link (`shared`) only listens
+   * too, only at a private table and while their link is live, as an opaque
+   * `air-…` identity: players' apps let it in only if they put their voice on
+   * air (migration 20261012000000_share_voice).
    */
-  async voice_token(uid: string, { roomId, watching }: { roomId: string; watching?: string }) {
+  async voice_token(uid: string, { roomId, watching, shared }: { roomId: string; watching?: string; shared?: boolean }) {
     const key = Deno.env.get('LIVEKIT_API_KEY');
     const secret = Deno.env.get('LIVEKIT_API_SECRET');
     const url = Deno.env.get('LIVEKIT_URL');
@@ -1731,6 +1734,24 @@ export const handlers = {
       const listenRoom = voiceRoomFor(w.kind, w.mode, w.code, w.seat);
       if (!listenRoom) throw new HttpError(403, 'voice_disabled');
       const at = new AccessToken(key, secret, { identity: `spec-${uid}`, name: w.name ?? '', ttl: '3h' });
+      at.addGrant({ room: listenRoom, roomJoin: true, canPublish: false, canSubscribe: true, canPublishData: false });
+      return { url, token: await at.toJwt(), listenOnly: true };
+    }
+    if (!row && shared) {
+      const [v] = await sql`
+        select r.code, r.kind, r.mode, public.share_air_identity(v.link_id, v.user_id) as identity,
+          jsonb_array_length(public.room_air_seats(r.id)) > 0 as on_air
+        from room_share_viewers v
+        join room_share_links l on l.id = v.link_id
+        join rooms r on r.id = v.room_id
+        where v.user_id = ${uid} and v.room_id = ${roomId} and public.share_link_live(l.id)
+        order by l.created_at desc limit 1`;
+      if (!v) throw new HttpError(403, 'not_in_room');
+      // Public tables keep their voice to themselves; and nobody here has put theirs on air.
+      if (v.kind !== 'custom' || !v.on_air) throw new HttpError(403, 'voice_disabled');
+      const listenRoom = voiceRoomFor(v.kind, v.mode, v.code, 0);
+      if (!listenRoom) throw new HttpError(403, 'voice_disabled');
+      const at = new AccessToken(key, secret, { identity: v.identity, name: '', ttl: '1h' });
       at.addGrant({ room: listenRoom, roomJoin: true, canPublish: false, canSubscribe: true, canPublishData: false });
       return { url, token: await at.toJwt(), listenOnly: true };
     }

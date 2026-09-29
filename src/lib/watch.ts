@@ -36,21 +36,30 @@ export function useWatcherList(roomId: string | null): Watcher[] {
   return names;
 }
 
+const NO_LINK_WATCHERS: LinkWatchers = { count: 0, names: [], on_air: [], air: [] };
+
 /**
  * People watching this table through share links (migration 20261011000000): how many, and
- * the names of those who have one — never who they are otherwise. Checked every 20 s.
+ * the names of those who have one — never who they are otherwise — plus whose voice is on air
+ * for them. Checked every 20 s (or `everyMs`), and on `reload`. Nothing while `on` is false.
  */
-export function useLinkWatchers(roomId: string | null, on = true): LinkWatchers {
-  const [w, setW] = useState<LinkWatchers>({ count: 0, names: [] });
+export function useLinkWatchers(roomId: string | null, on = true, everyMs = 20_000): LinkWatchers & { reload: () => Promise<void> } {
+  const [w, setW] = useState<{ room: string; data: LinkWatchers } | null>(null);
+  const reload = useCallback(async () => {
+    if (!roomId || !onlineEnabled) return;
+    const r = await loadLinkWatchers(roomId).catch(() => undefined);
+    if (r !== undefined) setW({ room: roomId, data: r ?? NO_LINK_WATCHERS });
+  }, [roomId]);
   useEffect(() => {
     if (!roomId || !on || !onlineEnabled) return;
     let alive = true;
-    const load = () => loadLinkWatchers(roomId).then((r) => { if (alive) setW(r ?? { count: 0, names: [] }); }, () => {});
+    const load = () => loadLinkWatchers(roomId).then((r) => { if (alive) setW({ room: roomId, data: r ?? NO_LINK_WATCHERS }); }, () => {});
     load();
-    const every = setInterval(load, 20_000);
+    const every = setInterval(load, everyMs);
     return () => { alive = false; clearInterval(every); };
-  }, [roomId, on]);
-  return w;
+  }, [roomId, on, everyMs]);
+  const data = on && w && w.room === roomId ? w.data : NO_LINK_WATCHERS;
+  return { ...NO_LINK_WATCHERS, ...data, reload };
 }
 
 /** Everyone watching, for the 👁 panel: friends by name, then link viewers (named, then "n by link"). */

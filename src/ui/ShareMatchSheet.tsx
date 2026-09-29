@@ -1,13 +1,34 @@
 // "Compartir partida": a link anyone can open to watch this game's board live (never the
 // fichas), shared through the phone's share sheet or copied; and a QR code that opens the
 // TikTok broadcast screen on a second phone. The QR is drawn here, on the phone — the link
-// never goes to an outside QR service. A player can turn the link off at any time.
+// never goes to an outside QR service. A player can turn the link off at any time. At a
+// private table each player may also put their own voice on air for people watching by link.
 import { useEffect, useId, useRef, useState } from 'react';
 import { ShareNetworkIcon, CopyIcon, QrCodeIcon } from '@phosphor-icons/react';
 import { useI18n } from '../i18n';
 import { copyText, nativeShare, shareUrl } from '../lib/shareMatch';
 import type { ShareLinkState } from '../lib/useShareLink';
 import './share.css';
+
+/** "Mi voz al aire" at a private table: on, off, and how many by link may hear me now. */
+export interface AirControl { on: boolean; set: (v: boolean) => void; busy: boolean; listeners: number }
+
+export function AirRow({ air }: { air: AirControl }) {
+  const { t } = useI18n();
+  return (
+    <div className="air-row">
+      <label className="setting-row push-row">
+        <span>🔴 {t.share.airTitle}<small>{t.share.airHint}</small></span>
+        <input type="checkbox" checked={air.on} disabled={air.busy} onChange={(e) => air.set(e.target.checked)} />
+      </label>
+      {air.on && (
+        <small className="fine air-status" aria-live="polite">
+          {air.listeners > 0 ? t.share.airCount.replace('{n}', String(air.listeners)) : t.share.airNobody}
+        </small>
+      )}
+    </div>
+  );
+}
 
 /** The broadcast link as a QR code, drawn on this phone. */
 function ShareQr({ url }: { url: string }) {
@@ -29,7 +50,7 @@ function ShareQr({ url }: { url: string }) {
   );
 }
 
-export function ShareMatchSheet({ share, onClose }: { share: ShareLinkState; onClose: () => void }) {
+export function ShareMatchSheet({ share, air, onClose }: { share: ShareLinkState; air?: AirControl; onClose: () => void }) {
   const { t } = useI18n();
   const titleId = useId();
   const [copied, setCopied] = useState<'watch' | 'cast' | null>(null);
@@ -120,6 +141,7 @@ export function ShareMatchSheet({ share, onClose }: { share: ShareLinkState; onC
               </button>
             </section>
 
+            {air ? <AirRow air={air} /> : <p className="fine left">🔇 {t.share.airNone}</p>}
             <p className="fine">{t.share.expiry}</p>
             <button className="btn danger wide" onClick={share.revoke} disabled={share.busy}>{t.share.revoke}</button>
           </>

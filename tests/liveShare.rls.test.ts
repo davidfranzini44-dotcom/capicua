@@ -1,5 +1,5 @@
 // Live-match sharing: the access boundary, on a real Postgres (PGlite) running the real
-// migrations — the watch and spectators migrations as they are, then the share migration.
+// migrations — the watch and spectators migrations as they are, then the share migrations.
 // Sessions: four seated players, a friend watching one of them, a guest session made just
 // to watch (anonymous, no name), a signed-in viewer with a name, and a stranger.
 import { PGlite, type Transaction } from '@electric-sql/pglite';
@@ -8,6 +8,7 @@ import BASE from './sql/share_base.sql?raw';
 import WATCH from '../supabase/migrations/20261001000100_watch.sql?raw';
 import SPECTATORS from '../supabase/migrations/20261008000000_spectators.sql?raw';
 import SHARE from '../supabase/migrations/20261011000000_live_share.sql?raw';
+import VOICE from '../supabase/migrations/20261012000000_share_voice.sql?raw';
 
 const U = {
   p0: '00000000-0000-4000-8000-000000000000', p1: '00000000-0000-4000-8000-000000000001',
@@ -43,7 +44,7 @@ type Link = { id: string; token: string; expires_at: string; focus_seat: number 
 
 beforeAll(async () => {
   db = new PGlite();
-  for (const sql of [BASE, WATCH, SPECTATORS, SHARE]) await db.exec(sql);
+  for (const sql of [BASE, WATCH, SPECTATORS, SHARE, VOICE]) await db.exec(sql);
 
   const people: [string, string, boolean, boolean][] = [
     [U.p0, 'Robert', false, false], [U.p1, 'Yokasta', false, false], [U.p2, 'Wilfri', false, false], [U.p3, 'Kirsy', false, false],

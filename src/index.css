@@ -1317,3 +1317,10 @@ button:disabled { cursor: default; }
 .watch-tools { flex-wrap: wrap; justify-content: center; gap: 8px; }
 .spec-sheet h2 { font-size: 1.35rem; line-height: 1.2; text-align: center; }
 .watch-msg { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+/* My voice is on air for people watching by link (VoiceButton `air`). */
+.vp-air {
+  position: absolute; top: -9px; left: 50%; transform: translateX(-50%); padding: 1px 6px; border-radius: 8px;
+  font-size: .62rem; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; line-height: 1.35; white-space: nowrap;
+  background: #d62f2f; color: #fff; border: 1.5px solid #0b2a1e; pointer-events: none;
+}
+.vp-air::before { content: '● '; }

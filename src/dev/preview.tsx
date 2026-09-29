@@ -112,8 +112,8 @@ function PreviewLook({ children, felt = 'verde', tiles = 'marfil', xp = 1_500 }:
 }
 /** A pretend voice session in a given state, for the voice button previews. */
 const fakeVoice = (over: Partial<Voice>): Voice => ({
-  status: 'off', micOn: false, micBlocked: false, speaking: new Set(), mutedPeers: new Set(), needsTap: false, listeners: new Set(), listenOnly: false,
-  join: async () => {}, leave: () => {}, setMic: async () => false, enableAudio: () => {}, togglePeer: () => {}, ...over,
+  status: 'off', micOn: false, micBlocked: false, speaking: new Set(), mutedPeers: new Set(), needsTap: false, listeners: new Set(), airListeners: 0, listenOnly: false,
+  join: async () => {}, leave: () => {}, setMic: async () => false, enableAudio: () => {}, togglePeer: () => {}, setAirAccess: () => {}, ...over,
 });
 const inFuture = (s: number) => new Date(Date.now() + s * 1000).toISOString();
 
@@ -675,8 +675,17 @@ function Screen({ s }: { s: string }) {
     if (s === 'share-invalid') return <ShareProblem p="invalid" onHome={noop} />;
     if (s === 'share-gone') return <ShareProblem p="gone" onHome={noop} />;
     if (s === 'broadcast-setup') return <BroadcastSetup fullscreen wake keepAwake onKeepAwake={noop} onStart={noop} onLeave={noop} />;
+    // Table voice on the broadcast: a private table (two players on air, or nobody yet) or a public one.
+    if (s.startsWith('broadcast-setup-')) {
+      const voice = { isPrivate: s !== 'broadcast-setup-public', names: s === 'broadcast-setup-voice' ? ['Robert', 'Yokasta'] : [], on: true, set: noop };
+      return <BroadcastSetup fullscreen wake keepAwake onKeepAwake={noop} voice={voice} onStart={noop} onLeave={noop} />;
+    }
+    if (s === 'broadcast-voice' || s === 'broadcast-tap') {
+      const voice = { isPrivate: true, names: ['Robert'], on: true, set: noop, needsTap: s === 'broadcast-tap', enableAudio: noop };
+      return <BroadcastCanvas board={board} overlay={null} onLeave={noop} speaking={new Set<Seat>([0])} voice={voice} />;
+    }
     if (s.startsWith('broadcast')) return <BroadcastCanvas board={board} overlay={s === 'broadcast-lost' ? 'lost' : s === 'broadcast-ended' ? 'ended' : null} onLeave={noop} />;
-    if (s === 'share-match') {
+    if (s === 'share-match' || s === 'share-match-air') {
       const share: ShareLinkState = {
         link: { id: 'l1', token: 'Q2FwaWN1YS1wcmV2aWV3LXRva2VuLW5vdC1yZWFs1234', expiresAt: Date.now() + 4 * 3600_000, focusSeat: 0, gameId: 'g1' },
         busy: false, error: null, revoked: false, others: [], create: async () => {}, revoke: async () => {}, revokeOthers: async () => {}, refreshOthers: async () => {},
@@ -685,13 +694,16 @@ function Screen({ s }: { s: string }) {
         <>
           <TableView view={view} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Wilfri', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
             chat={{}} onChat={noop} endActions={null} watchers={[]} onWatchersTap={noop} onShare={noop} />
-          <ShareMatchSheet share={share} onClose={noop} />
+          <ShareMatchSheet share={share} onClose={noop}
+            air={s === 'share-match-air' ? { on: true, set: noop, busy: false, listeners: 3 } : undefined} />
         </>
       );
     }
+    const voiced = s === 'shared-watch-voice';
     return (
       <SharedTableView board={board} status={s === 'shared-reconnecting' ? 'reconnecting' : 'live'} endsAt={Date.now() + 102_000}
-        watchers={['Nadia', '3 con enlace']} watcherCount={4} unread={1} onWatchersTap={noop} onLeave={noop} onMessage={noop} />
+        watchers={['Nadia', '3 con enlace']} watcherCount={4} unread={1} onWatchersTap={noop} onLeave={noop} onMessage={noop}
+        speaking={voiced ? new Set<Seat>([2]) : undefined} listen={voiced ? <ListenButton voice={fakeVoice({ status: 'on' })} /> : undefined} />
     );
   }
   if (s === 'watch' || s === 'watch-sponsor' || s === 'watched') {
@@ -710,7 +722,7 @@ function Screen({ s }: { s: string }) {
         chat={{}} onChat={noop} endActions={null} watchers={['Papo', 'Chelo']} onWatchersTap={noop} watchersUnread={1} />
     );
   }
-  if (s === 'spectators' || s === 'spectators-watcher') {
+  if (s === 'spectators' || s === 'spectators-watcher' || s === 'spectators-air') {
     // The 👁 panel: a player's view (switches, who's listening) or a spectator's (can write).
     const watchers = [{ id: 'u1', name: 'Papo' }, { id: 'u2', name: 'Chelo' }, { id: 'me', name: 'Wilfri' }];
     const msgs = [
@@ -718,9 +730,10 @@ function Screen({ s }: { s: string }) {
       { id: 2, user_id: 'u2', name: 'Chelo', body: 'Robert está en llamas hoy 🔥', created_at: '' },
       { id: 3, user_id: 'me', name: 'Wilfri', body: 'Dale que ya casi', created_at: '' },
     ];
-    return s === 'spectators'
+    const air = s === 'spectators-air' ? { on: true, set: noop, busy: false, listeners: 0 } : undefined;
+    return s === 'spectators' || s === 'spectators-air'
       ? <SpectatorsSheet watchers={watchers.slice(0, 2)} uid="me" listeners={new Set(['u1'])} messages={msgs.slice(0, 2)} onClose={noop}
-          player={{ hear: true, onHear: noop, showMessages: true, onShowMessages: noop }} />
+          player={{ hear: true, onHear: noop, showMessages: true, onShowMessages: noop, air }} />
       : <SpectatorsSheet watchers={watchers} uid="me" messages={msgs} onSend={async () => {}} onClose={noop} />;
   }
   if (s === 'one-move') {
@@ -787,7 +800,7 @@ function Screen({ s }: { s: string }) {
     });
     return <OnlineTable r={r} uid="me" voice={null} onLeave={noop} onPlayAnother={noop} />;
   }
-  if (s === 'table' || s === 'away' || s === 'table-mic' || s === 'table-muted') {
+  if (s === 'table' || s === 'away' || s === 'table-mic' || s === 'table-muted' || s === 'table-air') {
     let g = newGame(Math.random, publicRules('2v2'));
     for (let i = 0; i < 11 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
     const r = data({
@@ -798,8 +811,8 @@ function Screen({ s }: { s: string }) {
       hand: g.hands[0],
       receivedAt: Date.now() - 7000,
     });
-    const mic = s === 'table-mic' || s === 'table-muted'
-      ? <VoiceButton voice={fakeVoice({ status: 'on', micOn: s === 'table-mic' })} me="me" /> : undefined;
+    const mic = s === 'table-mic' || s === 'table-muted' || s === 'table-air'
+      ? <VoiceButton voice={fakeVoice({ status: 'on', micOn: s !== 'table-muted' })} me="me" air={s === 'table-air' ? 2 : null} /> : undefined;
     return <OnlineTable r={r} uid="me" voice={null} voiceControl={mic} onLeave={noop} onForfeit={noop} onPlayAnother={noop} />;
   }
   // default: countdown lobby, 2v2 public

@@ -10,7 +10,8 @@ import { api, ApiError, supabase, type Profile } from '../lib/supabase';
 import { usePlayerStats, useRoom, type PlayerStats, type RoomData, type SeatRow } from '../lib/useRoom';
 import { useSocial } from '../lib/social';
 import { allWatchers, useLinkWatchers, useSpectatorChat, useWatcherList } from '../lib/watch';
-import { ShareMatchSheet } from './ShareMatchSheet';
+import { ShareMatchSheet, type AirControl } from './ShareMatchSheet';
+import { setVoiceOnAir, type LinkWatchers } from '../lib/shareMatch';
 import { useShareLink } from '../lib/useShareLink';
 import { SpectatorsSheet, useShowSpectatorMessages, useSpectatorToast, useUnread } from './Spectators';
 import { openSponsor, useSponsor } from '../lib/sponsor';
@@ -43,7 +44,31 @@ export function RoomScreen({ roomId, uid, profile, onLeave, onBrokeUp, onRequeue
     setHearState(v);
     supabase.rpc('set_spectators_hear', { p_on: v }).then(({ error }) => { if (error) setHearState(!v); });
   };
-  const voice = useVoice(voiceOk ? roomId : null, { spectatorsHear });
+  const airRoom = r.room?.kind === 'custom';
+  const voice = useVoice(voiceOk ? roomId : null, { spectatorsHear, airRoom });
+
+  // People watching by link (a player shared the match), and "Mi voz al aire": at a private
+  // table they hear me only if I turn it on — my own app lets in only those the server lists.
+  const sharing = r.room?.phase === 'playing' || r.room?.phase === 'finished';
+  const linkWatchers = useLinkWatchers(roomId, sharing, airRoom ? 10_000 : 20_000);
+  const [airPending, setAirPending] = useState<boolean | null>(null);
+  const onAir = airRoom && sharing && !!me && (airPending ?? (linkWatchers.on_air ?? []).includes(me.seat));
+  const setOnAir = async (v: boolean) => {
+    setAirPending(v);
+    try {
+      await setVoiceOnAir(roomId, v);
+      await linkWatchers.reload();
+    } catch { /* it stays as the server has it */ }
+    setAirPending(null);
+  };
+  const airIds = onAir ? (linkWatchers.air ?? []).join(',') : '';
+  const { setAirAccess } = voice;
+  const reloadLink = linkWatchers.reload;
+  useEffect(() => {
+    setAirAccess({ on: onAir, listeners: airIds ? airIds.split(',') : [], refresh: () => { void reloadLink(); } });
+  }, [setAirAccess, onAir, airIds, reloadLink]);
+  const air: AirControl | undefined = airRoom && voiceOk && voice.status !== 'unavailable'
+    ? { on: onAir, set: setOnAir, busy: airPending !== null, listeners: voice.airListeners } : undefined;
 
   // Let the table know I'm on voice, so their "Voz" button lights up.
   const { setVoicePresence } = r;
@@ -51,7 +76,7 @@ export function RoomScreen({ roomId, uid, profile, onLeave, onBrokeUp, onRequeue
   /** Others at the table on voice that I'd actually hear (public 2v2 voice is teammates only). */
   const othersOnVoice = r.room ? r.seats.filter((s) => s.user_id && s.user_id !== uid && r.inVoice.has(s.user_id)
     && voiceRoomFor(r.room!.kind, r.room!.mode, r.room!.code, s.seat) === myVoiceRoom).length : 0;
-  const voiceControl = voiceOk ? <VoiceButton voice={voice} me={uid} others={othersOnVoice} /> : null;
+  const voiceControl = voiceOk ? <VoiceButton voice={voice} me={uid} others={othersOnVoice} air={onAir ? voice.airListeners : null} /> : null;
 
   // Remember this table so a refresh or a reopened tab comes straight back here.
   useEffect(() => rememberTable(roomId), [roomId]);
@@ -101,7 +126,7 @@ export function RoomScreen({ roomId, uid, profile, onLeave, onBrokeUp, onRequeue
     return (
       <OnlineTable
         r={r} uid={uid} voice={voiceOk ? voice : null} voiceControl={voiceControl} onLeave={leave} onForfeit={forfeit}
-        hear={{ on: spectatorsHear, set: setSpectatorsHear }}
+        hear={{ on: spectatorsHear, set: setSpectatorsHear }} link={linkWatchers} air={air}
         onTournament={tournamentId ? () => { voice.leave(); forgetTable(); onTournament(tournamentId); } : undefined}
         onPlayAnother={async () => {
           voice.leave();
@@ -455,10 +480,14 @@ export { ProfileCard };
 
 // ---------- the table ----------
 
-export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, onPlayAnother, onTournament, hear }: {
+export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, onPlayAnother, onTournament, hear, link, air }: {
   r: RoomData; uid: string; voice: Voice | null; voiceControl?: ReactNode;
   /** May spectators hear my voice (and the switch for it). */
   hear?: { on: boolean; set: (v: boolean) => void };
+  /** People watching by link (the table screen keeps it; loaded here when not given). */
+  link?: LinkWatchers;
+  /** Private tables: "Mi voz al aire" for people watching by link. */
+  air?: AirControl;
   onLeave: () => void; onPlayAnother: () => void; onTournament?: () => void;
   /** Give the game up for good and be free to play another. */
   onForfeit?: () => void;
@@ -475,7 +504,8 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
   // Spectators: who's watching, what they say, and whether they may hear me (on unless I turn it off).
   const friendWatchers = useWatcherList(room.id);
   // …and people watching by link, when a player shared the match.
-  const linkWatchers = useLinkWatchers(room.id, room.phase === 'playing');
+  const ownLinkWatchers = useLinkWatchers(room.id, !link && room.phase === 'playing');
+  const linkWatchers = link ?? ownLinkWatchers;
   const { list: watcherList, count: watcherCount } = allWatchers(friendWatchers, linkWatchers, (n) => t.share.byLink.replace('{n}', String(n)));
   const watchers = watcherList.map((w) => w.name);
   const specChat = useSpectatorChat(room.id);
@@ -725,10 +755,10 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
       {specOpen && (
         <SpectatorsSheet watchers={watcherList} count={watcherCount} uid={uid} listeners={voice?.listeners} messages={specChat.messages}
           onShare={canShare ? () => { setSpecOpen(false); setShareOpen(true); } : undefined}
-          player={hear ? { hear: hear.on, onHear: hear.set, showMessages: showSpecMessages, onShowMessages: setShowSpecMessages } : undefined}
+          player={hear ? { hear: hear.on, onHear: hear.set, showMessages: showSpecMessages, onShowMessages: setShowSpecMessages, air } : undefined}
           onClose={() => setSpecOpen(false)} />
       )}
-      {shareOpen && <ShareMatchSheet share={share} onClose={() => setShareOpen(false)} />}
+      {shareOpen && <ShareMatchSheet share={share} air={air} onClose={() => setShareOpen(false)} />}
       {me?.away && room.phase === 'playing' && (
         <div className="away-banner">
           <span>{t.awayBanner}<small>{t.tapToReturn}</small></span>

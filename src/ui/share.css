@@ -42,6 +42,7 @@
 .cast-setup > h2, .cast-setup > .fine, .cast-setup .cast-tips { width: 100%; text-align: left; }
 .cast-tips { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; text-align: left; line-height: 1.35; }
 .cast-wake small { display: block; }
+.cast-setup .setting-row.push-row { align-items: flex-start; }
 
 html.broadcast-mode, html.broadcast-mode body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .broadcast-canvas {
@@ -89,14 +90,21 @@ html.broadcast-mode, html.broadcast-mode body { height: 100%; overflow: hidden; 
 }
 .cast-card p { margin: 0; }
 .cast-banner {
-  position: absolute; top: max(7dvh, env(safe-area-inset-top)); left: 3vw; right: 11vw; margin: 0; padding: 6px 10px;
+  position: absolute; z-index: 5; top: max(7dvh, env(safe-area-inset-top)); left: 3vw; right: 11vw; margin: 0; padding: 6px 10px;
   border-radius: 12px; background: #5c4d14f2; color: #ffe8a3; font: 700 .85rem var(--font); text-align: center;
 }
 .cast-exit {
-  position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 10px;
+  position: absolute; z-index: 20; left: 50%; top: 40%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 10px;
   padding: 16px; border-radius: 18px; background: #0b251bf2; border: 1px solid #ffffff2e; box-shadow: 0 12px 30px #000a;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .live-pill.live::before { animation: none; }
 }
+
+/* Voice by link: "Mi voz al aire" (players) and the table's voice on the broadcast. */
+.air-row { display: grid; gap: 4px; width: 100%; }
+.air-row small { display: block; }
+.air-status { color: #ff9b9b; font-weight: 700; text-align: center; }
+.cast-hear { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); z-index: 5; }
+.cast-voice-row { min-width: 240px; }

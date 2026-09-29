@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import type { Voice } from '../lib/useVoice';
 import type { SpectatorMessage, Watcher } from '../lib/watch';
 import { useErrorText } from './common';
+import { AirRow, type AirControl } from './ShareMatchSheet';
 import { Sheet } from './MainScreen';
 
 /** How long a new spectator message shows in the status line. */
@@ -69,7 +70,7 @@ export function SpectatorsSheet({ watchers, count, uid, listeners, messages, onS
   /** Spectators only: say something to the table. */
   onSend?: (text: string) => Promise<void>;
   /** Players only: my choices. */
-  player?: { hear: boolean; onHear: (v: boolean) => void; showMessages: boolean; onShowMessages: (v: boolean) => void };
+  player?: { hear: boolean; onHear: (v: boolean) => void; showMessages: boolean; onShowMessages: (v: boolean) => void; air?: AirControl };
   onClose: () => void;
 }) {
   const { t } = useI18n();
@@ -116,6 +117,7 @@ export function SpectatorsSheet({ watchers, count, uid, listeners, messages, onS
             <input type="checkbox" checked={player.hear} onChange={(e) => player.onHear(e.target.checked)} />
           </label>
           {listeners && listeners.size > 0 && <small className="fine left">{t.spec.hearCount.replace('{n}', String(listeners.size))}</small>}
+          {player.air && <AirRow air={player.air} />}
           <label className="setting-row push-row">
             <span>💬 {t.spec.showMessages}</span>
             <input type="checkbox" checked={player.showMessages} onChange={(e) => player.onShowMessages(e.target.checked)} />
@@ -141,7 +143,7 @@ export function SpectatorsSheet({ watchers, count, uid, listeners, messages, onS
 }
 
 /** A spectator's voice control: listen to the players (never talk). Hidden where the table has no voice. */
-export function ListenButton({ voice }: { voice: Voice }) {
+export function ListenButton({ voice }: { voice: Pick<Voice, 'status' | 'needsTap' | 'enableAudio' | 'leave' | 'join'> }) {
   const { t } = useI18n();
   if (voice.status === 'unavailable') return null;
   if (voice.needsTap) return <button className="voice-pill hear pulse" onClick={voice.enableAudio}><SpeakerHighIcon size={22} />{t.voice.tapToHear}</button>;

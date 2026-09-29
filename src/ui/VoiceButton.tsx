@@ -11,8 +11,9 @@ const HOLD_MS = 300;
  *   Off → "Voz" (glows when others at the table are already on) — tap to join, mic opens.
  *   On  → "Abierto" / "Callado" — tap to mute or unmute; while muted, hold to talk.
  *   Mic refused → "Permitir mic" — tap to ask again; if still refused, how to allow it.
+ * With my voice on air (`air` = how many by link may hear me), a red "Al aire" badge on it.
  */
-export function VoiceButton({ voice, me, others = 0 }: { voice: Voice; me?: string; others?: number }) {
+export function VoiceButton({ voice, me, others = 0, air = null }: { voice: Voice; me?: string; others?: number; air?: number | null }) {
   const { t } = useI18n();
   const pressedAt = useRef(0);
   const pushing = useRef(false);
@@ -76,6 +77,9 @@ export function VoiceButton({ voice, me, others = 0 }: { voice: Voice; me?: stri
     if (!held) voice.setMic(false); // short tap while live → mute
   };
   const talking = !!me && voice.micOn && voice.speaking.has(me);
+  const onAir = air !== null && (
+    <span className="vp-air" title={t.voice.onAirHint} aria-label={t.voice.onAirHint}>{t.voice.onAir}{air > 0 ? ` · ${air}` : ''}</span>
+  );
 
   return (
     <>
@@ -90,6 +94,7 @@ export function VoiceButton({ voice, me, others = 0 }: { voice: Voice; me?: stri
         title={voice.micOn ? t.mute : t.holdToTalk}
       >
         {voice.micOn ? <><MicrophoneIcon size={24} />{t.voice.live}</> : <><MicrophoneSlashIcon size={24} />{t.voice.muted}</>}
+        {onAir}
       </button>
       {helpSheet}
     </>
