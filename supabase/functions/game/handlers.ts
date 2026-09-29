@@ -989,16 +989,22 @@ export const handlers = {
     });
   },
 
-  async leave_room(uid: string, { roomId }: { roomId: string }) {
+  /**
+   * Leave a table. Mid-game the server plays the chair: by default the game stays
+   * theirs to come back to (and they can't sit anywhere else until it ends);
+   * `forfeit` gives it up for good — same leaver rules, but they're free to play
+   * another game straight away.
+   */
+  async leave_room(uid: string, { roomId, forfeit = false }: { roomId: string; forfeit?: boolean }) {
     return await sql.begin(async (tx) => {
       const { room, seats } = await lockRoom(tx, roomId);
       const mine = mySeat(seats, uid);
       if (room.phase === 'playing') {
-        // Stake stays in the pot; the server plays for them. They can come back.
-        await tx`update room_seats set away = true, left_game = true where room_id = ${room.id} and seat = ${mine.seat}`;
+        // Stake stays in the pot; the server plays for them.
+        await tx`update room_seats set away = true, left_game = true, forfeited = forfeited or ${!!forfeit} where room_id = ${room.id} and seat = ${mine.seat}`;
         mine.away = true;
         await refreshDelay(tx, room, seats);
-        return { ok: true };
+        return { ok: true, forfeited: !!forfeit || !!mine.forfeited };
       }
       if (room.kind === 'public' && (room.phase === 'ready' || room.phase === 'countdown')) {
         await breakUpTable(tx, room, seats, [uid]);

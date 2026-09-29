@@ -658,7 +658,7 @@ function Screen({ s }: { s: string }) {
       hand: g.hands[0],
       receivedAt: Date.now() - 7000,
     });
-    return <OnlineTable r={r} uid="me" voice={null} onLeave={noop} onPlayAnother={noop} />;
+    return <OnlineTable r={r} uid="me" voice={null} onLeave={noop} onForfeit={noop} onPlayAnother={noop} />;
   }
   // default: countdown lobby, 2v2 public
   const r = data({

@@ -113,7 +113,8 @@ export function Online() {
     if (code) {
       history.replaceState(null, '', location.pathname);
       try {
-        const r = await api<{ roomId: string }>('join_room', { code });
+        // Waiting at another table (not playing) just moves you; a game in progress has to be forfeited first.
+        const r = await api<{ roomId: string }>('join_room', { code, switchTable: 'lobby' });
         return setView({ kind: 'room', roomId: r.roomId });
       } catch (e) {
         return setView({ kind: 'main', tab: 'home', notice: errText(e) });
@@ -491,7 +492,7 @@ function CodeSheet({ onClose, onJoined, onTournament }: { onClose: () => void; o
   const join = async () => {
     if (code.length === 5) return onTournament(code);
     try {
-      onJoined((await api<{ roomId: string }>('join_room', { code })).roomId);
+      onJoined((await api<{ roomId: string }>('join_room', { code, switchTable: 'lobby' })).roomId);
     } catch (e) {
       setError(errText(e));
     }

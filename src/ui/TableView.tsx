@@ -3,7 +3,7 @@ import {
   canRescue, isPollona, legalMoves, lockedFor, playerCount, sameTile, sideOf, standings,
   type GameEvent, type GameState, type Move, type Power, type Seat, type Tile,
 } from '../../supabase/functions/_shared/domino.ts';
-import { gameXp, type PublicState } from '../../supabase/functions/_shared/table.ts';
+import { gameXp, LEAVER_XP, type PublicState } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { useTableLook } from '../lib/look';
 import { playSfx, useSfxPref } from '../lib/sfx';
@@ -41,6 +41,8 @@ export interface TableViewProps {
   onPlay: (move: Move) => void;
   onNextHand: () => void;
   onExit: () => void;
+  /** Online: give the game up for good (a bot finishes it) and be free to play another. Offered next to leaving. */
+  onForfeit?: () => void;
   /** Buttons shown when the game is over (play again / rematch). */
   endActions: ReactNode;
   chat: ChatBubbles;
@@ -141,6 +143,8 @@ export function TableView(props: TableViewProps) {
   const [bonus, setBonus] = useState<Bonus | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  /** The "step away or forfeit" choice when leaving a game in progress. */
+  const [leaving, setLeaving] = useState(false);
   const menuRef = useRef<HTMLDialogElement>(null);
   const [autoplay, setAutoplay] = useAutoplayPref();
   const [showOwners, setShowOwners] = useShowOwnersPref();
@@ -398,7 +402,11 @@ export function TableView(props: TableViewProps) {
         <div className="table-topbar">
           <button className="table-icon" onClick={() => setMenuOpen(true)} aria-label={t.settings}><ListIcon size={25} /></button>
           <h1 className="table-wordmark">CAPICÚA</h1>
-          <button className="table-icon" onClick={() => (!playing || confirm(exitConfirm ?? t.exitConfirm)) && onExit()} aria-label={t.exit}><XIcon size={25} /></button>
+          <button className="table-icon" aria-label={t.exit} onClick={() => {
+            if (!playing) return onExit();
+            if (props.onForfeit) return setLeaving(true);
+            if (confirm(exitConfirm ?? t.exitConfirm)) onExit();
+          }}><XIcon size={25} /></button>
         </div>
         <Scores view={view} mySeat={mySeat} name={name} colorOf={colorOf} pot={pot} watchers={watchers} watching={!!watching} />
       </header>
@@ -567,6 +575,22 @@ export function TableView(props: TableViewProps) {
           credit={props.sponsor ? <SponsorCredit sponsor={props.sponsor} onTap={props.onSponsorTap} /> : undefined} />
       )}
       {introOpen && <ArcadeIntro onClose={() => setIntroOpen(false)} />}
+      {leaving && props.onForfeit && (
+        <div className="sheet-backdrop" onClick={() => setLeaving(false)}>
+          <div className="sheet leave-sheet" role="dialog" aria-label={t.leaveSheet.title} onClick={(e) => e.stopPropagation()}>
+            <h2>{t.leaveSheet.title}</h2>
+            <button className="leave-choice" onClick={() => { setLeaving(false); onExit(); }}>
+              <b>{t.leaveSheet.pause}</b>
+              <small>{t.leaveSheet.pauseSub}</small>
+            </button>
+            <button className="leave-choice danger" onClick={() => { setLeaving(false); props.onForfeit!(); }}>
+              <b>{t.leaveSheet.forfeit}</b>
+              <small>{t.leaveSheet.forfeitSub.replace('{xp}', String(-LEAVER_XP))}</small>
+            </button>
+            <button className="btn primary" onClick={() => setLeaving(false)}>{t.leaveSheet.stay}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

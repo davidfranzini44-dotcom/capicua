@@ -1252,3 +1252,17 @@ button:disabled { cursor: default; }
 .spr-table th:first-child, .spr-table td:first-child { text-align: left; }
 .spr-foot { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--muted); }
 .spr-made { opacity: .7; }
+
+/* Leaving a game in progress: step away, or forfeit it and be free to play another. */
+.leave-sheet { gap: 10px; }
+.leave-sheet h2 { color: var(--text); font-size: 1.6rem; }
+.leave-choice {
+  width: 100%; text-align: left; display: flex; flex-direction: column; gap: 3px; cursor: pointer; font: inherit; color: var(--text);
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); border-radius: 14px; padding: 12px 14px;
+}
+.leave-choice b { font-size: 1rem; }
+.leave-choice small { color: var(--muted); font-size: .8rem; line-height: 1.35; }
+.leave-choice.danger { border-color: rgba(255,122,89,.45); background: rgba(255,122,89,.08); }
+.leave-choice.danger b { color: var(--them); }
+.leave-choice:hover { border-color: rgba(255,255,255,.3); }
+.leave-sheet > .btn { width: 100%; }

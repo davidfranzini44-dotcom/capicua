@@ -79,12 +79,19 @@ export function RoomScreen({ roomId, uid, profile, onLeave, onBrokeUp, onRequeue
     if (!midGame) forgetTable();
     onLeave();
   };
+  // Give the game up for good: a bot finishes it, and I'm free to sit at another table.
+  const forfeit = async () => {
+    voice.leave();
+    await api('leave_room', { roomId, forfeit: true }).catch(() => {});
+    forgetTable();
+    onLeave();
+  };
 
   if (r.room.phase === 'playing' || (r.room.phase === 'finished' && r.game)) {
     if (!r.game) return <div className="screen center"><p>…</p></div>;
     return (
       <OnlineTable
-        r={r} uid={uid} voice={voiceOk ? voice : null} voiceControl={voiceControl} onLeave={leave}
+        r={r} uid={uid} voice={voiceOk ? voice : null} voiceControl={voiceControl} onLeave={leave} onForfeit={forfeit}
         onTournament={tournamentId ? () => { voice.leave(); forgetTable(); onTournament(tournamentId); } : undefined}
         onPlayAnother={async () => {
           voice.leave();
@@ -432,9 +439,11 @@ export { ProfileCard };
 
 // ---------- the table ----------
 
-export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnother, onTournament }: {
+export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, onPlayAnother, onTournament }: {
   r: RoomData; uid: string; voice: Voice | null; voiceControl?: ReactNode;
   onLeave: () => void; onPlayAnother: () => void; onTournament?: () => void;
+  /** Give the game up for good and be free to play another. */
+  onForfeit?: () => void;
 }) {
   const { t } = useI18n();
   const errText = useErrorText();
@@ -635,6 +644,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onPlayAnothe
         onPlay={onPlay}
         onNextHand={() => api('next_hand', { gameId: game.id }).catch(() => {})}
         onExit={onLeave}
+        onForfeit={me && !game.settled && view.winner === null && room.phase === 'playing' ? onForfeit : undefined}
         chat={r.chat}
         onChat={onChat}
         speaking={speaking}
