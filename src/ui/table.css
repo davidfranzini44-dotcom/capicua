@@ -50,16 +50,19 @@
 .table-redesign .seat-name { font-size: 14px; line-height: 1.2; text-align: center; max-width: 104px; overflow: hidden; text-overflow: ellipsis; }
 .table-redesign .seat-name small { display: block; font-size: 11px; opacity: 1; color: #c0d1c1; margin: 2px 0; }
 .table-redesign .tile-back { width: 8px; height: 16px; background: var(--tile-face, var(--ivory)); box-shadow: 0 2px 2px #0005; border: 1px solid var(--tile-edge, #d3c7b0); }
-.table-redesign .tile-back.sponsored {
+/* Sponsored backs are shared by the live table and Admin → Patrocinios.
+   Keep their complete paint here instead of recreating it in the preview. */
+.tile-back.sponsored {
   width: 13px; height: 22px; display: grid; place-items: center; overflow: hidden;
   padding: 1px; border-color: #d8b855; border-radius: 3px;
   background: linear-gradient(155deg, #214f3c, #0b251b);
   box-shadow: inset 0 0 0 1px #ffffff18, 0 2px 3px #0008;
 }
-.table-redesign .tile-back.sponsored img { width: 20px; height: 9px; max-width: none; object-fit: contain; transform: rotate(-90deg); user-select: none; }
-.table-redesign .tile-back.sponsored.white img { filter: brightness(0) invert(1); }
+/* Turned along the long edge: twice the inner width by half the inner height fills the back exactly once rotated. */
+.tile-back.sponsored img { width: 200%; height: 50%; max-width: none; object-fit: contain; transform: rotate(-90deg); user-select: none; }
+.tile-back.sponsored.white img { filter: brightness(0) invert(1); }
 /* The sponsor's own ficha logo: upright, filling the back, in its own colors. */
-.table-redesign .tile-back.sponsored.own-mark img { width: 100%; height: 100%; object-fit: contain; transform: none; }
+.tile-back.sponsored.own-mark img { width: 100%; height: 100%; object-fit: contain; transform: none; }
 .table-redesign .tile-count { color: #c5d6c9; font-size: 11px; }
 .table-redesign .board-wrap { inset: 43% 10px 18%; }
 .board-scene { position: relative; height: 100%; width: 100%; }
@@ -139,8 +142,7 @@
   .table-redesign .seat-name { font-size: 12px; }
   .table-redesign .tile-count { font-size: 10px; }
   .table-redesign .tile-back { height: 12px; width: 6px; }
-  .table-redesign .tile-back.sponsored { height: 18px; width: 10px; }
-  .table-redesign .tile-back.sponsored img { width: 16px; height: 7px; }
+  .tile-back.sponsored { height: 18px; width: 10px; }
   .table-redesign .my-area { padding-top: 14px; }
   .table-tools > * { height: 44px; min-height: 44px; }
   .table-redesign .self-seat .avatar { width: 30px; height: 30px; font-size: 16px; }
@@ -530,7 +532,7 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 .gameover .sponsor-credit { color: #f2e4bdcc; }
 
 .sponsor-result-card, .spectator-sponsor {
-  width: 100%; min-height: 58px; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto;
+  width: 100%; min-height: 58px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #d8b85588; border-radius: 14px;
   background: linear-gradient(145deg, #194532, #0c2b20); box-shadow: inset 0 1px #ffffff12, 0 5px 14px #0003;
   color: #fff8de; text-align: left;
@@ -538,13 +540,16 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 .sponsor-result-card { max-width: 420px; }
 .sponsor-result-card.clickable { border-color: #f1ca53; box-shadow: inset 0 1px #ffffff1c, 0 0 18px #f5c54224; }
 .sponsor-card-logo {
-  width: 44px; height: 44px; object-fit: contain; border-radius: 11px; padding: 3px;
+  width: auto; min-width: 44px; max-width: 96px; height: 44px; object-fit: contain; border-radius: 11px; padding: 3px;
   background: #fff; box-shadow: 0 2px 7px #0005;
 }
-.sponsor-card-logo.white { filter: brightness(0) invert(1); background: transparent; }
 .sponsor-card-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sponsor-card-copy small { color: #c9d8cc; font-size: .69rem; line-height: 1.15; }
-.sponsor-card-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; }
+/* The sponsor's name is what they pay for: two lines before it is ever cut. */
+.sponsor-card-copy b {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden; overflow-wrap: anywhere; line-height: 1.15; font-size: .9rem;
+}
 .sponsor-visit {
   min-height: 38px; padding: 7px 11px; border: 0; border-radius: 11px; cursor: pointer;
   background: #f5c542; color: #1c271b; font: 800 .77rem/1.05 var(--font); box-shadow: inset 0 -2px #ad7d18;
@@ -570,8 +575,7 @@ button.sponsor-credit:hover b { text-decoration: underline; }
   gap: 7px; padding: 5px 12px; border: 1px solid #d8b85588; border-radius: 999px; cursor: pointer;
   background: #123b2b; color: #fff5ce; font: 800 .8rem/1 var(--font); box-shadow: 0 3px 9px #0004;
 }
-.spectator-sponsor-chip img { width: 25px; height: 25px; object-fit: contain; border-radius: 50%; background: #fff; }
-.spectator-sponsor-chip img.white { filter: brightness(0) invert(1); background: transparent; }
+.spectator-sponsor-chip img { width: auto; min-width: 25px; max-width: 68px; height: 25px; padding: 2px; object-fit: contain; border-radius: 6px; background: #fff; }
 .spectator-sponsor-chip:disabled { cursor: default; opacity: .75; }
 
 /* Admin: the preview felt. */
@@ -587,19 +591,11 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 .sp-tiles { display: flex !important; align-items: flex-end; justify-content: center; gap: 2px; padding-bottom: 6%; }
 .sp-tiles > * { width: 34px; height: auto; transform: rotate(90deg); margin: 0 -6px; }
 .sp-row .seg button { font-size: 1.5rem; line-height: 1; }
-/* Admin: the sponsored fichas as players see them (a hand of backs), and one up close. */
+/* Admin: use the exact live-game TileBack paint above. Only the enlarged sample
+   changes dimensions; its logo keeps the same proportions and orientation. */
 .sp-backs { display: flex; align-items: center; gap: 16px; padding: 12px 14px; border-radius: 14px; background: #0e4534; box-shadow: inset 0 0 18px #001b16a6; }
 .sp-backs .hand-of-backs { display: flex; gap: 3px; }
-.sp-backs .tile-back.sponsored {
-  width: 13px; height: 22px; display: grid; place-items: center; overflow: hidden; padding: 1px;
-  border: 1px solid #d8b855; border-radius: 3px; background: linear-gradient(155deg, #214f3c, #0b251b);
-  box-shadow: inset 0 0 0 1px #ffffff18, 0 2px 3px #0008;
-}
 .sp-backs .close-up .tile-back.sponsored { width: 46px; height: 80px; padding: 4px; border-radius: 8px; border-width: 2px; }
-.sp-backs .tile-back.sponsored img { max-width: none; user-select: none; }
-.sp-backs .tile-back.sponsored:not(.own-mark) img { width: 175%; height: 40%; object-fit: contain; transform: rotate(-90deg); }
-.sp-backs .tile-back.sponsored.white img { filter: brightness(0) invert(1); }
-.sp-backs .tile-back.sponsored.own-mark img { width: 100%; height: 100%; object-fit: contain; }
 .sp-backs small { color: #c9d8cc; font-size: .72rem; align-self: center; }
 .sp-backs.inline { display: inline-flex; padding: 0; gap: 0; background: none; box-shadow: none; vertical-align: middle; margin-right: 6px; }
 .sp-tile-note { display: flex; align-items: center; }
@@ -614,15 +610,20 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 .my-area.watching .watch-tools > * { padding-inline: 6px; gap: 4px; font-size: .82rem; }
 @media (max-width: 360px) { .my-area.watching .watch-tools svg { display: none; } .my-area.watching .watch-tools > * { font-size: .78rem; } }
 @media (max-width: 420px) {
-  .spectator-sponsor { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 8px; padding: 7px 34px 7px 8px; }
-  .spectator-sponsor .sponsor-card-logo { width: 38px; height: 38px; }
+  .spectator-sponsor { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 7px 34px 7px 8px; }
+  .spectator-sponsor .sponsor-card-logo { width: auto; min-width: 38px; max-width: 78px; height: 38px; }
   .spectator-sponsor .sponsor-card-copy small { font-size: .63rem; }
   .spectator-sponsor .sponsor-card-copy b { font-size: .82rem; }
   .spectator-sponsor .sponsor-visit { min-height: 34px; padding-inline: 8px; font-size: .69rem; }
-  .sponsor-result-card { grid-template-columns: 40px minmax(0, 1fr) auto; gap: 8px; min-height: 54px; padding: 7px 9px; }
-  .sponsor-result-card .sponsor-card-logo { width: 40px; height: 40px; }
+  .sponsor-result-card { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; min-height: 54px; padding: 7px 9px; }
+  .sponsor-result-card .sponsor-card-logo { width: auto; min-width: 40px; max-width: 82px; height: 40px; }
   .sponsor-result-card .sponsor-card-copy small { font-size: .63rem; }
   .sponsor-result-card .sponsor-card-copy b { font-size: .84rem; }
+}
+/* The narrowest phones: a smaller logo and a two-line button leave the name room for itself. */
+@media (max-width: 360px) {
+  .spectator-sponsor .sponsor-card-logo, .sponsor-result-card .sponsor-card-logo { min-width: 34px; max-width: 58px; height: 34px; }
+  .spectator-sponsor .sponsor-visit { max-width: 84px; white-space: normal; text-align: center; }
 }
 
 /* ---------- Symmetry ---------- */

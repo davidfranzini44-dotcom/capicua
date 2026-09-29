@@ -143,7 +143,7 @@ export function SponsorCard({ s, url, copied, onEdit, onPause, onReport, onDelet
 type T = ReturnType<typeof useI18n>['t'];
 
 /** The sponsored fichas as a player sees them across the table (actual size), and one up close. */
-function SponsorBacks({ sponsor }: { sponsor: { url: string; style: 'color' | 'white'; tileUrl: string | null } }) {
+export function SponsorBacks({ sponsor }: { sponsor: { url: string; style: 'color' | 'white'; tileUrl: string | null } }) {
   const { t } = useI18n();
   return (
     <div className="sp-backs">

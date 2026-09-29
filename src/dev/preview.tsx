@@ -40,7 +40,7 @@ import type { TableAlert } from '../lib/fairPlay';
 import { lookVars } from '../lib/look';
 import { feltById, tilesById } from '../../supabase/functions/_shared/cosmetics.ts';
 import '../ui/table.css';
-import { SponsorCard, SponsorEditor, type SponsorStatsRow } from '../ui/AdminSponsors';
+import { SponsorBacks, SponsorCard, SponsorEditor, type SponsorStatsRow } from '../ui/AdminSponsors';
 import { SponsorReportView } from '../ui/SponsorReport';
 import { ListenButton, SpectatorsSheet } from '../ui/Spectators';
 import { ShareMatchSheet } from '../ui/ShareMatchSheet';
@@ -366,6 +366,14 @@ function Screen({ s }: { s: string }) {
         <SponsorCard s={fakeSponsorRow()} url={FAKE_LOGO} copied={null} onEdit={noop} onPause={noop} onReport={noop} onDelete={noop} onCopyLink={noop} />
         <SponsorCard s={fakeSponsorRow({ id: 'sp2', name: 'Ferretería Popular', style: 'white', opacity: 0.3, paused: true, link: null, salas: [], tournaments: true, tournament_codes: ['KXQTB'], games: 88, players: 40, views: 190, taps: 0, games_7d: 0, views_7d: 0, taps_7d: 0, max_views: null, views_used: 190 })}
           url={FAKE_LOGO} copied="link" onEdit={noop} onPause={noop} onReport={noop} onDelete={noop} onCopyLink={noop} />
+      </div></main></div>
+    );
+  }
+  if (s === 'sponsor-ficha-admin') {
+    return (
+      <div className="admin"><main className="admin-body"><div className="sp-editor">
+        <h2>Logo en las fichas</h2>
+        <SponsorBacks sponsor={{ url: FAKE_LOGO, style: 'color', tileUrl: FAKE_TILE_LOGO }} />
       </div></main></div>
     );
   }
@@ -706,16 +714,17 @@ function Screen({ s }: { s: string }) {
         speaking={voiced ? new Set<Seat>([2]) : undefined} listen={voiced ? <ListenButton voice={fakeVoice({ status: 'on' })} /> : undefined} />
     );
   }
-  if (s === 'watch' || s === 'watch-sponsor' || s === 'watched') {
+  if (s === 'watch' || s === 'watch-sponsor' || s === 'watch-sponsor-white' || s === 'watched') {
     // watch: I'm watching Robert (seat 2). watched: I'm playing and two friends are watching.
     let g = newGame(() => 0.37, publicRules('2v2'));
     for (let i = 0; i < 14 && !g.handResult; i++) g = applyMove(g, forcedMove(g, g.turn) ?? chooseMove(g, g.turn, () => 0.5));
     const view = { ...publicState(g), turn: 2 as Seat };
-    return s === 'watch' || s === 'watch-sponsor' ? (
+    return s === 'watch' || s === 'watch-sponsor' || s === 'watch-sponsor-white' ? (
       <TableView view={view} myHand={[]} mySeat={2} names={['Wilfri', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
         chat={{}} onChat={noop} endActions={null} turnDeadline={Date.now() + 9000} watchers={['Papo', 'Wilfri']} onWatchersTap={noop} watchersUnread={2}
         notice="👁 Papo: ¡Esa capicúa viene!"
-        sponsor={s === 'watch-sponsor' ? FAKE_SPONSOR : undefined} onSponsorTap={s === 'watch-sponsor' ? noop : undefined}
+        sponsor={s === 'watch-sponsor' || s === 'watch-sponsor-white' ? { ...FAKE_SPONSOR, style: s === 'watch-sponsor-white' ? 'white' : 'color' } : undefined}
+        onSponsorTap={s === 'watch-sponsor' || s === 'watch-sponsor-white' ? noop : undefined}
         watching={{ name: 'Robert', onLeave: noop, tools: <><ListenButton voice={fakeVoice({ status: 'on' })} /><button className="btn ghost watch-msg"><ChatCircleDotsIcon size={20} weight="fill" />Mensaje<i className="watchers-dot" /></button></> }} />
     ) : (
       <TableView view={view} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}

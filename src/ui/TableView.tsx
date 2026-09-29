@@ -506,7 +506,7 @@ export function TableView(props: TableViewProps) {
         <footer className="broadcast-foot">
           {props.sponsor && (
             <div className="broadcast-sponsor">
-              <img className={`sponsor-card-logo ${props.sponsor.style}`} src={props.sponsor.url} alt="" draggable={false} />
+              <img className="sponsor-card-logo" src={props.sponsor.url} alt="" draggable={false} />
               <span className="sponsor-card-copy"><small>{t.share.sponsoredHand}</small><b>{props.sponsor.name}</b></span>
             </div>
           )}

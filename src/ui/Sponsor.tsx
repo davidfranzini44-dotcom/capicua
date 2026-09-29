@@ -37,7 +37,7 @@ export function SponsorResultCard({ sponsor, phase, onTap }: {
   const clickable = !!(sponsor.link && onTap);
   return (
     <div className={`sponsor-result-card ${clickable ? 'clickable' : ''}`}>
-      <img className={`sponsor-card-logo ${sponsor.style}`} src={sponsor.url} alt="" draggable={false} />
+      <img className="sponsor-card-logo" src={sponsor.url} alt="" draggable={false} />
       <span className="sponsor-card-copy">
         <small>{phase === 'hand' ? t.sponsor.hand : t.sponsor.match}</small>
         <b>{sponsor.name}</b>
@@ -60,7 +60,7 @@ export function SpectatorSponsorCard({ sponsor, collapsed, onTap, onDismiss }: {
   if (collapsed) {
     return (
       <button type="button" className="spectator-sponsor-chip" onClick={onTap} disabled={!sponsor.link || !onTap}>
-        <img className={sponsor.style} src={sponsor.url} alt="" draggable={false} />
+        <img src={sponsor.url} alt="" draggable={false} />
         <span>{t.sponsor.compact}</span>
         {sponsor.link && onTap && <span aria-hidden>↗</span>}
       </button>
@@ -69,7 +69,7 @@ export function SpectatorSponsorCard({ sponsor, collapsed, onTap, onDismiss }: {
   return (
     <aside className="spectator-sponsor" aria-label={`${t.sponsor.by} ${sponsor.name}`}>
       <button type="button" className="spectator-sponsor-dismiss" onClick={onDismiss} aria-label={t.sponsor.hide}>×</button>
-      <img className={`sponsor-card-logo ${sponsor.style}`} src={sponsor.url} alt="" draggable={false} />
+      <img className="sponsor-card-logo" src={sponsor.url} alt="" draggable={false} />
       <span className="sponsor-card-copy">
         <small>{t.sponsor.by}</small>
         <b>{sponsor.name}</b>
