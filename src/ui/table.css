@@ -543,6 +543,8 @@ button.sponsor-credit:hover b { text-decoration: underline; }
   width: auto; min-width: 44px; max-width: 96px; height: 44px; object-fit: contain; border-radius: 11px; padding: 3px;
   background: #fff; box-shadow: 0 2px 7px #0005;
 }
+/* A light logo (white lettering, made for dark backgrounds) gets a dark tile instead. */
+.sponsor-card-logo.on-dark, .spectator-sponsor-chip img.on-dark { background: #0b251b; box-shadow: inset 0 0 0 1px #ffffff2e, 0 2px 7px #0005; }
 .sponsor-card-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sponsor-card-copy small { color: #c9d8cc; font-size: .69rem; line-height: 1.15; }
 /* The sponsor's name is what they pay for: two lines before it is ever cut. */

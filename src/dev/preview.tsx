@@ -59,6 +59,9 @@ const FAKE_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="htt
 const FAKE_TILE_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 200">
   <circle cx="60" cy="62" r="52" fill="#d62828"/><text x="60" y="84" font-family="Arial Black,Arial" font-weight="900" font-size="46" fill="#fff" text-anchor="middle">LE</text>
   <rect x="14" y="128" width="92" height="56" rx="10" fill="#f5c542"/><text x="60" y="168" font-family="Arial Black,Arial" font-weight="900" font-size="34" fill="#1c271b" text-anchor="middle">LE</text></svg>`)}`;
+/** A logo made for dark backgrounds: white lettering (the cards give it a dark tile). */
+const FAKE_LIGHT_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 110">
+  <rect x="8" y="10" width="14" height="14" rx="3" fill="#ff5a1f"/><text x="0" y="92" font-family="Arial Black,Arial" font-weight="900" font-size="84" fill="#ffffff">OsoFix</text></svg>`)}`;
 const FAKE_SPONSOR: TableSponsor = {
   id: 'sp1', name: 'Colmado La Esquina', url: FAKE_LOGO, link: 'https://wa.me/18095551234',
   style: 'color', opacity: 0.45, size: 0.62,
@@ -714,17 +717,18 @@ function Screen({ s }: { s: string }) {
         speaking={voiced ? new Set<Seat>([2]) : undefined} listen={voiced ? <ListenButton voice={fakeVoice({ status: 'on' })} /> : undefined} />
     );
   }
-  if (s === 'watch' || s === 'watch-sponsor' || s === 'watch-sponsor-white' || s === 'watched') {
+  if (s === 'watch' || s === 'watch-sponsor' || s === 'watch-sponsor-white' || s === 'watch-sponsor-light' || s === 'watched') {
     // watch: I'm watching Robert (seat 2). watched: I'm playing and two friends are watching.
     let g = newGame(() => 0.37, publicRules('2v2'));
     for (let i = 0; i < 14 && !g.handResult; i++) g = applyMove(g, forcedMove(g, g.turn) ?? chooseMove(g, g.turn, () => 0.5));
     const view = { ...publicState(g), turn: 2 as Seat };
-    return s === 'watch' || s === 'watch-sponsor' || s === 'watch-sponsor-white' ? (
+    return s === 'watch' || s === 'watch-sponsor' || s === 'watch-sponsor-white' || s === 'watch-sponsor-light' ? (
       <TableView view={view} myHand={[]} mySeat={2} names={['Wilfri', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
         chat={{}} onChat={noop} endActions={null} turnDeadline={Date.now() + 9000} watchers={['Papo', 'Wilfri']} onWatchersTap={noop} watchersUnread={2}
         notice="👁 Papo: ¡Esa capicúa viene!"
-        sponsor={s === 'watch-sponsor' || s === 'watch-sponsor-white' ? { ...FAKE_SPONSOR, style: s === 'watch-sponsor-white' ? 'white' : 'color' } : undefined}
-        onSponsorTap={s === 'watch-sponsor' || s === 'watch-sponsor-white' ? noop : undefined}
+        sponsor={s === 'watch-sponsor' || s === 'watch-sponsor-white' ? { ...FAKE_SPONSOR, style: s === 'watch-sponsor-white' ? 'white' : 'color' }
+          : s === 'watch-sponsor-light' ? { ...FAKE_SPONSOR, name: 'OsoFix', url: FAKE_LIGHT_LOGO } : undefined}
+        onSponsorTap={s.startsWith('watch-sponsor') ? noop : undefined}
         watching={{ name: 'Robert', onLeave: noop, tools: <><ListenButton voice={fakeVoice({ status: 'on' })} /><button className="btn ghost watch-msg"><ChatCircleDotsIcon size={20} weight="fill" />Mensaje<i className="watchers-dot" /></button></> }} />
     ) : (
       <TableView view={view} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}

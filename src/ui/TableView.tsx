@@ -14,7 +14,7 @@ import { snapshotOf, tableFx, type Bonus, type FxSnapshot } from '../lib/tableFx
 import { placementRun } from '../lib/tableMotion';
 import { BUBBLE_MS, PHRASE_IDS, PHRASES, type PhraseId } from '../quickchat';
 import { Board } from './Board';
-import { SponsorCredit, SponsorMark, SponsorResultCard, SpectatorSponsorCard } from './Sponsor';
+import { SponsorCredit, SponsorLogo, SponsorMark, SponsorResultCard, SpectatorSponsorCard } from './Sponsor';
 import type { TableSponsor } from '../lib/sponsor';
 import { Avatar } from './common';
 import { Confetti } from './Confetti';
@@ -506,7 +506,7 @@ export function TableView(props: TableViewProps) {
         <footer className="broadcast-foot">
           {props.sponsor && (
             <div className="broadcast-sponsor">
-              <img className="sponsor-card-logo" src={props.sponsor.url} alt="" draggable={false} />
+              <SponsorLogo url={props.sponsor.url} className="sponsor-card-logo" />
               <span className="sponsor-card-copy"><small>{t.share.sponsoredHand}</small><b>{props.sponsor.name}</b></span>
             </div>
           )}

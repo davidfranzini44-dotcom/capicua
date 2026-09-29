@@ -4,7 +4,7 @@
 import type { CSSProperties } from 'react';
 import { FELTS } from '../../supabase/functions/_shared/cosmetics.ts';
 import { useI18n } from '../i18n';
-import type { SponsorRow, TableSponsor } from '../lib/sponsor';
+import { useLightLogo, type SponsorRow, type TableSponsor } from '../lib/sponsor';
 import { HandTile } from './Tile';
 
 type Mark = Pick<TableSponsor, 'url' | 'style' | 'opacity' | 'size'>;
@@ -28,6 +28,12 @@ export function SponsorCredit({ sponsor, onTap }: { sponsor: TableSponsor; onTap
 }
 
 /** Sponsor credit used in between-hand and match-result sheets. */
+/** A sponsor's logo on its own tile: white, or dark when the logo itself is light. */
+export function SponsorLogo({ url, className = '' }: { url: string; className?: string }) {
+  const light = useLightLogo(url);
+  return <img className={`${className}${light ? ' on-dark' : ''}`.trim() || undefined} src={url} alt="" draggable={false} />;
+}
+
 export function SponsorResultCard({ sponsor, phase, onTap }: {
   sponsor: TableSponsor;
   phase: 'hand' | 'match';
@@ -37,7 +43,7 @@ export function SponsorResultCard({ sponsor, phase, onTap }: {
   const clickable = !!(sponsor.link && onTap);
   return (
     <div className={`sponsor-result-card ${clickable ? 'clickable' : ''}`}>
-      <img className="sponsor-card-logo" src={sponsor.url} alt="" draggable={false} />
+      <SponsorLogo url={sponsor.url} className="sponsor-card-logo" />
       <span className="sponsor-card-copy">
         <small>{phase === 'hand' ? t.sponsor.hand : t.sponsor.match}</small>
         <b>{sponsor.name}</b>
@@ -60,7 +66,7 @@ export function SpectatorSponsorCard({ sponsor, collapsed, onTap, onDismiss }: {
   if (collapsed) {
     return (
       <button type="button" className="spectator-sponsor-chip" onClick={onTap} disabled={!sponsor.link || !onTap}>
-        <img src={sponsor.url} alt="" draggable={false} />
+        <SponsorLogo url={sponsor.url} />
         <span>{t.sponsor.compact}</span>
         {sponsor.link && onTap && <span aria-hidden>↗</span>}
       </button>
@@ -69,7 +75,7 @@ export function SpectatorSponsorCard({ sponsor, collapsed, onTap, onDismiss }: {
   return (
     <aside className="spectator-sponsor" aria-label={`${t.sponsor.by} ${sponsor.name}`}>
       <button type="button" className="spectator-sponsor-dismiss" onClick={onDismiss} aria-label={t.sponsor.hide}>×</button>
-      <img className="sponsor-card-logo" src={sponsor.url} alt="" draggable={false} />
+      <SponsorLogo url={sponsor.url} className="sponsor-card-logo" />
       <span className="sponsor-card-copy">
         <small>{t.sponsor.by}</small>
         <b>{sponsor.name}</b>

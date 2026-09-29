@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeLink, pickWeighted, SPONSOR_SALAS, sponsorMatches, validateSponsor, type SponsorInput } from '../supabase/functions/_shared/sponsors.ts';
+import { isLightLogo, logoShades } from '../src/lib/sponsor';
 
 const base: SponsorInput = {
   name: 'Colmado La Esquina', imagePath: 'k3j2-abc.webp', link: null, style: 'color', opacity: 0.4, size: 0.6,
@@ -96,5 +97,24 @@ describe('which tables show it', () => {
     expect(pickWeighted(list, () => 0.74)?.id).toBe('a');
     expect(pickWeighted(list, () => 0.76)?.id).toBe('b');
     expect(pickWeighted([], () => 0.5)).toBeNull();
+  });
+});
+
+describe('light logos get a dark tile', () => {
+  type Px = [number, number, number, number];
+  const px = (...colors: Px[]) => colors.flat();
+  const white: Px = [254, 252, 252, 255], black: Px = [15, 15, 15, 255], red: Px = [214, 40, 40, 255];
+  const yellow: Px = [245, 197, 66, 255], orange: Px = [240, 80, 30, 255], clear: Px = [0, 0, 0, 0];
+  it('white lettering made for dark backgrounds gets a dark tile; transparent pixels do not count', () => {
+    expect(isLightLogo(px(white, white, white, white, orange, clear, clear, clear))).toBe(true);
+    expect(logoShades(px(clear, clear))).toEqual({ light: 0, dark: 0 });
+  });
+  it('a colored logo with white words also reads better on dark', () => {
+    expect(isLightLogo(px(red, white, white, yellow))).toBe(true);
+  });
+  it('dark lettering, or as much dark as light, keeps the white tile', () => {
+    expect(isLightLogo(px(black, black, white))).toBe(false);
+    expect(isLightLogo(px(red, yellow, white, black))).toBe(false);
+    expect(isLightLogo(px(red, yellow, orange))).toBe(false);
   });
 });

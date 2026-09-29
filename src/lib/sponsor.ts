@@ -81,6 +81,72 @@ export function useSponsor(id: string | null | undefined): TableSponsor | null {
   return loaded?.id === id ? loaded.s : null;
 }
 
+/**
+ * How much of a logo's visible part is light, and how much dark. The cards give a logo its
+ * own tile: white parts (lettering made for dark backgrounds) vanish on a white one, dark
+ * parts on a dark one — so the tile is dark when the logo has more light than dark in it.
+ */
+export function logoShades(rgba: ArrayLike<number>): { light: number; dark: number } {
+  let seen = 0;
+  let light = 0;
+  let dark = 0;
+  for (let i = 0; i + 3 < rgba.length; i += 4) {
+    if (rgba[i + 3] < 64) continue;
+    seen++;
+    const lum = 0.2126 * rgba[i] + 0.7152 * rgba[i + 1] + 0.0722 * rgba[i + 2];
+    if (lum > 200) light++;
+    else if (lum < 70) dark++;
+  }
+  return seen ? { light: light / seen, dark: dark / seen } : { light: 0, dark: 0 };
+}
+export const isLightLogo = (rgba: ArrayLike<number>) => {
+  const { light, dark } = logoShades(rgba);
+  return light > 0.1 && light > dark;
+};
+
+const tones = new Map<string, Promise<boolean>>();
+/** Is this logo light? Read once per image from a small copy (storage allows it cross-origin). */
+function logoIsLight(url: string): Promise<boolean> {
+  let p = tones.get(url);
+  if (!p) {
+    p = new Promise<boolean>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const w = 64;
+          const h = Math.max(1, Math.round((w * img.naturalHeight) / Math.max(1, img.naturalWidth)));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          if (!ctx) return resolve(false);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(isLightLogo(ctx.getImageData(0, 0, w, h).data));
+        } catch {
+          resolve(false); // unreadable: keep the white tile
+        }
+      };
+      img.onerror = () => resolve(false);
+      img.src = url;
+    });
+    tones.set(url, p);
+  }
+  return p;
+}
+
+/** True once a logo turns out to be light (until then, and for dark logos, false). */
+export function useLightLogo(url: string | null | undefined): boolean {
+  const [known, setKnown] = useState<{ url: string; light: boolean } | null>(null);
+  useEffect(() => {
+    if (!url) return;
+    let live = true;
+    logoIsLight(url).then((light) => { if (live) setKnown({ url, light }); });
+    return () => { live = false; };
+  }, [url]);
+  return !!url && known?.url === url && known.light;
+}
+
 /** The page the sponsor opens to see their numbers (no sign-in). */
 export const sponsorReportUrl = (token: string) => `${location.origin}/?reporte=${encodeURIComponent(token)}`;
 
