@@ -50,6 +50,14 @@
 .table-redesign .seat-name { font-size: 14px; line-height: 1.2; text-align: center; max-width: 104px; overflow: hidden; text-overflow: ellipsis; }
 .table-redesign .seat-name small { display: block; font-size: 11px; opacity: 1; color: #c0d1c1; margin: 2px 0; }
 .table-redesign .tile-back { width: 8px; height: 16px; background: var(--tile-face, var(--ivory)); box-shadow: 0 2px 2px #0005; border: 1px solid var(--tile-edge, #d3c7b0); }
+.table-redesign .tile-back.sponsored {
+  width: 13px; height: 22px; display: grid; place-items: center; overflow: hidden;
+  padding: 1px; border-color: #d8b855; border-radius: 3px;
+  background: linear-gradient(155deg, #214f3c, #0b251b);
+  box-shadow: inset 0 0 0 1px #ffffff18, 0 2px 3px #0008;
+}
+.table-redesign .tile-back.sponsored img { width: 20px; height: 9px; max-width: none; object-fit: contain; transform: rotate(-90deg); user-select: none; }
+.table-redesign .tile-back.sponsored.white img { filter: brightness(0) invert(1); }
 .table-redesign .tile-count { color: #c5d6c9; font-size: 11px; }
 .table-redesign .board-wrap { inset: 43% 10px 18%; }
 .board-scene { position: relative; height: 100%; width: 100%; }
@@ -129,6 +137,8 @@
   .table-redesign .seat-name { font-size: 12px; }
   .table-redesign .tile-count { font-size: 10px; }
   .table-redesign .tile-back { height: 12px; width: 6px; }
+  .table-redesign .tile-back.sponsored { height: 18px; width: 10px; }
+  .table-redesign .tile-back.sponsored img { width: 16px; height: 7px; }
   .table-redesign .my-area { padding-top: 14px; }
   .table-tools > * { height: 44px; min-height: 44px; }
   .table-redesign .self-seat .avatar { width: 30px; height: 30px; font-size: 16px; }
@@ -341,6 +351,7 @@
 }
 .watch-bar .backs { display: flex; gap: 3px; }
 .watch-bar .tile-back { width: 10px; height: 20px; }
+.watch-bar .tile-back.sponsored { width: 13px; height: 22px; }
 .table-tools.watch-tools { justify-content: center; }
 .watch-message { gap: 16px; text-align: center; padding: 24px; }
 .watch-lobby { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
@@ -516,6 +527,51 @@ button.sponsor-credit { background: none; border: 0; padding: 6px 4px; cursor: p
 button.sponsor-credit:hover b { text-decoration: underline; }
 .gameover .sponsor-credit { color: #f2e4bdcc; }
 
+.sponsor-result-card, .spectator-sponsor {
+  width: 100%; min-height: 58px; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #d8b85588; border-radius: 14px;
+  background: linear-gradient(145deg, #194532, #0c2b20); box-shadow: inset 0 1px #ffffff12, 0 5px 14px #0003;
+  color: #fff8de; text-align: left;
+}
+.sponsor-result-card { max-width: 420px; }
+.sponsor-result-card.clickable { border-color: #f1ca53; box-shadow: inset 0 1px #ffffff1c, 0 0 18px #f5c54224; }
+.sponsor-card-logo {
+  width: 44px; height: 44px; object-fit: contain; border-radius: 11px; padding: 3px;
+  background: #fff; box-shadow: 0 2px 7px #0005;
+}
+.sponsor-card-logo.white { filter: brightness(0) invert(1); background: transparent; }
+.sponsor-card-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sponsor-card-copy small { color: #c9d8cc; font-size: .69rem; line-height: 1.15; }
+.sponsor-card-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; }
+.sponsor-visit {
+  min-height: 38px; padding: 7px 11px; border: 0; border-radius: 11px; cursor: pointer;
+  background: #f5c542; color: #1c271b; font: 800 .77rem/1.05 var(--font); box-shadow: inset 0 -2px #ad7d18;
+}
+.sponsor-visit:active { transform: translateY(1px); box-shadow: inset 0 -1px #ad7d18; }
+.sponsor-locked {
+  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: #ffffff0e; color: #e8d594; border: 1px solid #d8b85555; font-weight: 900;
+}
+.sheet .sponsor-result-card { flex: none; }
+.gameover .sponsor-result-card { background: #10291fe6; }
+
+.spectator-sponsor { position: relative; padding-right: 38px; }
+.spectator-sponsor .sponsor-visit { margin-right: 2px; }
+.spectator-sponsor-dismiss {
+  position: absolute; top: -7px; right: -5px; z-index: 1; width: 30px; height: 30px;
+  display: grid; place-items: center; padding: 0; border-radius: 9px; cursor: pointer;
+  border: 2px solid #f1b45b; background: #842f2f; color: #fff; box-shadow: 0 3px 8px #0007;
+  font: 900 20px/1 var(--font);
+}
+.spectator-sponsor-chip {
+  align-self: center; min-height: 38px; max-width: 220px; display: inline-flex; align-items: center; justify-content: center;
+  gap: 7px; padding: 5px 12px; border: 1px solid #d8b85588; border-radius: 999px; cursor: pointer;
+  background: #123b2b; color: #fff5ce; font: 800 .8rem/1 var(--font); box-shadow: 0 3px 9px #0004;
+}
+.spectator-sponsor-chip img { width: 25px; height: 25px; object-fit: contain; border-radius: 50%; background: #fff; }
+.spectator-sponsor-chip img.white { filter: brightness(0) invert(1); background: transparent; }
+.spectator-sponsor-chip:disabled { cursor: default; opacity: .75; }
+
 /* Admin: the preview felt. */
 .sp-felt { width: 100%; max-width: 420px; background: none; }
 .sp-felt .felt { height: 220px; margin: 0; }
@@ -534,11 +590,22 @@ button.sponsor-credit:hover b { text-decoration: underline; }
    messages show there), then one row of tools — at every size, short phones included. */
 .my-area.watching { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
 .my-area.watching > .table-instruction { margin: 0; justify-content: center; }
-.my-area.watching .table-tools.watch-tools { display: flex; flex-wrap: nowrap; justify-content: center; gap: 8px; }
+.my-area.watching .table-tools.watch-tools { position: static; display: flex; flex-wrap: nowrap; justify-content: center; gap: 8px; }
 .my-area.watching .watch-tools > * { flex: 1 1 0; min-width: 0; white-space: nowrap; padding-inline: 8px; font-size: .88rem; }
 .my-area.watching .watch-tools svg { flex: none; }
 .my-area.watching .watch-tools > * { padding-inline: 6px; gap: 4px; font-size: .82rem; }
 @media (max-width: 360px) { .my-area.watching .watch-tools svg { display: none; } .my-area.watching .watch-tools > * { font-size: .78rem; } }
+@media (max-width: 420px) {
+  .spectator-sponsor { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 8px; padding: 7px 34px 7px 8px; }
+  .spectator-sponsor .sponsor-card-logo { width: 38px; height: 38px; }
+  .spectator-sponsor .sponsor-card-copy small { font-size: .63rem; }
+  .spectator-sponsor .sponsor-card-copy b { font-size: .82rem; }
+  .spectator-sponsor .sponsor-visit { min-height: 34px; padding-inline: 8px; font-size: .69rem; }
+  .sponsor-result-card { grid-template-columns: 40px minmax(0, 1fr) auto; gap: 8px; min-height: 54px; padding: 7px 9px; }
+  .sponsor-result-card .sponsor-card-logo { width: 40px; height: 40px; }
+  .sponsor-result-card .sponsor-card-copy small { font-size: .63rem; }
+  .sponsor-result-card .sponsor-card-copy b { font-size: .84rem; }
+}
 
 /* ---------- Symmetry ---------- */
 /* The scoreboard: us | the middle | them in equal side columns, so the middle (target, hand,

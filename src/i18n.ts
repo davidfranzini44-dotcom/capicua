@@ -217,7 +217,11 @@ const dict = {
       online: 'En línea', lastSeen: 'Última vez {t}', justNow: 'hace un momento',
       show: 'Mostrar mi última conexión', showHint: 'Los demás ven cuándo estuviste en línea por última vez.',
     },
-    sponsor: { by: 'Mesa patrocinada por' },
+    sponsor: {
+      by: 'Mesa patrocinada por', hand: 'Esta mano fue patrocinada por', match: 'Partida patrocinada por',
+      view: 'Ver patrocinador', compact: 'Patrocinador', hide: 'Ocultar anuncio',
+      availableAfterMatch: 'El enlace estará disponible al terminar la partida',
+    },
     report: {
       title: 'Reporte de patrocinio', on: 'en Capicúa', loading: 'Cargando tu reporte…',
       notFound: 'Este enlace no existe o fue cambiado. Pide uno nuevo a Capicúa.',
@@ -839,7 +843,11 @@ const dict = {
       online: 'Online', lastSeen: 'Last seen {t}', justNow: 'just now',
       show: 'Show when I was last online', showHint: 'Other players see when you were last online.',
     },
-    sponsor: { by: 'Table sponsored by' },
+    sponsor: {
+      by: 'Table sponsored by', hand: 'This hand was sponsored by', match: 'Match sponsored by',
+      view: 'View sponsor', compact: 'Sponsor', hide: 'Hide ad',
+      availableAfterMatch: 'The link will be available after the match',
+    },
     report: {
       title: 'Sponsorship report', on: 'on Capicúa', loading: 'Loading your report…',
       notFound: "This link doesn't exist or was changed. Ask Capicúa for a new one.",

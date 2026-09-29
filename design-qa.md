@@ -47,3 +47,36 @@ final result: passed
 - [x] Leave local playable preview open.
 - [x] Publication requested by the user after the overlap fix.
 
+---
+
+# Sponsored hands verification
+
+final result: passed
+
+## Visual target and evidence
+- Selected direction: sponsor-branded face-down fichas, a non-clickable hand-end credit, a clickable match-end card, and a spectator card that collapses to a sponsor chip.
+- Reference: `C:\Users\Lissa\.codex\generated_images\01a0db38-8e41-7950-8b71-fb9491bccfb1\exec-eea7dc6b-05ee-4ef0-bdab-c9306c165b36.png`.
+- Live preview: `http://127.0.0.1:5173/preview.html?s=watch-sponsor`.
+- Implementation captures: `qa/sponsor-spectator-mobile.png`, `qa/sponsor-spectator-collapsed-mobile.png`, `qa/sponsor-between-hand-mobile.png`, and `qa/sponsor-match-end-mobile.png`.
+
+## Findings and fixes
+1. P1: Active players could reach the sponsor link from table settings during a live match. The settings credit is now static for players; the actionable link appears only on the final match result.
+2. P1: Spectators needed continuous access without obscuring the board. The card now sits below the table, remains clickable during play, and its distinct red-and-gold close control collapses it to a smaller clickable chip.
+3. P2: Desktop watch controls inherited absolute positioning and overlapped the new sponsor card. The spectator tool row now uses normal document flow at every breakpoint.
+4. P2: A wide sponsor logo became unreadable on narrow ficha backs. The mark is rotated along the long edge of the ficha while retaining the sponsor's color/white treatment.
+
+## Responsive and interaction checks
+- 390 x 844 mobile: sponsor card bounds are x=14–376 and y=663–721; the table ends at y=584, so the card does not cover play. `scrollWidth` equals the 390px viewport.
+- 360 x 640 short-phone layout: table, full sponsor card, spectator message, and all three controls remain visible without horizontal overflow.
+- 1366 x 768 desktop: sponsor card and spectator controls remain separate in normal flow.
+- Dismiss action: the full card collapses to a centered `Patrocinador ↗` chip; the sponsor remains reachable.
+- Active-player settings: sponsor credit renders as text, not a button.
+- Between hands: sponsor card is prominent and non-clickable.
+- Match end: `Ver patrocinador ↗` is available beside the sponsor name.
+- Console: zero errors and zero warnings in the inspected final preview.
+
+## Verification
+- Production TypeScript/Vite build: passed.
+- Oxlint: passed with the repository's existing warnings and no errors.
+- Git whitespace check: passed; Git reports the existing CRLF normalization notice for `src/ui/Sponsor.tsx`.
+

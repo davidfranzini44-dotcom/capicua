@@ -1,5 +1,10 @@
 import { arrowPath, OWNER_ARROW, ownerBadgePoint, type OwnerRole } from './owners';
 
+type TileBackSponsor = {
+  url: string;
+  style: 'color' | 'white';
+};
+
 const P = 0.26;
 const C = 0.5;
 const Q = 0.74;
@@ -94,7 +99,11 @@ export function HandTile({ tile, className }: { tile: [number, number]; classNam
   );
 }
 
-/** Face-down tile for opponents' hands. */
-export function TileBack() {
-  return <span className="tile-back" aria-hidden />;
+/** Face-down tile for opponents' hands. Sponsored hands carry the current logo. */
+export function TileBack({ sponsor }: { sponsor?: TileBackSponsor | null }) {
+  return (
+    <span className={`tile-back ${sponsor ? `sponsored ${sponsor.style}` : ''}`} aria-hidden>
+      {sponsor && <img src={sponsor.url} alt="" draggable={false} />}
+    </span>
+  );
 }

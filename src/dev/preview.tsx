@@ -43,13 +43,17 @@ import { SponsorCard, SponsorEditor, type SponsorStatsRow } from '../ui/AdminSpo
 import { SponsorReportView } from '../ui/SponsorReport';
 import { ListenButton, SpectatorsSheet } from '../ui/Spectators';
 import { ChatCircleDotsIcon } from '@phosphor-icons/react';
-import type { SponsorReport } from '../lib/sponsor';
+import type { SponsorReport, TableSponsor } from '../lib/sponsor';
 
 /** A made-up sponsor logo (transparent SVG) for the sponsored-table previews. */
 const FAKE_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 200">
   <circle cx="90" cy="100" r="78" fill="#d62828"/><text x="90" y="122" font-family="Arial Black,Arial" font-weight="900" font-size="64" fill="#fff" text-anchor="middle">LE</text>
   <text x="185" y="92" font-family="Arial Black,Arial" font-weight="900" font-size="46" fill="#f5c542">COLMADO</text>
   <text x="185" y="146" font-family="Arial Black,Arial" font-weight="900" font-size="40" fill="#ffffff">LA ESQUINA</text></svg>`)}`;
+const FAKE_SPONSOR: TableSponsor = {
+  id: 'sp1', name: 'Colmado La Esquina', url: FAKE_LOGO, link: 'https://wa.me/18095551234',
+  style: 'color', opacity: 0.45, size: 0.62,
+};
 const fakeSponsorRow = (over: Partial<SponsorStatsRow> = {}): SponsorStatsRow => ({
   id: 'sp1', name: 'Colmado La Esquina', image_path: 'x.webp', link: 'https://wa.me/18095551234', style: 'color', opacity: 0.45, size: 0.6,
   salas: [0, 500, 1000], custom: true, tournaments: false, tournament_codes: [], weight: 1,
@@ -340,7 +344,7 @@ function Screen({ s }: { s: string }) {
     const mode = s === 'sponsor-table-1v1' ? '1v1' : '2v2';
     let g = newGame(Math.random, publicRules(mode));
     for (let i = 0; i < 9 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
-    const sponsor = { id: 'sp1', name: 'Colmado La Esquina', url: FAKE_LOGO, link: 'https://wa.me/18095551234', style: (s === 'sponsor-table-white' ? 'white' : 'color') as 'color' | 'white', opacity: s === 'sponsor-table-white' ? 0.28 : 0.45, size: 0.62 };
+    const sponsor = { ...FAKE_SPONSOR, style: (s === 'sponsor-table-white' ? 'white' : 'color') as 'color' | 'white', opacity: s === 'sponsor-table-white' ? 0.28 : 0.45 };
     return (
       <TableView view={publicState(g)} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
         chat={{}} onChat={noop} endActions={null} sponsor={sponsor} onSponsorTap={noop} />
@@ -378,10 +382,12 @@ function Screen({ s }: { s: string }) {
     return <div className="admin"><main className="admin-body"><SponsorEditor initial={null} onDone={noop} onCancel={noop} upload={async () => 'fake.webp'} /></main></div>;
   }
   if (s.startsWith('gameover')) {
+    const won = s.includes('won');
+    const sponsored = s.includes('sponsor');
     let g = newGame(Math.random, publicRules('2v2')) as GameState;
-    g = { ...g, scores: s === 'gameover-won' ? [104, 57] : [61, 112], winner: s === 'gameover-won' ? 0 : 1, handNo: 6,
-      tally: { capicuas: [2, 1], tranques: [1, 0], hands: s === 'gameover-won' ? [4, 2] : [2, 4] },
-      seatStats: s === 'gameover-won'
+    g = { ...g, scores: won ? [104, 57] : [61, 112], winner: won ? 0 : 1, handNo: 6,
+      tally: { capicuas: [2, 1], tranques: [1, 0], hands: won ? [4, 2] : [2, 4] },
+      seatStats: won
         ? { points: [71, 32, 33, 25], dominoes: [3, 1, 1, 1], capicuas: [2, 1, 0, 0], tiles: [24, 21, 19, 22], passes: [3, 7, 6, 5] }
         : { points: [36, 60, 25, 52], dominoes: [1, 2, 1, 2], capicuas: [0, 1, 0, 0], tiles: [19, 23, 20, 24], passes: [6, 4, 7, 3] },
       handResult: { kind: 'domino', winnerSeat: 0, side: 0, points: 31, capicua: true, bonus: 25, total: 56, counts: [0, 12, 9, 10], hands: [[], [], [], []], tieToMano: false } };
@@ -390,7 +396,8 @@ function Screen({ s }: { s: string }) {
         chat={{}} onChat={noop} showXp
         resultNote={<><div className="reward chips up"><span>🪙</span><b>+1,000</b></div>
           <div className="reward chest"><ChestArtPreview /><b>Cofre de plata</b></div></>}
-        endActions={<><button className="btn primary">Jugar otra</button><button className="btn ghost">Salir</button></>} />
+        endActions={<><button className="btn primary">Jugar otra</button><button className="btn ghost">Salir</button></>}
+        sponsor={sponsored ? FAKE_SPONSOR : undefined} onSponsorTap={sponsored ? noop : undefined} />
     );
   }
   if (s === 'big-hand') {
@@ -482,6 +489,16 @@ function Screen({ s }: { s: string }) {
     // Voice on in the lobby, Yokasta muted from her card.
     const r = data({ seats: [seat(0, 'Wilfri', 4), seat(1, 'Yokasta', 6), seat(2, 'Robert', 5), seat(3, 'Chelo', 5, { is_bot: true, user_id: null })] });
     return <Pregame r={r} uid="me" profile={profile} voice={fakeVoice({ status: 'on', micOn: true, mutedPeers: new Set(['u-Yokasta']) })} onLeave={noop} />;
+  }
+  if (s === 'sponsor-between') {
+    let g = newGame(Math.random, publicRules('2v2'));
+    for (let i = 0; i < 400 && !g.handResult; i++) g = applyMove(g, chooseMove(g, g.turn));
+    return (
+      <TableView view={{ ...publicState(g), winner: null }} myHand={[]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']}
+        onPlay={noop} onNextHand={noop} onExit={noop} chat={{}} onChat={noop} endActions={null}
+        readyUp={{ ready: new Set([1 as Seat]), waiting: [0 as Seat, 2 as Seat], deadline: Date.now() + 22_000 }}
+        sponsor={FAKE_SPONSOR} onSponsorTap={noop} />
+    );
   }
   if (s === 'between' || s === 'between-ready' || s === 'between-1v1') {
     // A hand just ended online: "Listo" (or waiting for the others), the clock, and who is carrying the game.
@@ -611,15 +628,16 @@ function Screen({ s }: { s: string }) {
   if (s === 'settings-push') {
     return <SettingsSheet onClose={noop} extra={<><PushRow push={fakePush('off')} /><PushRow push={fakePush('install')} /></>} />;
   }
-  if (s === 'watch' || s === 'watched') {
+  if (s === 'watch' || s === 'watch-sponsor' || s === 'watched') {
     // watch: I'm watching Robert (seat 2). watched: I'm playing and two friends are watching.
     let g = newGame(() => 0.37, publicRules('2v2'));
     for (let i = 0; i < 14 && !g.handResult; i++) g = applyMove(g, forcedMove(g, g.turn) ?? chooseMove(g, g.turn, () => 0.5));
     const view = { ...publicState(g), turn: 2 as Seat };
-    return s === 'watch' ? (
+    return s === 'watch' || s === 'watch-sponsor' ? (
       <TableView view={view} myHand={[]} mySeat={2} names={['Wilfri', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}
         chat={{}} onChat={noop} endActions={null} turnDeadline={Date.now() + 9000} watchers={['Papo', 'Wilfri']} onWatchersTap={noop} watchersUnread={2}
         notice="👁 Papo: ¡Esa capicúa viene!"
+        sponsor={s === 'watch-sponsor' ? FAKE_SPONSOR : undefined} onSponsorTap={s === 'watch-sponsor' ? noop : undefined}
         watching={{ name: 'Robert', onLeave: noop, tools: <><ListenButton voice={fakeVoice({ status: 'on' })} /><button className="btn ghost watch-msg"><ChatCircleDotsIcon size={20} weight="fill" />Mensaje<i className="watchers-dot" /></button></> }} />
     ) : (
       <TableView view={view} myHand={g.hands[0]} mySeat={0} names={['', 'Yokasta', 'Robert', 'Kirsy']} onPlay={noop} onNextHand={noop} onExit={noop}

@@ -14,7 +14,7 @@ import { snapshotOf, tableFx, type Bonus, type FxSnapshot } from '../lib/tableFx
 import { placementRun } from '../lib/tableMotion';
 import { BUBBLE_MS, PHRASE_IDS, PHRASES, type PhraseId } from '../quickchat';
 import { Board } from './Board';
-import { SponsorCredit, SponsorMark } from './Sponsor';
+import { SponsorCredit, SponsorMark, SponsorResultCard, SpectatorSponsorCard } from './Sponsor';
 import type { TableSponsor } from '../lib/sponsor';
 import { Avatar } from './common';
 import { Confetti } from './Confetti';
@@ -147,6 +147,7 @@ export function TableView(props: TableViewProps) {
   const [bonus, setBonus] = useState<Bonus | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sponsorCollapsed, setSponsorCollapsed] = useState(false);
   /** The "step away or forfeit" choice when leaving a game in progress. */
   const [leaving, setLeaving] = useState(false);
   const menuRef = useRef<HTMLDialogElement>(null);
@@ -387,6 +388,7 @@ export function TableView(props: TableViewProps) {
     owner: ownerOf?.(s),
     charges: arcade ? arcade.charges[s] ?? 0 : null,
     locked: !!arcade && playing && lockedFor(view, s) !== null,
+    sponsor: props.sponsor,
   });
 
   const myBubble = bubble(mySeat);
@@ -398,6 +400,8 @@ export function TableView(props: TableViewProps) {
     if (menuOpen) menuRef.current?.showModal();
     else menuRef.current?.close();
   }, [menuOpen]);
+
+  useEffect(() => setSponsorCollapsed(false), [props.sponsor?.id]);
 
   return (
     <div className={`table-screen table-redesign mode-${mode} ${arcade ? 'ruleset-arcade' : ''} ${props.presentation === 'classic' ? '' : 'table-focus'} ${look.className}`} style={look.style} onKeyDown={(e) => {
@@ -431,7 +435,7 @@ export function TableView(props: TableViewProps) {
 
         {mode === '1v1' && (
           <div className={`boneyard ${view.boneyardCount === 0 ? 'empty' : ''}`} title={t.pile}>
-            <span className="pile">{Array.from({ length: Math.min(view.boneyardCount, 5) }, (_, i) => <TileBack key={i} />)}</span>
+            <span className="pile">{Array.from({ length: Math.min(view.boneyardCount, 5) }, (_, i) => <TileBack key={i} sponsor={props.sponsor} />)}</span>
             <small>{t.pile}: {view.boneyardCount}</small>
           </div>
         )}
@@ -494,9 +498,12 @@ export function TableView(props: TableViewProps) {
         )}
         {watching && (
           <div className="watch-bar">
-            <span className="backs" aria-hidden>{Array.from({ length: Math.min(view.handCounts[mySeat], 7) }, (_, i) => <TileBack key={i} />)}</span>
+            <span className="backs" aria-hidden>{Array.from({ length: Math.min(view.handCounts[mySeat], 7) }, (_, i) => <TileBack key={i} sponsor={props.sponsor} />)}</span>
             <span>👁 {t.watch.watching} <b>{watching.name}</b> · {view.handCounts[mySeat]} {view.handCounts[mySeat] === 1 ? t.watch.tile : t.watch.tiles}</span>
           </div>
+        )}
+        {watching && props.sponsor && (
+          <SpectatorSponsorCard sponsor={props.sponsor} collapsed={sponsorCollapsed} onTap={props.onSponsorTap} onDismiss={() => setSponsorCollapsed(true)} />
         )}
         {/* A big 1v1 hand (lots of draws) wraps into balanced rows sized to fit the screen. */}
         <div ref={handRef} hidden={!!watching} className={`hand ${hand.rows > 1 ? 'multi' : ''}`}
@@ -570,17 +577,18 @@ export function TableView(props: TableViewProps) {
         <label><span>{t.sfx}<small>{t.sfxHint}</small></span><input type="checkbox" checked={sfx} onChange={(e) => setSfx(e.target.checked)} /></label>
         {arcade && <button className="btn ghost" onClick={() => { setMenuOpen(false); setIntroOpen(true); }}>⚡ {t.arcade.intro.again}</button>}
         <LookPicker compact />
-        {props.sponsor && <SponsorCredit sponsor={props.sponsor} onTap={props.onSponsorTap} />}
+        {props.sponsor && <SponsorCredit sponsor={props.sponsor} onTap={watching ? props.onSponsorTap : undefined} />}
         <button className="btn primary" onClick={() => setMenuOpen(false)}>{copy.done}</button>
       </dialog>
 
       {showResult && view.handResult && view.winner === null && (
         <ResultSheet view={view} mySeat={mySeat} name={name} onNext={onNextHand} endActions={props.endActions} note={resultNote}
-          readyUp={readyUp} watching={!!watching} />
+          readyUp={readyUp} watching={!!watching}
+          sponsorCredit={props.sponsor ? <SponsorResultCard sponsor={props.sponsor} phase="hand" onTap={watching ? props.onSponsorTap : undefined} /> : undefined} />
       )}
       {showResult && view.winner !== null && (
         <GameOver view={view} mySeat={mySeat} name={name} endActions={props.endActions} note={resultNote} showXp={props.showXp && !arcade}
-          credit={props.sponsor ? <SponsorCredit sponsor={props.sponsor} onTap={props.onSponsorTap} /> : undefined} />
+          credit={props.sponsor ? <SponsorResultCard sponsor={props.sponsor} phase="match" onTap={props.onSponsorTap} /> : undefined} />
       )}
       {introOpen && <ArcadeIntro onClose={() => setIntroOpen(false)} />}
       {leaving && props.onForfeit && (
@@ -755,7 +763,7 @@ function Say({ long, short, className = '' }: { long: string; short: string; cla
 
 function SeatBadge({
   name, avatar, level, color, count, active, bubble, pos, partnerLabel, speaking, away, offline, outOfApp, muted, onTap, seconds, owner,
-  charges, locked,
+  charges, locked, sponsor,
 }: {
   name: string; avatar?: string | null; level: number | null; color: string; count: number; active: boolean;
   bubble: { text: string; chat: boolean } | null; pos: 'top' | 'left' | 'right'; partnerLabel?: string;
@@ -765,6 +773,7 @@ function SeatBadge({
   charges?: number | null;
   /** Arcade: one end is closed for this player's turn. */
   locked?: boolean;
+  sponsor?: TableSponsor | null;
 }) {
   const { t, lang } = useI18n();
   return (
@@ -785,7 +794,7 @@ function SeatBadge({
           ? <span className="offline-tag out-of-app">📵 <span className="tag-text">{t.fair.outTag}</span></span>
           : offline && <span className="offline-tag">📵 <span className="tag-text">{t.offline}</span></span>}
         <span className="seat-tiles" aria-label={`${count} ${count === 1 ? (lang === 'es' ? 'ficha' : 'tile') : (lang === 'es' ? 'fichas' : 'tiles')}`}>
-          <span className="backs" aria-hidden>{Array.from({ length: Math.min(count, 7) }, (_, i) => <TileBack key={i} />)}</span>
+          <span className="backs" aria-hidden>{Array.from({ length: Math.min(count, 7) }, (_, i) => <TileBack key={i} sponsor={sponsor} />)}</span>
           <b className="tile-count" aria-hidden>{count}</b>
         </span>
       </div>
@@ -814,10 +823,10 @@ function useCountdown(deadline: number | null | undefined) {
 }
 
 function ResultSheet({
-  view, mySeat, name, onNext, endActions, note, readyUp, watching,
+  view, mySeat, name, onNext, endActions, note, readyUp, watching, sponsorCredit,
 }: {
   view: PublicState; mySeat: Seat; name: (s: Seat) => string; onNext: () => void; endActions: ReactNode; note?: ReactNode;
-  readyUp?: ReadyUp; watching?: boolean;
+  readyUp?: ReadyUp; watching?: boolean; sponsorCredit?: ReactNode;
 }) {
   const { t } = useI18n();
   const [tapped, setTapped] = useState(false);
@@ -893,6 +902,7 @@ function ResultSheet({
           ))}
         </ul>
         <Contributions view={view} mySeat={mySeat} name={name} />
+        {sponsorCredit}
         {over ? <div className="sheet-actions">{endActions}</div>
           : readyUp ? (() => {
             const iAmReady = tapped || readyUp.ready.has(mySeat);
@@ -1023,8 +1033,8 @@ function GameOver({ view, mySeat, name, endActions, note, showXp, credit }: {
           {note}
         </div>
 
-        <div className="sheet-actions">{endActions}</div>
         {credit}
+        <div className="sheet-actions">{endActions}</div>
       </div>
     </div>
   );

@@ -27,6 +27,60 @@ export function SponsorCredit({ sponsor, onTap }: { sponsor: TableSponsor; onTap
     : <p className="sponsor-credit">{text}</p>;
 }
 
+/** Sponsor credit used in between-hand and match-result sheets. */
+export function SponsorResultCard({ sponsor, phase, onTap }: {
+  sponsor: TableSponsor;
+  phase: 'hand' | 'match';
+  onTap?: () => void;
+}) {
+  const { t } = useI18n();
+  const clickable = !!(sponsor.link && onTap);
+  return (
+    <div className={`sponsor-result-card ${clickable ? 'clickable' : ''}`}>
+      <img className={`sponsor-card-logo ${sponsor.style}`} src={sponsor.url} alt="" draggable={false} />
+      <span className="sponsor-card-copy">
+        <small>{phase === 'hand' ? t.sponsor.hand : t.sponsor.match}</small>
+        <b>{sponsor.name}</b>
+      </span>
+      {clickable
+        ? <button type="button" className="sponsor-visit" onClick={onTap}>{t.sponsor.view} <span aria-hidden>↗</span></button>
+        : <span className="sponsor-locked" aria-label={t.sponsor.availableAfterMatch}>✓</span>}
+    </div>
+  );
+}
+
+/** Persistent spectator sponsor card. It can collapse without hiding the sponsor link. */
+export function SpectatorSponsorCard({ sponsor, collapsed, onTap, onDismiss }: {
+  sponsor: TableSponsor;
+  collapsed: boolean;
+  onTap?: () => void;
+  onDismiss: () => void;
+}) {
+  const { t } = useI18n();
+  if (collapsed) {
+    return (
+      <button type="button" className="spectator-sponsor-chip" onClick={onTap} disabled={!sponsor.link || !onTap}>
+        <img className={sponsor.style} src={sponsor.url} alt="" draggable={false} />
+        <span>{t.sponsor.compact}</span>
+        {sponsor.link && onTap && <span aria-hidden>↗</span>}
+      </button>
+    );
+  }
+  return (
+    <aside className="spectator-sponsor" aria-label={`${t.sponsor.by} ${sponsor.name}`}>
+      <button type="button" className="spectator-sponsor-dismiss" onClick={onDismiss} aria-label={t.sponsor.hide}>×</button>
+      <img className={`sponsor-card-logo ${sponsor.style}`} src={sponsor.url} alt="" draggable={false} />
+      <span className="sponsor-card-copy">
+        <small>{t.sponsor.by}</small>
+        <b>{sponsor.name}</b>
+      </span>
+      {sponsor.link && onTap && (
+        <button type="button" className="sponsor-visit" onClick={onTap}>{t.sponsor.view} <span aria-hidden>↗</span></button>
+      )}
+    </aside>
+  );
+}
+
 /** A small table felt with the logo on it and a few dominoes on top, to judge how it looks. */
 export function SponsorFelt({ mark, felt = 'verde', tiles = true, className = '' }: {
   mark: { url: string; style: 'color' | 'white'; opacity: number; size: number } | null; felt?: string; tiles?: boolean; className?: string;
