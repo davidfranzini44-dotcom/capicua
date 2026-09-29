@@ -539,3 +539,62 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 .my-area.watching .watch-tools svg { flex: none; }
 .my-area.watching .watch-tools > * { padding-inline: 6px; gap: 4px; font-size: .82rem; }
 @media (max-width: 360px) { .my-area.watching .watch-tools svg { display: none; } .my-area.watching .watch-tools > * { font-size: .78rem; } }
+
+/* ---------- Symmetry ---------- */
+/* The scoreboard: us | the middle | them in equal side columns, so the middle (target, hand,
+   pot) sits truly centered whatever the labels say. */
+.table-redesign .table-header .scores:not(.ffa) { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.table-redesign .table-header .scores.ffa { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto repeat(2, minmax(0, 1fr)); }
+.table-redesign .table-header .scores > .score { min-width: 0; max-width: 100%; text-align: center; }
+/* A long name ends in "…" instead of spilling out both sides; the 🔥 streak chip keeps its size. */
+.table-redesign .table-header .scores > .score > span { max-width: 100%; min-width: 0; }
+.table-redesign .table-header .score-label { min-width: 0; font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-redesign .table-header .score-streak { flex: none; }
+/* (.mini alone is the 17 px tile in the hand reveal; a player's score takes its whole column.) */
+.table-redesign .table-header .score.mini { width: auto; }
+.table-redesign .table-header .score.mini > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The narrowest phones: slimmer menu and close buttons, so "Nosotros" still fits whole. */
+@media (max-width: 359px) {
+  .table-focus:not(.mode-ffa) .table-header { grid-template-columns: 38px minmax(0, 1fr) 38px; gap: 6px; padding-inline: 8px; }
+  .table-focus .table-icon { width: 38px; height: 38px; }
+  .table-focus:not(.mode-ffa) .table-header .scores { gap: 4px; padding-inline: 4px; }
+  .table-focus .table-header .arcade-label { font-size: 11px; letter-spacing: .02em; }
+}
+/* Free-for-all: four names share the bar, so it gives them all the room it can. */
+.table-redesign .table-header .scores.ffa { gap: 4px; padding-inline: 8px; }
+.table-redesign .table-header .scores.ffa .target { padding: 0 6px; }
+/* Computers and tablets: menu · wordmark on the left, ✕ on the right, and the scoreboard centered over the table. */
+@media (min-width: 700px) and (min-height: 501px) {
+  .table-focus .table-header {
+    display: grid; grid-template-columns: auto minmax(130px, 1fr) minmax(0, 440px) minmax(130px, 1fr) auto;
+    align-items: center; gap: 0 14px;
+  }
+  .table-focus .table-topbar { display: contents; }
+  .table-focus .table-topbar > :first-child { grid-column: 1; grid-row: 1; }
+  .table-focus .table-wordmark { grid-column: 2; grid-row: 1; justify-self: start; }
+  .table-focus .table-topbar > :last-child { grid-column: 5; grid-row: 1; }
+  .table-focus .table-header .scores { grid-column: 3; grid-row: 1; width: 100%; margin: 0; }
+}
+/* The opponents: three equal columns inside the felt's line (centers at 1/6, 1/2, 5/6), each with
+   the same rows — avatar, name, role, tiles — so avatars, names and counts line up across the table. */
+.table-focus { --strip-pad: 14px; --strip-top: 20px; }
+.table-focus .seat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-focus .seat, .table-focus .seat-left, .table-focus .seat-right { top: var(--strip-top); }
+.table-focus:not(.mode-1v1) .seat { width: calc((100% - 2 * var(--strip-pad)) / 3); max-width: none; }
+.table-focus:not(.mode-1v1) .seat-left { left: var(--strip-pad); right: auto; }
+.table-focus:not(.mode-1v1) .seat-right { right: var(--strip-pad); left: auto; }
+/* Phones: the board starts just below the opponents (2v2 has the role line, Arcade the power row)
+   and ends above my seat. */
+@media (max-width: 699px) {
+  .table-focus .board-wrap { top: max(20%, 106px); bottom: max(17%, 84px); }
+  .table-focus.mode-2v2 .board-wrap, .table-focus.ruleset-arcade .board-wrap { top: max(20%, 122px); }
+}
+@media (max-height: 640px) and (max-width: 699px), (orientation: landscape) and (max-height: 500px) {
+  .table-focus { --strip-top: 16px; }
+  /* One line per opponent (name · tag · count), the same in all three: the name gives way ("Rob…"). */
+  .table-focus:not(.ruleset-arcade) .seat-info { flex-wrap: nowrap; max-width: 100%; }
+  .table-focus:not(.ruleset-arcade) .seat-name { flex: 0 1 auto; min-width: 0; }
+  .table-focus:not(.ruleset-arcade) .seat-info > :not(.seat-name) { flex: none; }
+  .table-focus .board-wrap, .table-focus.mode-2v2 .board-wrap { top: 74px; bottom: 48px; }
+  .table-focus.ruleset-arcade .board-wrap { top: 90px; }
+}

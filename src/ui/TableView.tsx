@@ -422,9 +422,10 @@ export function TableView(props: TableViewProps) {
         ) : (
           <SeatBadge {...seatProps(rel(2))} pos="top" partnerLabel={mode === '2v2' ? t.partner : undefined} />
         )}
+        {/* In pairs every seat carries its role on the same line, so the three stay level. */}
         {mode !== '1v1' && <>
-          <SeatBadge {...seatProps(rel(3))} pos="left" />
-          <SeatBadge {...seatProps(rel(1))} pos="right" />
+          <SeatBadge {...seatProps(rel(3))} pos="left" partnerLabel={mode === '2v2' ? t.rival : undefined} />
+          <SeatBadge {...seatProps(rel(1))} pos="right" partnerLabel={mode === '2v2' ? t.rival : undefined} />
         </>}
 
         {mode === '1v1' && (
@@ -646,17 +647,17 @@ function Scores({ view, mySeat, name, colorOf, pot, watchers, watching, onWatche
   if (view.arcade) {
     return (
       <div className="scores arcade">
-        <div className="score us"><span>{ourLabel}{streakChip(mySide)}</span><Stars n={view.scores[mySide]} label={ourLabel} /></div>
+        <div className="score us"><span><i className="score-label">{ourLabel}</i>{streakChip(mySide)}</span><Stars n={view.scores[mySide]} label={ourLabel} /></div>
         <div className="target"><span className="arcade-label">⚡ ARCADE</span><small>{t.hand} {view.handNo}</small></div>
-        <div className="score them"><span>{theirLabel}{streakChip(other)}</span><Stars n={view.scores[other]} label={theirLabel} /></div>
+        <div className="score them"><span><i className="score-label">{theirLabel}</i>{streakChip(other)}</span><Stars n={view.scores[other]} label={theirLabel} /></div>
       </div>
     );
   }
   return (
     <div className="scores">
-      <div className="score us"><span>{ourLabel}{streakChip(mySide)}</span><b key={view.scores[mySide]}>{view.scores[mySide]}</b></div>
+      <div className="score us"><span><i className="score-label">{ourLabel}</i>{streakChip(mySide)}</span><b key={view.scores[mySide]}>{view.scores[mySide]}</b></div>
       {middle}
-      <div className="score them"><span>{theirLabel}{streakChip(other)}</span><b key={view.scores[other]}>{view.scores[other]}</b></div>
+      <div className="score them"><span><i className="score-label">{theirLabel}</i>{streakChip(other)}</span><b key={view.scores[other]}>{view.scores[other]}</b></div>
     </div>
   );
 }

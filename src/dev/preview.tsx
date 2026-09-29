@@ -770,3 +770,34 @@ if (import.meta.hot) import.meta.hot.dispose(() => root.unmount());
   const s = R(st);
   return `${innerWidth}x${innerHeight} ${location.search.slice(3)}: ${bad.join(', ') || 'ok'} · off ${Math.round((s.left + s.right) / 2 - innerWidth / 2)} · '${st.innerText.replace(/\n/g, ' / ').slice(0, 28)}'`;
 };
+
+/**
+ * Symmetry check for the table: the scoreboard's sides, the opponents' strip (each seat's
+ * center as a share of the felt's width — 1/6, 1/2, 5/6 when even), and whether avatars,
+ * names and tile rows line up across seats. Also how far the strip sits inside the felt's line.
+ */
+(window as unknown as { __symCheck: () => unknown }).__symCheck = () => {
+  const R = (e: Element | null) => (e ? e.getBoundingClientRect() : null);
+  const felt = R(document.querySelector('.felt'))!;
+  const scores = R(document.querySelector('.table-header .scores'));
+  const sides = [...document.querySelectorAll('.table-header .scores > .score')].map((e) => Math.round(R(e)!.width));
+  const target = R(document.querySelector('.table-header .scores > .target'));
+  const seats = [...document.querySelectorAll('.seat')].map((s) => {
+    const r = R(s)!;
+    const av = R(s.querySelector('.avatar'))!;
+    const nm = R(s.querySelector('.seat-name'))!;
+    const tiles = R(s.querySelector('.seat-tiles'));
+    return {
+      pos: s.className.match(/seat-(top|left|right)/)?.[1],
+      center: +(((av.left + av.right) / 2 - felt.left) / felt.width).toFixed(3),
+      boxW: Math.round(r.width), avatarTop: Math.round(av.top - felt.top), nameTop: Math.round(nm.top - felt.top),
+      tilesTop: tiles ? Math.round(tiles.top - felt.top) : null, bottom: Math.round(r.bottom - felt.top),
+    };
+  });
+  return {
+    size: `${innerWidth}x${innerHeight}`,
+    scoreSides: sides, targetOff: target && scores ? Math.round((target.left + target.right) / 2 - (scores.left + scores.right) / 2) : null,
+    scoresOff: scores ? Math.round((scores.left + scores.right) / 2 - innerWidth / 2) : null,
+    seats,
+  };
+};
