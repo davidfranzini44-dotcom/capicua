@@ -496,7 +496,7 @@ const dict = {
     mute: 'Toca para silenciar',
     holdToTalk: 'Toca para hablar, o mantén para hablar un momento',
     voice: {
-      join: 'Hablar', connecting: 'Conectando…', retry: 'Reintentar', live: 'Mic abierto', muted: 'Callado',
+      join: 'Hablar', connecting: 'Conectando…', retry: 'Reintentar', live: 'Abierto', muted: 'Callado',
       allowMic: 'Permitir mic', tapToHear: 'Toca para oír',
       onAir: 'Al aire', onAirHint: 'Tu voz sale al aire: quien mira con enlace te oye',
       helpTitle: 'Permite el micrófono',
@@ -1289,7 +1289,7 @@ const dict = {
     mute: 'Tap to mute',
     holdToTalk: 'Tap to talk, or hold to talk for a moment',
     voice: {
-      join: 'Talk', connecting: 'Connecting…', retry: 'Retry', live: 'Mic on', muted: 'Muted',
+      join: 'Talk', connecting: 'Connecting…', retry: 'Retry', live: 'On', muted: 'Muted',
       allowMic: 'Allow mic', tapToHear: 'Tap to hear',
       onAir: 'On air', onAirHint: 'Your voice is on air: people watching by link hear you',
       helpTitle: 'Allow the microphone',
