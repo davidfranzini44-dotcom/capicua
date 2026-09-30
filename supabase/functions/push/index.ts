@@ -52,7 +52,7 @@ type Payload =
   | { kind: 'invite'; invite: string; details: { kind: 'room' | 'tournament'; from: string; mode: string; stake: number; code: string; name?: string } }
   | { kind: 'friend_request' | 'friend_accepted'; name: string }
   | { kind: 'match_ready' | 'match_last_call' | 'checkin_missed' | 'tournament_cancelled'; name: string; code: string }
-  | { kind: 'checkin_open' | 'checkin_last'; name: string; code: string; minutes: number };
+  | { kind: 'checkin_open' | 'checkin_last' | 'tournament_soon'; name: string; code: string; minutes: number };
 
 interface Message { title: string; body: string; url: string; tag: string; ttl: number }
 
@@ -119,6 +119,17 @@ export function message(p: Payload, lang: 'es' | 'en'): Message | null {
         body: es ? `${p.name} empieza en ${p.minutes} min. Toca para confirmar que estás.` : `${p.name} starts in ${p.minutes} min. Tap to confirm you're in.`,
         url: `/?torneo=${encodeURIComponent(p.code)}`, tag: 'checkin', ttl: 180,
       };
+    case 'tournament_soon': {
+      // A few hours before the start, to everyone signed up (migration 20261017000000).
+      const h = Math.round(p.minutes / 60);
+      const left = p.minutes >= 90 ? (es ? `${h} horas` : `${h} hours`) : `${p.minutes} min`;
+      return {
+        title: es ? `🏆 ${p.name} empieza en ${left}` : `🏆 ${p.name} starts in ${left}`,
+        body: es ? 'Estás inscrito. El check-in abre 15 minutos antes: entra y dale a «Estoy aquí».'
+          : 'You’re signed up. Check-in opens 15 minutes before: come in and tap “I’m here”.',
+        url: `/?torneo=${encodeURIComponent(p.code)}`, tag: 'soon', ttl: 3600,
+      };
+    }
     case 'checkin_missed':
       return {
         title: es ? `No hiciste check-in en ${p.name}` : `You didn't check in to ${p.name}`,

@@ -36,16 +36,18 @@ const clock = (ms: number) => {
 const locale = (lang: string) => (lang === 'es' ? 'es-DO' : 'en-US');
 const timeOf = (ms: number, lang: string) => new Date(ms).toLocaleTimeString(locale(lang), { hour: 'numeric', minute: '2-digit' });
 
-/** "hoy 9:30 p. m." / "mañana 8:00 p. m." / "vie., 3 oct. 9:00 p. m." */
-function whenText(ms: number, lang: string, t: Strings) {
+/** "hoy" / "mañana" / "vie., 3 oct." */
+function dayOf(ms: number, lang: string, t: Strings) {
   const d = new Date(ms);
   const today = new Date();
   const tomorrow = new Date(today.getTime() + 86_400_000);
-  const day = d.toDateString() === today.toDateString() ? t.tour.today
+  return d.toDateString() === today.toDateString() ? t.tour.today
     : d.toDateString() === tomorrow.toDateString() ? t.tour.tomorrow
     : d.toLocaleDateString(locale(lang), { weekday: 'short', day: 'numeric', month: 'short' });
-  return `${day} ${timeOf(ms, lang)}`;
 }
+
+/** "hoy 9:30 p. m." / "mañana 8:00 p. m." / "vie., 3 oct. 9:00 p. m." */
+const whenText = (ms: number, lang: string, t: Strings) => `${dayOf(ms, lang, t)} ${timeOf(ms, lang)}`;
 
 /** "23 min" / "1 h 20 min" / "2 d" */
 function untilText(ms: number) {
@@ -946,32 +948,35 @@ function OpenTournamentRow({ x, onOpen }: { x: PublicTournament; onOpen: (id: st
  * there are several. Nothing at all when there are none.
  */
 export function FeaturedTournaments({ enabled, onOpen }: { enabled: boolean; onOpen: (id: string) => void }) {
-  const list = usePublicTournaments(true, enabled);
+  // Once you're signed up it goes away (your phone reminds you before the start); full ones too.
+  const list = usePublicTournaments(true, enabled)?.filter((x) => !x.member && x.people < x.capacity).slice(0, 2);
   if (!list?.length) return null;
+  return <EventMedals list={list} onOpen={onOpen} />;
+}
+
+/** Up to two event medallions, in the sky left of the mode buttons. */
+export function EventMedals({ list, onOpen }: { list: PublicTournament[]; onOpen: (id: string) => void }) {
   return (
-    <div className={`feat-tours ${list.length > 1 ? 'many' : ''}`}>
-      {list.map((x) => <FeaturedTournamentCard key={x.id} x={x} onOpen={onOpen} />)}
+    <div className="event-medals">
+      {list.map((x) => <EventMedal key={x.id} x={x} onOpen={onOpen} />)}
     </div>
   );
 }
 
-export function FeaturedTournamentCard({ x, onOpen }: { x: PublicTournament; onOpen: (id: string) => void }) {
+/** 25000 → "25K", 1500 → "1.5K", 800 → "800". */
+const shortChips = (n: number) => (n >= 1000 ? `${Number((n / 1000).toFixed(n < 10_000 ? 1 : 0))}K` : String(n));
+
+/** A featured tournament as a game event: a gold trophy medallion, its prize, a ribbon and when it starts. */
+function EventMedal({ x, onOpen }: { x: PublicTournament; onOpen: (id: string) => void }) {
   const { t, lang } = useI18n();
-  const full = x.people >= x.capacity;
-  const prize = x.pot > 0 ? x.pot : 0;
+  const at = x.starts_at ? new Date(x.starts_at).getTime() : null;
+  const label = [x.name, at && whenText(at, lang, t), x.pot > 0 ? `${t.tour.prize} 🪙 ${x.pot.toLocaleString()}` : null].filter(Boolean).join(' · ');
   return (
-    <button className={`feat-tour ${x.official ? 'official' : ''}`} onClick={() => onOpen(x.id)}>
-      <span className="ft-cup" aria-hidden>🏆</span>
-      <span className="ft-text">
-        <small className="ft-kicker">{x.official ? t.tour.officialBadge : t.tour.featuredKicker} · {t.modes[x.mode].name}</small>
-        <b className="ft-name">{x.name}</b>
-        <span className="ft-meta">
-          {x.starts_at && <span>🕘 {whenText(new Date(x.starts_at).getTime(), lang, t)}</span>}
-          {prize > 0 ? <span>🏆 {t.tour.prize} 🪙 {prize.toLocaleString()}</span> : <span>{t.free}</span>}
-          <span>👥 {t.tour.spots.replace('{n}', String(x.people)).replace('{total}', String(x.capacity))}</span>
-        </span>
-      </span>
-      <span className={`ft-cta ${x.member ? 'in' : ''}`}>{x.member ? t.tour.signedUpChip : full ? t.tour.full : t.tour.seeDetails}</span>
+    <button className={`event-medal ${x.official ? 'official' : ''}`} onClick={() => onOpen(x.id)} aria-label={label} title={label}>
+      <span className="em-ring"><TrophyCup size={40} /></span>
+      {x.pot > 0 && <span className="em-prize">🪙 {shortChips(x.pot)}</span>}
+      <span className="em-ribbon">{t.tour.ribbon}</span>
+      {at && <span className="em-when"><b>{dayOf(at, lang, t)}</b><span>{timeOf(at, lang)}</span></span>}
     </button>
   );
 }

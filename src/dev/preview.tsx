@@ -19,7 +19,7 @@ import { ShopTab } from '../ui/Shop';
 import { TableView } from '../ui/TableView';
 import { InstallSheet } from '../ui/MainScreen';
 import type { InstallKind } from '../lib/install';
-import { FeaturedTournamentCard, OpenTournamentsList, TournamentForm, TournamentInvite, TournamentView } from '../ui/Tournament';
+import { EventMedals, OpenTournamentsList, TournamentForm, TournamentInvite, TournamentView } from '../ui/Tournament';
 import type { EntryRow, MatchRow, PairRow, PublicTournament, TournamentHistoryRow, TournamentRow } from '../lib/useTournament';
 import type { GameState } from '../../supabase/functions/_shared/domino.ts';
 import { BoardDesignPreview } from './BoardDesignPreview';
@@ -322,18 +322,18 @@ function Screen({ s }: { s: string }) {
       { ...base, id: 'o1', code: 'COPAC', name: 'Copa Capicúa de octubre', size: 16, buy_in: 500, prize: 10_000, pot: 13_000, starts_at: at(26),
         official: true, featured: true, host: 'Capicúa', people: 6, capacity: 16, seeding: 'xp' },
       { ...base, id: 'o2', code: 'PAREJ', name: 'Parejas del viernes', mode: '2v2', size: 4, buy_in: 1000, pot: 5000, starts_at: at(2),
-        featured: s === 'home-featured-2', host: 'Yokasta', people: 5, capacity: 8, member: s === 'home-featured-2' },
+        featured: s === 'home-featured-2', host: 'Yokasta', people: 5, capacity: 8 },
       { ...base, id: 'o3', code: 'BARRI', name: 'Torneo del barrio', starts_at: at(0.6), host: 'Robert', people: 8, capacity: 8 },
     ];
     if (s === 'tournament-open') {
       return <div className="screen"><section className="tour-section"><OpenTournamentsList list={list} onOpen={noop} /><OpenTournamentsList list={[]} onOpen={noop} /></section></div>;
     }
-    const featured = list.filter((x) => x.featured);
+    const featured = list.filter((x) => x.featured && !x.member);
     return (
       <div className="game-shell"><main className="game-body tab-home">
         <HomeTab profile={profile} guest={false} online dailyReady activeRoom={null} onResume={noop} onDaily={noop} onAvatar={noop}
           onMode={noop} chests={null}
-          tournaments={<div className={`feat-tours ${featured.length > 1 ? 'many' : ''}`}>{featured.map((x) => <FeaturedTournamentCard key={x.id} x={x} onOpen={noop} />)}</div>} />
+          tournaments={<EventMedals list={featured} onOpen={noop} />} />
       </main></div>
     );
   }

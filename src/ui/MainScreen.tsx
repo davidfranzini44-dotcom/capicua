@@ -138,10 +138,10 @@ export function HomeTab(p: HomeProps) {
         <button className="guest-strip" onClick={p.onLinkGoogle}>👤 {t.guestBanner} <b>{t.linkGoogle} →</b></button>
       )}
       {p.notice && <p className="home-notice">{p.notice}</p>}
-      {p.tournaments}
 
       <section className="stage">
         <HeroArt />
+        {p.tournaments}
         <div className={`mode-stack ${p.onArcade ? 'with-arcade' : ''}`}>
           {p.activeRoom && (
             <button className="resume-btn" onClick={p.onResume}>▶ {t.resumeGame}</button>
