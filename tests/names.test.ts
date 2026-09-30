@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nameKey, nextRename, RENAME_DAYS } from '../src/lib/names';
+import { fitName, nameKey, nextRename, RENAME_DAYS } from '../src/lib/names';
 
 describe('player names', () => {
   it('compare like the server: capitals, accents, spaces and punctuation don\'t count', () => {
@@ -10,6 +10,14 @@ describe('player names', () => {
     expect(nameKey('David2')).not.toBe(k);
     // Only symbols: the name itself (lower case) is what must be unique.
     expect(nameKey(' 🔥🔥 ')).toBe('🔥🔥');
+  });
+
+  it('a name longer than 12 starts from the whole words that fit', () => {
+    expect(fitName('el papá de ustedes')).toBe('el papá de');
+    expect(fitName('prueba nombre a2')).toBe('prueba');
+    expect(fitName('  David  ')).toBe('David');
+    expect(fitName('Supercalifragilistico')).toBe('Supercalifra');
+    expect(fitName('abcdefghijkl')).toBe('abcdefghijkl');
   });
 
   it('a name changes again 7 days after the last change', () => {

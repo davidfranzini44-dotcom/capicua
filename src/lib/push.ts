@@ -83,6 +83,8 @@ export async function disablePush(): Promise<PushState> {
  */
 export function usePush(uid: string | undefined, lang: string) {
   const [state, setState] = useState<PushState>('off');
+  /** The device has been asked (until then `state` is only a placeholder). */
+  const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -91,6 +93,7 @@ export function usePush(uid: string | undefined, lang: string) {
     pushState().then(async (s) => {
       if (!alive) return;
       setState(s);
+      setReady(true);
       if (s === 'on') {
         const sub = await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription();
         if (sub) save(sub, lang).catch(() => {});
@@ -119,7 +122,16 @@ export function usePush(uid: string | undefined, lang: string) {
     }
   }, [state, lang]);
 
-  return { state, busy, toggle };
+  /** Ask the device again (after the player changed it in the phone's settings). */
+  const refresh = useCallback(async () => {
+    setState(await pushState().catch(() => 'off' as const));
+    setReady(true);
+  }, []);
+
+  return { state, ready, busy, toggle, refresh };
 }
+
+/** Worth asking about on this device (unsupported browsers are left alone). */
+export const pushNeedsPrompt = (push: Push) => push.ready && (push.state === 'off' || push.state === 'denied' || push.state === 'install');
 
 export type Push = ReturnType<typeof usePush>;

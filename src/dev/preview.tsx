@@ -33,6 +33,7 @@ import { MissionsSheet } from '../ui/Missions';
 import type { Missions, Mission } from '../lib/missions';
 import type { Push } from '../lib/push';
 import { HomeTab, SettingsSheet } from '../ui/MainScreen';
+import { PushPromptSheet } from '../ui/PushPrompt';
 import { LookPicker } from '../ui/LookPicker';
 import { TileShape } from '../ui/Tile';
 import { ReportButton } from '../ui/Report';
@@ -138,7 +139,7 @@ function data(over: Partial<RoomData>): RoomData {
   } as RoomData;
 }
 
-const fakePush = (state: Push['state']): Push => ({ state, busy: false, toggle: async () => {} });
+const fakePush = (state: Push['state']): Push => ({ state, ready: true, busy: false, toggle: async () => {}, refresh: async () => {} });
 /** Today's missions: the easy one ready to collect, the medium one done, the hard one under way. */
 function fakeMissions(): Missions {
   const resets = new Date(Date.now() + (5 * 60 + 12) * 60_000).toISOString();
@@ -542,7 +543,7 @@ function Screen({ s }: { s: string }) {
     const p = { ...profile, avatar_url: s === 'photo' ? profile.avatar_url : null };
     return <div className="game-shell"><main className="game-body"><div className="tab-page profile-page"><PhotoPicker profile={p} level={7} /><h2 className="tab-title">{p.display_name}</h2></div></main></div>;
   }
-  if (s === 'name-prompt' || s === 'name-new' || s === 'rename' || s === 'rename-wait') {
+  if (s === 'name-prompt' || s === 'name-new' || s === 'name-long' || s === 'rename' || s === 'rename-wait') {
     // Picking a name: "David" is taken (Google's first name, or a clash), "Papo" is a bot's; the rest are free.
     const taken = ['david', 'pope', 'robert'];
     setNameRpc(async (_fn, { p_name }) => {
@@ -557,6 +558,7 @@ function Screen({ s }: { s: string }) {
     });
     if (s === 'name-prompt') return <NamePrompt profile={{ ...profile, display_name: 'David', needs_name: true }} />;
     if (s === 'name-new') return <NamePrompt profile={{ ...profile, display_name: 'Jugador', needs_name: true }} />;
+    if (s === 'name-long') return <NamePrompt profile={{ ...profile, display_name: 'el papá de ustedes', needs_name: true }} />;
     return <RenameSheet profile={{ ...profile, name_changed_at: s === 'rename-wait' ? new Date(Date.now() - 2 * 86_400_000).toISOString() : null }} onClose={noop} />;
   }
   // queue: after 20 s alone in line, the "few players" card offers practice with bots or a private table.
@@ -707,6 +709,11 @@ function Screen({ s }: { s: string }) {
           onMode={noop} chests={null} missions={{ done: 2, total: 3, claimable: 1, onOpen: noop }} />
       </main></div>
     );
+  }
+  if (s.startsWith('push-prompt')) {
+    // "Activa los avisos" — push-prompt (off), push-prompt-denied, push-prompt-install, push-prompt-on.
+    const state = (s.slice('push-prompt-'.length) || 'off') as Push['state'];
+    return <PushPromptSheet push={fakePush(s === 'push-prompt' ? 'off' : state)} onInstall={noop} onClose={noop} />;
   }
   if (s === 'settings-push') {
     return <SettingsSheet onClose={noop} extra={<><PushRow push={fakePush('off')} /><PushRow push={fakePush('install')} /></>} />;

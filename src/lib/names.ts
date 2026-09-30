@@ -9,7 +9,21 @@ export interface NameResult { ok: boolean; name?: string; error?: NameError; sug
 
 export const RENAME_DAYS = 7;
 export const NAME_MIN = 2;
-export const NAME_MAX = 20;
+/** 12 at most: the whole name fits in a seat at the table, even on small phones. */
+export const NAME_MAX = 12;
+
+/** A starting point for a name that's too long: the whole words that fit ("el papá de ustedes" → "el papá de"). */
+export function fitName(name: string): string {
+  const s = name.trim().replace(/\s+/g, ' ');
+  if (s.length <= NAME_MAX) return s;
+  let out = '';
+  for (const w of s.split(' ')) {
+    const next = out ? `${out} ${w}` : w;
+    if (next.length > NAME_MAX) break;
+    out = next;
+  }
+  return out || s.slice(0, NAME_MAX);
+}
 
 /** The same comparison the server makes (profiles.name_key), to spot "that's already my name". */
 export const nameKey = (s: string) =>
@@ -44,7 +58,7 @@ export type NameState = 'idle' | 'checking' | 'ok' | 'bad';
 export function useNameCheck(name: string, current?: string): { state: NameState; result: NameResult | null } {
   const trimmed = name.trim();
   const same = current !== undefined && nameKey(trimmed) === nameKey(current) && trimmed === current.trim();
-  const short = trimmed.length < NAME_MIN;
+  const short = trimmed.length < NAME_MIN || trimmed.length > NAME_MAX;
   const [res, setRes] = useState<{ name: string; result: NameResult } | null>(null);
   useEffect(() => {
     if (same || short) return;

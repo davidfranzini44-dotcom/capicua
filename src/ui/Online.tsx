@@ -4,7 +4,7 @@ import { BONUS_POINTS, botsAllowed, CHIPS, levelFromXp, MODES, REGLAS, TURN_SECO
 import { useI18n } from '../i18n';
 import { forgetTable, lastTable } from '../lib/lastTable';
 import { api, ApiError, authReturnUrl, canClaimDaily, needsName, onlineEnabled, reloadProfile, supabase, useProfile, useSession, type Profile } from '../lib/supabase';
-import { nextRename, RENAME_DAYS } from '../lib/names';
+import { fitName, NAME_MAX, nextRename, RENAME_DAYS } from '../lib/names';
 import { NameEditor } from './NameEditor';
 import { usePlayerStats } from '../lib/useRoom';
 import { setAvatar, uploadAvatar } from '../lib/avatar';
@@ -23,7 +23,8 @@ import { usePresenceHeartbeat } from '../lib/presence';
 import { SpectatorsHearRow } from './Spectators';
 import { MissionsSheet } from './Missions';
 import { useMissions } from '../lib/missions';
-import { usePush } from '../lib/push';
+import { pushNeedsPrompt, usePush } from '../lib/push';
+import { PushPromptSheet } from './PushPrompt';
 import { LookPicker } from './LookPicker';
 import { ProfileCard } from './ProfileCard';
 import { LookContext, useLookState } from '../lib/look';
@@ -308,10 +309,16 @@ interface MainProps {
   onWatch?: (friend: Friend) => void;
 }
 
-type SheetState = null | 'settings' | 'coins' | 'code' | 'install' | 'missions' | 'arcade' | { mode: Mode };
+type SheetState = null | 'settings' | 'coins' | 'code' | 'install' | 'push' | 'missions' | 'arcade' | { mode: Mode };
 
 /** How long someone looks at the home screen before we suggest installing. */
 const INSTALL_NUDGE_MS = 8000;
+/** …and before we ask for notifications (every time the app opens, until they're on). */
+const PUSH_PROMPT_MS = 1500;
+/** Asked already since the app opened: "Ahora no" lasts until the next time it's opened. */
+let pushPromptShown = false;
+/** An installed app is rarely closed: coming back after this long counts as opening it again. */
+const REOPEN_MS = 30 * 60_000;
 
 export function MainScreen(p: MainProps) {
   const { t, lang } = useI18n();
@@ -328,12 +335,37 @@ export function MainScreen(p: MainProps) {
   const push = usePush(signedIn && p.online ? p.profile!.id : undefined, lang);
   const install = useInstall();
 
-  // Suggest the home-screen install after a moment on Inicio — never on top of another sheet.
+  // Notifications: ask every time the app opens until this device has them on (the device
+  // tells us — see push.ts). Only on Inicio, never on top of another sheet.
+  const wantsPush = signedIn && p.online && pushNeedsPrompt(push);
+  const [opened, setOpened] = useState(0);
   useEffect(() => {
-    if (p.tab !== 'home' || !install.nudge || sheet) return;
+    if (p.tab !== 'home' || !wantsPush || sheet || pushPromptShown) return;
+    const id = setTimeout(() => { pushPromptShown = true; setSheet('push'); }, PUSH_PROMPT_MS);
+    return () => clearTimeout(id);
+  }, [p.tab, wantsPush, sheet, opened]);
+  const { refresh: refreshPush } = push;
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVisible = () => {
+      if (document.hidden) { hiddenAt = Date.now(); return; }
+      if (!hiddenAt || Date.now() - hiddenAt < REOPEN_MS) return;
+      pushPromptShown = false;
+      refreshPush();
+      setOpened((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refreshPush]);
+  const closeSheet = useCallback(() => setSheet(null), []);
+
+  // Suggest the home-screen install after a moment on Inicio — never on top of another sheet,
+  // and not after the notifications prompt already said to install (iPhone).
+  useEffect(() => {
+    if (p.tab !== 'home' || !install.nudge || sheet || (pushPromptShown && push.state === 'install')) return;
     const id = setTimeout(() => setSheet('install'), INSTALL_NUDGE_MS);
     return () => clearTimeout(id);
-  }, [p.tab, install.nudge, sheet]);
+  }, [p.tab, install.nudge, sheet, push.state]);
 
   // Walked out of a game that's still going? Offer the way back. And: is this the admin?
   useEffect(() => {
@@ -436,6 +468,7 @@ export function MainScreen(p: MainProps) {
       )}
       {sheet === 'code' && <CodeSheet onClose={() => setSheet(null)} onJoined={(id) => p.onRoom?.(id)} onTournament={(code) => p.onTournamentCode?.(code)} />}
       {sheet === 'install' && <InstallSheet install={install} onClose={() => setSheet(null)} />}
+      {sheet === 'push' && <PushPromptSheet push={push} onInstall={() => setSheet('install')} onClose={closeSheet} />}
       {sheet === 'arcade' && (
         <ArcadeSheet
           profile={p.profile} online={p.online} onSignIn={p.onSignIn} onClose={() => setSheet(null)}
@@ -723,12 +756,13 @@ function SignIn({ onBack }: { onBack: () => void }) {
  */
 export function NamePrompt({ profile }: { profile: Profile }) {
   const { t } = useI18n();
-  const prefilled = profile.display_name === 'Jugador' ? '' : profile.display_name;
+  const tooLong = profile.display_name.trim().length > NAME_MAX;
+  const prefilled = profile.display_name === 'Jugador' ? '' : fitName(profile.display_name);
   return (
     <div className="screen">
       <h1 className="logo small">Capicúa</h1>
       <h2 className="screen-title">{t.yourName}</h2>
-      <p className="fine name-why">{t.names.unique}</p>
+      <p className="fine name-why">{tooLong ? t.names.tooLong : t.names.unique}</p>
       <div className="menu">
         <NameEditor initial={prefilled} submitLabel={t.save} onSaved={reloadProfile} />
       </div>
