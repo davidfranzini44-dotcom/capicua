@@ -19,8 +19,8 @@ import { ShopTab } from '../ui/Shop';
 import { TableView } from '../ui/TableView';
 import { InstallSheet } from '../ui/MainScreen';
 import type { InstallKind } from '../lib/install';
-import { TournamentForm, TournamentInvite, TournamentView } from '../ui/Tournament';
-import type { EntryRow, MatchRow, PairRow, TournamentHistoryRow, TournamentRow } from '../lib/useTournament';
+import { FeaturedTournamentCard, OpenTournamentsList, TournamentForm, TournamentInvite, TournamentView } from '../ui/Tournament';
+import type { EntryRow, MatchRow, PairRow, PublicTournament, TournamentHistoryRow, TournamentRow } from '../lib/useTournament';
 import type { GameState } from '../../supabase/functions/_shared/domino.ts';
 import { BoardDesignPreview } from './BoardDesignPreview';
 import { ArcadePreview } from './arcadePreview';
@@ -294,17 +294,61 @@ function Screen({ s }: { s: string }) {
       </div>
     );
   }
+  if (s === 'tournament-invite-official') {
+    // What anyone sees before joining an official tournament: Capicúa organizes it, a house prize, a description.
+    return (
+      <div className="screen tour-screen">
+        <TournamentInvite busy={false} onJoin={noop} peek={{
+          id: 't3', code: 'COPAC', name: 'Copa Capicúa de octubre', mode: '1v1', size: 16, buyIn: 500, phase: 'lobby', target: 100,
+          host: 'Capicúa', pot: 13_000, member: false, startsAt: new Date(Date.now() + 26 * 3_600_000).toISOString(), seeding: 'xp',
+          turnSeconds: 25, visibility: 'public', official: true, prize: 10_000,
+          description: 'El torneo del mes: el campeón se lleva el trofeo de octubre y su nombre sale en la pantalla de inicio.',
+          entries: [
+            { id: 'e1', names: ['Yokasta'], open: false }, { id: 'e2', names: ['Robert'], open: false },
+            { id: 'e3', names: ['Kirsy'], open: false }, { id: 'e4', names: ['Chelo'], open: false },
+            { id: 'e5', names: ['Wilfri'], open: false }, { id: 'e6', names: ['Papo'], open: false },
+          ],
+        }} />
+      </div>
+    );
+  }
   if (s === 'tournament-new') return <TournamentForm profile={profile} guest={false} onBack={noop} onCreated={noop} />;
+  if (s === 'tournament-new-official') return <TournamentForm profile={profile} guest={false} official onBack={noop} onCreated={noop} />;
+  if (s === 'tournament-open' || s.startsWith('home-featured')) {
+    // Public tournaments: Mesas → Torneos abiertos, and the home screen's featured cards (home-featured, home-featured-2).
+    const at = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+    const base = { mode: '1v1' as const, size: 8, buy_in: 0, prize: 0, pot: 0, seeding: 'random' as const, official: false, featured: false, description: null, member: false };
+    const list: PublicTournament[] = [
+      { ...base, id: 'o1', code: 'COPAC', name: 'Copa Capicúa de octubre', size: 16, buy_in: 500, prize: 10_000, pot: 13_000, starts_at: at(26),
+        official: true, featured: true, host: 'Capicúa', people: 6, capacity: 16, seeding: 'xp' },
+      { ...base, id: 'o2', code: 'PAREJ', name: 'Parejas del viernes', mode: '2v2', size: 4, buy_in: 1000, pot: 5000, starts_at: at(2),
+        featured: s === 'home-featured-2', host: 'Yokasta', people: 5, capacity: 8, member: s === 'home-featured-2' },
+      { ...base, id: 'o3', code: 'BARRI', name: 'Torneo del barrio', starts_at: at(0.6), host: 'Robert', people: 8, capacity: 8 },
+    ];
+    if (s === 'tournament-open') {
+      return <div className="screen"><section className="tour-section"><OpenTournamentsList list={list} onOpen={noop} /><OpenTournamentsList list={[]} onOpen={noop} /></section></div>;
+    }
+    const featured = list.filter((x) => x.featured);
+    return (
+      <div className="game-shell"><main className="game-body tab-home">
+        <HomeTab profile={profile} guest={false} online dailyReady activeRoom={null} onResume={noop} onDaily={noop} onAvatar={noop}
+          onMode={noop} chests={null}
+          tournaments={<div className={`feat-tours ${featured.length > 1 ? 'many' : ''}`}>{featured.map((x) => <FeaturedTournamentCard key={x.id} x={x} onOpen={noop} />)}</div>} />
+      </main></div>
+    );
+  }
   if (s.startsWith('tournament-')) {
     // tournament-lobby | tournament-bracket | tournament-final (I won: the celebration) | tournament-podium (seen by the
     // runner-up) | tournament-out (knocked out: watch the others) | tournament-noshow
     // | tournament-scheduled (before check-in) | tournament-checkin (open, not checked in) | tournament-checkin-host (all in: start now)
     // tournament-pick (players pick their opponent) | tournament-xp (seeded by XP) | tournament-admin (an admin fixing it)
     const scheduled = s === 'tournament-scheduled' || s.startsWith('tournament-checkin');
-    const lobbyish = ['tournament-lobby', 'tournament-pick', 'tournament-xp', 'tournament-admin'].includes(s);
+    const lobbyish = ['tournament-lobby', 'tournament-pick', 'tournament-xp', 'tournament-admin', 'tournament-official'].includes(s);
+    // tournament-official: an admin's official tournament, seen by that admin (they run it, they don't play)
+    const official = s === 'tournament-official';
     const phase = lobbyish || scheduled ? 'lobby' : s === 'tournament-final' || s === 'tournament-podium' ? 'finished' : 'playing';
     const seeding = s === 'tournament-pick' ? 'pick' : s === 'tournament-xp' || s === 'tournament-admin' ? 'xp' : 'random';
-    const me = s === 'tournament-podium' || s === 'tournament-out' ? 'y' : 'me';
+    const me = official ? 'adm' : s === 'tournament-podium' || s === 'tournament-out' ? 'y' : 'me';
     const names = { me: 'Wilfri', y: 'Yokasta', r: 'Robert', k: 'Kirsy', c: 'Chelo' } as Record<string, string>;
     const entries: EntryRow[] = ['me', 'y', 'r', 'k', 'c'].map((p, i) => ({
       id: `e${i}`, player1: p, player2: null,
@@ -337,7 +381,8 @@ function Screen({ s }: { s: string }) {
       id: 't1', code: 'KXQTB', name: 'Copa del barrio', host: 'me', mode: '1v1', size: 8, buy_in: 500, rules: publicRules('1v1'),
       turn_seconds: 25, phase, rounds: phase === 'lobby' ? null : 3, pot: 2500, champion: phase === 'finished' ? 'e0' : null,
       starts_at: scheduled || lobbyish ? new Date(Date.now() + (s === 'tournament-scheduled' || lobbyish ? 95 : 9) * 60_000).toISOString() : null, cancel_reason: null,
-      seeding,
+      seeding, visibility: official ? 'public' : 'private', official, featured: official, prize: official ? 10_000 : 0,
+      description: official ? 'El torneo del mes: el campeón se lleva el trofeo de octubre.' : null,
     };
     const xp = { me: 1_240, y: 6_200, r: 380, k: 2_100, c: 90 } as Record<string, number>;
     const pairs: PairRow[] = s === 'tournament-pick' ? [{ entry_a: 'e1', entry_b: 'e2', set_by: 'player' }]
@@ -345,9 +390,9 @@ function Screen({ s }: { s: string }) {
     const checkins = new Set(s === 'tournament-checkin' ? ['y', 'r'] : s === 'tournament-checkin-host' ? ['me', 'y', 'r', 'k'] : []);
     return (
       <div className="screen tour-screen">
-        <TournamentView tour={{ ...tour, host: s === 'tournament-checkin' || s === 'tournament-admin' ? 'y' : 'me' }}
+        <TournamentView tour={{ ...tour, host: official ? 'adm' : s === 'tournament-checkin' || s === 'tournament-admin' ? 'y' : 'me' }}
           entries={phase === 'lobby' ? (lobbyish && s !== 'tournament-lobby' ? entries : entries.slice(0, 4)) : entries}
-          matches={matches} names={names} uid={me} checkins={checkins} admin={s === 'tournament-admin'} pairs={pairs} xp={xp}
+          matches={matches} names={names} uid={me} checkins={checkins} admin={s === 'tournament-admin' || official} pairs={pairs} xp={xp}
           onEdit={noop} onPair={noop} onUnpair={noop}
           onStart={noop} onCancel={noop} onLeave={noop} onKick={noop} onPlay={noop} onCheckIn={noop} onWatch={noop} />
       </div>

@@ -79,6 +79,14 @@ interface TournamentDb {
   reminded: number;
   /** How the first round is matched (migration 20261014000000). */
   seeding: Seeding;
+  /** Migration 20261016000000: public = listed for anyone to join; official = made by an admin, who doesn't play. */
+  visibility: 'private' | 'public';
+  official: boolean;
+  featured: boolean;
+  /** The house prize already in the pot (official tournaments). */
+  prize: number;
+  description: string | null;
+  announced_at: Date | null;
 }
 interface EntryDb { id: string; player1: string; player2: string | null }
 interface MatchDb {
@@ -1257,27 +1265,45 @@ export const handlers = {
 
   // --- tournaments ---
 
+  /**
+   * Private (code or invite) or public (listed for anyone). An admin's official one: "Capicúa"
+   * organizes it — the admin isn't entered and pays nothing — and the house prize starts the pot.
+   */
   async tournament_create(uid: string, { settings }: { settings: unknown }) {
     const s = validateTournament((settings ?? {}) as never);
     if (!s) throw new HttpError(400, 'bad_settings');
     return await sql.begin(async (tx) => {
       const p = await me(tx, uid);
       await notBanned(tx, uid);
-      if (s.buyIn > 0) await noGuests(tx, uid);
-      if (p.chips < s.buyIn) throw new HttpError(409, 'balance_too_low');
+      const official = !!s.official;
+      if (official && !(await isAdmin(tx, uid))) throw new HttpError(403, 'admin_only');
+      const visibility = s.visibility ?? 'private';
+      if (!official) {
+        if (s.buyIn > 0) await noGuests(tx, uid);
+        if (p.chips < s.buyIn) throw new HttpError(409, 'balance_too_low');
+        if (visibility === 'public') {
+          const [{ n }] = await tx`select count(*)::int as n from tournaments where host = ${uid} and visibility = 'public' and phase = 'lobby'`;
+          if (n >= TOURNAMENT.maxOpenPublic) throw new HttpError(409, 'too_many_public');
+        }
+      }
+      const prize = official ? s.prize ?? 0 : 0;
       let t: TournamentDb | undefined;
       for (let i = 0; i < 8 && !t; i++) {
         [t] = await tx<TournamentDb[]>`
-          insert into tournaments (code, name, host, mode, size, buy_in, rules, turn_seconds, seeding)
+          insert into tournaments (code, name, host, mode, size, buy_in, rules, turn_seconds, seeding,
+                                   visibility, official, featured, prize, pot, description)
           values (${roomCode(Math.random, TOURNAMENT.codeLength)}, ${s.name}, ${uid}, ${s.mode}, ${s.size}, ${s.buyIn},
-                  ${tx.json(tournamentRules(s) as never)}, ${s.turnSeconds}, ${s.seeding ?? 'random'})
+                  ${tx.json(tournamentRules(s) as never)}, ${s.turnSeconds}, ${s.seeding ?? 'random'},
+                  ${visibility}, ${official}, ${official && !!s.featured}, ${prize}, ${prize}, ${official ? s.description ?? null : null})
           on conflict (code) do nothing returning *`;
       }
       if (!t) throw new HttpError(503, 'no_code_available');
+      t.pot = Number(t.pot);
       if (s.startsAt) {
         t.starts_at = new Date(s.startsAt);
         await tx`update tournaments set starts_at = ${t.starts_at} where id = ${t.id}`;
       }
+      if (official) return { id: t.id, code: t.code };
       await tx`insert into tournament_entries (tournament_id, player1) values (${t.id}, ${uid})`;
       await payBuyIn(tx, t, uid);
       // The host is here already if check-in is open.
@@ -1301,8 +1327,10 @@ export const handlers = {
     const [host] = await sql`select display_name from profiles where id = ${t.host}`;
     return {
       id: t.id, code: t.code, name: t.name, mode: t.mode, size: t.size, buyIn: t.buy_in, phase: t.phase,
-      target: t.rules.target, host: host?.display_name ?? '', pot: Number(t.pot), seeding: t.seeding ?? 'random',
+      target: t.rules.target, host: t.official ? 'Capicúa' : host?.display_name ?? '', pot: Number(t.pot), seeding: t.seeding ?? 'random',
       startsAt: t.starts_at ? new Date(t.starts_at).toISOString() : null,
+      turnSeconds: t.turn_seconds, visibility: t.visibility ?? 'private', official: !!t.official,
+      prize: Number(t.prize ?? 0), description: t.description ?? null,
       member: t.host === uid || entries.some((e) => e.player1 === uid || e.player2 === uid),
       entries: entries.map((e) => ({ id: e.id, names: [e.name1, e.name2].filter(Boolean), open: t.mode === '2v2' && !e.player2 })),
     };
@@ -1429,6 +1457,21 @@ export const handlers = {
         // Players' picks only count in a 'pick' tournament (an admin's fixed matches stay).
         if (c.seeding !== 'pick') await tx`delete from tournament_pairs where tournament_id = ${t.id} and set_by = 'player'`;
       }
+      if (c.visibility && c.visibility !== t.visibility) {
+        if (t.official) throw new HttpError(409, 'official_is_public');
+        if (c.visibility === 'public' && !admin) {
+          const [{ n }] = await tx`select count(*)::int as n from tournaments where host = ${t.host} and visibility = 'public' and phase = 'lobby'`;
+          if (n >= TOURNAMENT.maxOpenPublic) throw new HttpError(409, 'too_many_public');
+        }
+        // Made private: off the home screen too.
+        await tx`update tournaments set visibility = ${c.visibility}, featured = featured and ${c.visibility === 'public'} where id = ${t.id}`;
+      }
+      if (c.prize !== undefined || c.description !== undefined) {
+        if (!t.official) throw new HttpError(409, 'not_official');
+        // The pot keeps the buy-ins; only the house's part changes.
+        if (c.prize !== undefined) await tx`update tournaments set pot = pot - prize + ${c.prize}, prize = ${c.prize} where id = ${t.id}`;
+        if (c.description !== undefined) await tx`update tournaments set description = ${c.description || null} where id = ${t.id}`;
+      }
       if (c.startsAt !== undefined) {
         const at = c.startsAt === null ? null : new Date(c.startsAt);
         await tx`update tournaments set starts_at = ${at}, reminded = 0 where id = ${t.id}`;
@@ -1495,10 +1538,49 @@ export const handlers = {
     await adminOnly(uid);
     return await sql`
       select t.id, t.code, t.name, t.mode, t.size, t.phase, t.seeding, t.starts_at, t.created_at, t.buy_in, h.display_name as host,
-        (select count(*)::int from tournament_entries e where e.tournament_id = t.id) as entries
+        (select count(*)::int from tournament_entries e where e.tournament_id = t.id) as entries,
+        t.visibility, t.official, t.featured, t.prize::int as prize, t.announced_at
       from tournaments t join profiles h on h.id = t.host
       order by (t.phase = 'lobby') desc, (t.phase = 'playing') desc, t.created_at desc
       limit 60`;
+  },
+
+  /** Admin: show a public tournament on the home screen (while it takes sign-ups), or take it off. */
+  async admin_tournament_feature(uid: string, { id, featured }: { id: string; featured: boolean }) {
+    await adminOnly(uid);
+    return await sql.begin(async (tx) => {
+      const t = await lockTournament(tx, id);
+      if (featured && t.visibility !== 'public') throw new HttpError(409, 'tournament_private');
+      if (featured && t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
+      await tx`update tournaments set featured = ${!!featured} where id = ${t.id}`;
+      return { ok: true };
+    });
+  },
+
+  /**
+   * Admin: "Avisar a todos" — buzz everyone with notifications on (not already signed up) about a
+   * public tournament still taking sign-ups. Once per tournament. It arrives as an invite from
+   * Capicúa; tapping it opens the tournament's details.
+   */
+  async admin_tournament_announce(uid: string, { id }: { id: string }) {
+    await adminOnly(uid);
+    return await sql.begin(async (tx) => {
+      const t = await lockTournament(tx, id);
+      if (t.visibility !== 'public') throw new HttpError(409, 'tournament_private');
+      if (t.phase !== 'lobby' || (t.starts_at && t.starts_at.getTime() <= Date.now())) throw new HttpError(409, 'tournament_started');
+      if (t.announced_at) throw new HttpError(409, 'already_announced');
+      await tx`update tournaments set announced_at = now() where id = ${t.id}`;
+      const payload = {
+        kind: 'invite', invite: t.id,
+        details: { kind: 'tournament', from: 'Capicúa', mode: t.mode, stake: t.buy_in, code: t.code, name: t.name },
+      };
+      // One row per person buzzed (notify_push queues the request; it never fails the caller).
+      const sent = await tx`
+        select s.user_id, notify_push(s.user_id, ${tx.json(payload as never)}) as queued
+        from (select distinct user_id from push_subscriptions) s
+        where not exists (select 1 from tournament_entries e where e.tournament_id = ${t.id} and s.user_id in (e.player1, e.player2))`;
+      return { ok: true, sent: sent.length };
+    });
   },
 
   /**

@@ -15,7 +15,7 @@ import { useInstall } from '../lib/install';
 import { ArcadeSheet, GameShell, HomeTab, InstallSheet, ModeSheet, SettingsSheet, Sheet, TopBar, type Tab } from './MainScreen';
 import { PracticeTable } from './PracticeTable';
 import { ShopTab } from './Shop';
-import { TournamentForm, TournamentScreen, TournamentsSection } from './Tournament';
+import { FeaturedTournaments, TournamentForm, TournamentScreen, TournamentsSection } from './Tournament';
 import { TournamentHistoryList } from './Trophies';
 import { useTournamentHistory } from '../lib/useTournament';
 import { FriendsSection, InviteToast, joinInvitedRoom, LastSeenRow, PushRow, QuickInviteSheet } from './Friends';
@@ -47,8 +47,10 @@ type View =
   | { kind: 'practice'; mode: Mode; ruleset?: Ruleset }
   | { kind: 'signin' }
   | { kind: 'admin' }
-  | { kind: 'tournament'; id?: string; code?: string }
-  | { kind: 'newTournament' }
+  /** `back`: where ← goes (Mesas unless it was opened from Inicio or the admin panel). */
+  | { kind: 'tournament'; id?: string; code?: string; back?: 'home' | 'tables' | 'admin' }
+  /** `official`: an admin making one for everyone. */
+  | { kind: 'newTournament'; official?: boolean }
   | { kind: 'watch'; friendId: string; name: string }
   /** A match of one of my tournaments, from the bracket (back to it on leaving). */
   | { kind: 'watchMatch'; roomId: string; tournamentId: string };
@@ -199,7 +201,7 @@ export function Online() {
           <TournamentScreen
             key={view.id ?? view.code}
             id={view.id} code={view.code} uid={uid!} profile={profile}
-            onBack={() => setView({ kind: 'main', tab: 'tables' })}
+            onBack={() => setView(view.back === 'home' ? home : view.back === 'admin' ? { kind: 'admin' } : { kind: 'main', tab: 'tables' })}
             onRoom={(roomId) => setView({ kind: 'room', roomId })}
             onWatch={(roomId, tournamentId) => setView({ kind: 'watchMatch', roomId, tournamentId })}
           />
@@ -207,9 +209,9 @@ export function Online() {
       case 'newTournament':
         return (
           <TournamentForm
-            profile={profile} guest={guest}
-            onBack={() => setView({ kind: 'main', tab: 'tables' })}
-            onCreated={(id) => setView({ kind: 'tournament', id })}
+            profile={profile} guest={guest} official={view.official}
+            onBack={() => setView(view.official ? { kind: 'admin' } : { kind: 'main', tab: 'tables' })}
+            onCreated={(id) => setView({ kind: 'tournament', id, back: view.official ? 'admin' : 'tables' })}
           />
         );
       case 'watch':
@@ -228,7 +230,12 @@ export function Online() {
         return <QueueScreen {...view} onMatched={(roomId) => setView({ kind: 'room', roomId })} onCancel={() => setView(home)}
           onPractice={(mode, ruleset) => setView({ kind: 'practice', mode, ruleset })} onCustom={() => setView({ kind: 'custom' })} />;
       case 'admin':
-        return <Suspense fallback={<Loading />}><AdminScreen onExit={() => setView(home)} onTournament={(id) => setView({ kind: 'tournament', id })} /></Suspense>;
+        return (
+          <Suspense fallback={<Loading />}>
+            <AdminScreen onExit={() => setView(home)} onTournament={(id) => setView({ kind: 'tournament', id, back: 'admin' })}
+              onNewTournament={() => setView({ kind: 'newTournament', official: true })} />
+          </Suspense>
+        );
       case 'custom':
         return (
           <CustomForm profile={profile} guest={guest} onBack={() => setView({ kind: 'main', tab: 'tables' })} onCreated={async (roomId) => {
@@ -249,7 +256,7 @@ export function Online() {
             onRoom={(roomId) => setView({ kind: 'room', roomId })}
             onCustom={(inviteFriend) => setView({ kind: 'custom', inviteFriend })}
             onAdmin={() => setView({ kind: 'admin' })}
-            onTournament={(id) => setView({ kind: 'tournament', id })}
+            onTournament={(id, back) => setView({ kind: 'tournament', id, back })}
             onTournamentCode={(code) => setView({ kind: 'tournament', code })}
             onWatch={(f) => setView({ kind: 'watch', friendId: f.id, name: f.name })}
             onNewTournament={() => setView({ kind: 'newTournament' })}
@@ -303,7 +310,7 @@ interface MainProps {
   onRoom?: (roomId: string) => void;
   onCustom?: (inviteFriend?: string) => void;
   onAdmin?: () => void;
-  onTournament?: (id: string) => void;
+  onTournament?: (id: string, back?: 'home' | 'tables') => void;
   onTournamentCode?: (code: string) => void;
   onNewTournament?: () => void;
   onWatch?: (friend: Friend) => void;
@@ -401,6 +408,9 @@ export function MainScreen(p: MainProps) {
         missions={signedIn && missions.missions.length
           ? { done: missions.done, total: missions.missions.length, claimable: missions.claimable, onOpen: () => setSheet('missions') }
           : undefined}
+        tournaments={
+          <FeaturedTournaments enabled={p.online} onOpen={(id) => (signedIn ? p.onTournament?.(id, 'home') : p.onSignIn?.())} />
+        }
         chests={
           <ChestSlots
             chests={chests}

@@ -138,6 +138,29 @@ describe('settings', () => {
     expect(validateTournament({ ...ok, target: 120 })).toBeNull();
   });
 
+  it('private unless the host makes it public', () => {
+    expect(validateTournament(ok)?.visibility).toBeUndefined();
+    expect(validateTournament({ ...ok, visibility: 'public' })?.visibility).toBe('public');
+    expect(validateTournament({ ...ok, visibility: 'secret' as 'public' })).toBeNull();
+  });
+
+  it('official ones are always public and may carry a house prize, a description and a home spot', () => {
+    expect(validateTournament({ ...ok, official: true, visibility: 'private', prize: 10_000, description: '  Sábado   de dominó ', featured: true }))
+      .toMatchObject({ official: true, visibility: 'public', prize: 10_000, description: 'Sábado de dominó', featured: true });
+    expect(validateTournament({ ...ok, official: true, description: '   ' })?.description).toBeUndefined();
+    expect(validateTournament({ ...ok, official: true, prize: -1 })).toBeNull();
+    expect(validateTournament({ ...ok, official: true, prize: 2.5 })).toBeNull();
+    expect(validateTournament({ ...ok, official: true, prize: TOURNAMENT.maxPrize + 1 })).toBeNull();
+    expect(validateTournament({ ...ok, official: true, description: 'x'.repeat(201) })).toBeNull();
+  });
+
+  it('only the house adds prizes, descriptions and home-screen spots', () => {
+    expect(validateTournament({ ...ok, prize: 500 })).toBeNull();
+    expect(validateTournament({ ...ok, description: 'hola' })).toBeNull();
+    expect(validateTournament({ ...ok, featured: true })).toBeNull();
+    expect(validateTournament({ ...ok, prize: 0, description: '' })).not.toBeNull();
+  });
+
   it('tournament codes are 5 letters (tables are 4), and the whole table can talk', () => {
     expect(roomCode(Math.random, 5)).toMatch(/^[A-HJ-NP-Z]{5}$/);
     expect(voiceRoomFor('tournament', '2v2', 'ABCD', 1)).toBe('capicua-ABCD');
@@ -207,5 +230,14 @@ describe('editing before the start', () => {
     expect(validateTournamentEdit({ size: 16 }, false, now)).toBeNull();
     expect(validateTournamentEdit({ size: 16 }, true, now)).toEqual({ size: 16 });
     expect(validateTournamentEdit({}, true, now)).toBeNull();
+  });
+  it('the host may make it public or private; only an admin changes the house prize and the description', () => {
+    expect(validateTournamentEdit({ visibility: 'public' }, false, now)).toEqual({ visibility: 'public' });
+    expect(validateTournamentEdit({ visibility: 'open' as 'public' }, false, now)).toBeNull();
+    expect(validateTournamentEdit({ prize: 5000 }, false, now)).toBeNull();
+    expect(validateTournamentEdit({ description: 'hola' }, false, now)).toBeNull();
+    expect(validateTournamentEdit({ prize: 5000, description: ' Gran  final ' }, true, now)).toEqual({ prize: 5000, description: 'Gran final' });
+    expect(validateTournamentEdit({ description: '' }, true, now)).toEqual({ description: '' });
+    expect(validateTournamentEdit({ prize: -5 }, true, now)).toBeNull();
   });
 });

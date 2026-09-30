@@ -22,6 +22,8 @@ interface TableRow { id: string; code: string; kind: string; mode: string; stake
 interface TournamentAdminRow {
   id: string; code: string; name: string; mode: string; size: number; phase: string; seeding: string;
   starts_at: string | null; created_at: string; buy_in: number; host: string; entries: number;
+  /** From a server with open tournaments (after 7ab6646). */
+  visibility?: 'private' | 'public'; official?: boolean; featured?: boolean; prize?: number; announced_at?: string | null;
 }
 interface LedgerRow { delta: number; reason: string; note: string | null; created_at: string; display_name?: string }
 interface PurchaseRow { pack: string; chips: number; amount_cents: number; status: string; created_at: string; display_name?: string; email?: string }
@@ -43,9 +45,15 @@ interface FairUser {
 const money = (cents: number) => `US$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
 
-export function AdminScreen({ onExit, onTournament }: { onExit: () => void; onTournament?: (id: string) => void }) {
+/** The admin's last tab, so coming back from a tournament lands where they were. */
+const remembered: { section: Section } = { section: 'stats' };
+
+export function AdminScreen({ onExit, onTournament, onNewTournament }: {
+  onExit: () => void; onTournament?: (id: string) => void; onNewTournament?: () => void;
+}) {
   const { t } = useI18n();
-  const [section, setSection] = useState<Section>('stats');
+  const [section, setSection] = useState<Section>(remembered.section);
+  useEffect(() => { remembered.section = section; }, [section]);
   const [openUser, setOpenUser] = useState<string | null>(null);
   const tabs: [Section, string][] = [
     ['stats', t.admin.stats], ['users', t.admin.users], ['fair', t.admin.fair], ['sponsors', t.admin.sp.tab], ['tables', t.admin.tables],
@@ -70,7 +78,7 @@ export function AdminScreen({ onExit, onTournament }: { onExit: () => void; onTo
           : section === 'fair' ? <FairPlayView onOpen={setOpenUser} />
           : section === 'sponsors' ? <SponsorsView />
           : section === 'tables' ? <TablesView />
-          : section === 'tournaments' ? <TournamentsAdminView onOpen={onTournament} />
+          : section === 'tournaments' ? <TournamentsAdminView onOpen={onTournament} onCreate={onNewTournament} />
           : section === 'ledger' ? <LedgerView />
           : <PurchasesView />}
       </main>
@@ -337,28 +345,73 @@ function TablesView() {
   );
 }
 
-/** Every tournament, the ones still to be played first; open one to edit it or fix its matches. */
-function TournamentsAdminView({ onOpen }: { onOpen?: (id: string) => void }) {
+/**
+ * Every tournament, the ones still to be played first: open one to edit it or fix its matches,
+ * make an official one, pick which public ones show on the home screen, and tell everyone.
+ */
+function TournamentsAdminView({ onOpen, onCreate }: { onOpen?: (id: string) => void; onCreate?: () => void }) {
   const { t } = useI18n();
+  const errText = useErrorText();
   const { data, error, reload } = useAdmin<TournamentAdminRow[]>('admin_tournaments');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const act = async (id: string, fn: () => Promise<string | null | void>) => {
+    setBusy(id);
+    setNote(null);
+    try {
+      const msg = await fn();
+      if (msg) setNote(msg);
+      reload();
+    } catch (e) {
+      setNote(errText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const feature = (r: TournamentAdminRow) => act(r.id, () => api('admin_tournament_feature', { id: r.id, featured: !r.featured }).then(() => null));
+  const announce = (r: TournamentAdminRow) => confirm(t.tour.announceConfirm) && act(r.id, async () => {
+    const res = await api<{ sent: number }>('admin_tournament_announce', { id: r.id });
+    return t.tour.announceSent.replace('{n}', String(res.sent));
+  });
   if (error) return <p className="error">{error}</p>;
   return (
     <>
-      <button className="btn ghost" onClick={reload}>↻ {t.refresh}</button>
+      <div className="admin-actions">
+        {onCreate && <button className="btn primary" onClick={onCreate}>{t.tour.createOfficial}</button>}
+        <button className="btn ghost" onClick={reload}>↻ {t.refresh}</button>
+      </div>
       <p className="fine">{t.tour.adminNote}</p>
+      {note && <p className="note-ok">{note}</p>}
       {data?.length === 0 && <p className="fine">—</p>}
-      {data?.map((r) => (
-        <div key={r.id} className="admin-card">
-          <div>
-            <b>{r.name}</b> · {r.code} · {r.mode} · <em>{t.tour.phase[r.phase as 'lobby'] ?? r.phase}</em>
-            <small>
-              {t.tour.seedChip[r.seeding] ?? r.seeding} · {r.entries}/{r.size} · {r.buy_in ? `🪙 ${r.buy_in.toLocaleString()}` : t.free}
-              {' · '}👑 {r.host}{r.starts_at ? ` · 🕘 ${when(r.starts_at)}` : ''}
-            </small>
+      {data?.map((r) => {
+        const open = r.phase === 'lobby' && (!r.starts_at || new Date(r.starts_at).getTime() > Date.now());
+        const pub = r.visibility === 'public';
+        return (
+          <div key={r.id} className={`admin-card tour-admin-row ${r.featured ? 'featured' : ''}`}>
+            <div>
+              <b>{r.name}</b> · {r.code} · {r.mode} · <em>{t.tour.phase[r.phase as 'lobby'] ?? r.phase}</em>
+              <small>
+                {r.official ? t.tour.officialBadge : t.tour.vis[r.visibility ?? 'private']}
+                {r.featured && ` · ${t.tour.featuredChip}`}
+                {' · '}{t.tour.seedChip[r.seeding] ?? r.seeding} · {r.entries}/{r.size} · {r.buy_in ? `🪙 ${r.buy_in.toLocaleString()}` : t.free}
+                {r.prize ? ` · 🏅 ${r.prize.toLocaleString()}` : ''}
+                {' · '}{r.official ? 'Capicúa' : `👑 ${r.host}`}{r.starts_at ? ` · 🕘 ${when(r.starts_at)}` : ''}
+              </small>
+            </div>
+            <div className="tour-admin-btns">
+              {onOpen && <button className="btn primary" onClick={() => onOpen(r.id)}>{t.tour.edit}</button>}
+              {pub && (open || r.featured) && (
+                <button className="btn ghost" disabled={busy === r.id} onClick={() => feature(r)}>{r.featured ? t.tour.unfeature : t.tour.feature}</button>
+              )}
+              {pub && open && (
+                <button className="btn ghost" disabled={busy === r.id || !!r.announced_at} onClick={() => announce(r)}>
+                  {r.announced_at ? t.tour.announced : t.tour.announce}
+                </button>
+              )}
+            </div>
           </div>
-          {onOpen && <button className="btn primary" onClick={() => onOpen(r.id)}>{t.tour.edit}</button>}
-        </div>
-      ))}
+        );
+      })}
     </>
   );
 }

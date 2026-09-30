@@ -95,6 +95,8 @@ export interface HomeProps {
   chests: ReactNode;
   /** Today's missions (signed in): how many are done and ready to collect. */
   missions?: { done: number; total: number; claimable: number; onOpen: () => void };
+  /** Tournaments an admin put on the home screen (nothing when there are none). */
+  tournaments?: ReactNode;
 }
 
 export function HomeTab(p: HomeProps) {
@@ -136,6 +138,7 @@ export function HomeTab(p: HomeProps) {
         <button className="guest-strip" onClick={p.onLinkGoogle}>👤 {t.guestBanner} <b>{t.linkGoogle} →</b></button>
       )}
       {p.notice && <p className="home-notice">{p.notice}</p>}
+      {p.tournaments}
 
       <section className="stage">
         <HeroArt />

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Rules } from '../../supabase/functions/_shared/domino.ts';
-import type { Seeding, TournamentMode } from '../../supabase/functions/_shared/tournament.ts';
-import { supabase } from './supabase';
+import type { Seeding, TournamentMode, Visibility } from '../../supabase/functions/_shared/tournament.ts';
+import { onlineEnabled, supabase } from './supabase';
 
 export interface TournamentRow {
   id: string;
@@ -22,6 +22,15 @@ export interface TournamentRow {
   cancel_reason: 'host' | 'not_enough' | null;
   /** How the first round is matched. */
   seeding: Seeding;
+  /** Public: listed in Mesas → Torneos abiertos. */
+  visibility: Visibility;
+  /** Made by an admin: "Capicúa" organizes it and the admin doesn't play. */
+  official: boolean;
+  /** On the home screen. */
+  featured: boolean;
+  /** The house's part of the pot (official tournaments). */
+  prize: number;
+  description: string | null;
 }
 
 /** A first-round match fixed before the draw: a players' pick, or an admin's. */
@@ -64,9 +73,15 @@ export interface TournamentPeek {
   seeding?: Seeding;
   member: boolean;
   entries: { id: string; names: string[]; open: boolean }[];
+  /** From a server newer than 7ab6646 (open tournaments). */
+  turnSeconds?: number;
+  visibility?: Visibility;
+  official?: boolean;
+  prize?: number;
+  description?: string | null;
 }
 
-const T_COLS = 'id, code, name, host, mode, size, buy_in, rules, turn_seconds, phase, rounds, pot, champion, starts_at, cancel_reason, seeding';
+const T_COLS = 'id, code, name, host, mode, size, buy_in, rules, turn_seconds, phase, rounds, pot, champion, starts_at, cancel_reason, seeding, visibility, official, featured, prize, description';
 
 /**
  * Live view of one tournament for its members: settings, sign-ups, the
@@ -97,7 +112,7 @@ export function useTournament(id: string | null) {
     ]);
     if (!tr) return setMissing(true);
     setMissing(false);
-    setT({ ...tr, pot: Number(tr.pot) } as TournamentRow);
+    setT({ ...tr, pot: Number(tr.pot), prize: Number(tr.prize ?? 0) } as TournamentRow);
     setEntries((es ?? []) as EntryRow[]);
     setMatches((ms ?? []) as MatchRow[]);
     setCheckins(new Set((cs ?? []).map((c) => c.user_id as string)));
@@ -143,9 +158,62 @@ export function useMyTournaments(uid: string | undefined) {
       if (!ids.length) return setList([]);
       const { data } = await supabase.from('tournaments').select(T_COLS).in('id', ids).neq('phase', 'cancelled')
         .order('created_at', { ascending: false }).limit(20);
-      setList((data ?? []).map((x) => ({ ...x, pot: Number(x.pot) }) as TournamentRow));
+      setList((data ?? []).map((x) => ({ ...x, pot: Number(x.pot), prize: Number(x.prize) }) as TournamentRow));
     })();
   }, [uid]);
+  return list;
+}
+
+/** A public tournament still taking sign-ups, as anyone may see it (migration 20261016000000). */
+export interface PublicTournament {
+  id: string;
+  code: string;
+  name: string;
+  mode: TournamentMode;
+  size: number;
+  buy_in: number;
+  prize: number;
+  pot: number;
+  starts_at: string | null;
+  seeding: Seeding;
+  official: boolean;
+  featured: boolean;
+  /** "Capicúa" for official ones. */
+  host: string;
+  description: string | null;
+  people: number;
+  capacity: number;
+  /** I'm signed up (or organize it). */
+  member: boolean;
+}
+
+/**
+ * Public tournaments taking sign-ups, soonest first (official and featured on top): all of them
+ * for Mesas → Torneos abiertos, or only the ones an admin put on the home screen. Refreshed every
+ * minute and when the app comes back to the front. Null while loading.
+ */
+export function usePublicTournaments(featuredOnly: boolean, enabled = true): PublicTournament[] | null {
+  const [list, setList] = useState<PublicTournament[] | null>(null);
+  useEffect(() => {
+    if (!enabled || !onlineEnabled) return;
+    let live = true;
+    const load = () => {
+      supabase.rpc('public_tournaments', { p_featured_only: featuredOnly }).then(({ data, error }) => {
+        if (!live) return;
+        // An older database without the function: nothing to show.
+        setList(error ? [] : ((data ?? []) as PublicTournament[]).map((x) => ({ ...x, pot: Number(x.pot), prize: Number(x.prize) })));
+      }, () => { if (live) setList([]); });
+    };
+    load();
+    const every = setInterval(load, 60_000);
+    const onVisible = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      live = false;
+      clearInterval(every);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [featuredOnly, enabled]);
   return list;
 }
 

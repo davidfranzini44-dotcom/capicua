@@ -1,15 +1,17 @@
-// Private knockout tournaments: create one, the invite a friend opens, the
-// sign-up lobby and the live bracket. Every change goes through the `game`
-// function; the bracket itself updates over Realtime.
+// Knockout tournaments: create one (private, public, or — admins — official), the details
+// anyone sees before joining, the sign-up lobby and the live bracket, plus the lists of open
+// and featured ones. Every change goes through the `game` function; the bracket itself
+// updates over Realtime.
 import { useEffect, useState, type CSSProperties } from 'react';
 import {
   bracketSize, checkInOpen, drawFirstRound, stage, TOURNAMENT, TOURNAMENT_SIZES, playersPerEntry,
-  type Seeding, type TournamentEdit, type TournamentSettings,
+  type Seeding, type TournamentEdit, type TournamentSettings, type Visibility,
 } from '../../supabase/functions/_shared/tournament.ts';
 import { useI18n, type Strings } from '../i18n';
 import { api, type Profile } from '../lib/supabase';
 import {
-  useMyTournaments, useTournament, type EntryRow, type MatchRow, type PairRow, type TournamentPeek, type TournamentRow,
+  useMyTournaments, usePublicTournaments, useTournament,
+  type EntryRow, type MatchRow, type PairRow, type PublicTournament, type TournamentPeek, type TournamentRow,
 } from '../lib/useTournament';
 import { supabase } from '../lib/supabase';
 import { useSocial } from '../lib/social';
@@ -83,12 +85,16 @@ function Seg<T extends string | number>({ value, options, onChange }: { value: T
 
 // ---------- create ----------
 
-export function TournamentForm({ profile, guest, onBack, onCreated }: {
-  profile: Profile; guest: boolean; onBack: () => void; onCreated: (id: string) => void;
+/** `official`: an admin making one for everyone ("Capicúa" organizes it; the admin doesn't play). */
+export function TournamentForm({ profile, guest, official = false, onBack, onCreated }: {
+  profile: Profile; guest: boolean; official?: boolean; onBack: () => void; onCreated: (id: string) => void;
 }) {
   const { t, lang } = useI18n();
   const errText = useErrorText();
-  const [s, setS] = useState<TournamentSettings>({ name: '', mode: '1v1', size: 8, buyIn: guest ? 0 : 500, target: 100, turnSeconds: 25, seeding: 'random' });
+  const [s, setS] = useState<TournamentSettings>(() => ({
+    name: '', mode: '1v1', size: 8, buyIn: guest || official ? 0 : 500, target: 100, turnSeconds: 25, seeding: 'random', visibility: 'private',
+    ...(official ? { official: true, visibility: 'public' as const, prize: 0, description: '', featured: true } : {}),
+  }));
   // When it starts: minutes from now, or 'custom' with the time typed in.
   const [startIn, setStartIn] = useState<number | 'custom'>(30);
   const [custom, setCustom] = useState(() => localInput(Date.now() + 60 * 60_000));
@@ -118,16 +124,21 @@ export function TournamentForm({ profile, guest, onBack, onCreated }: {
         <button className="link-btn back" onClick={onBack}>← {t.back}</button>
         <ChipBalance profile={profile} />
       </div>
-      <h2 className="screen-title">🏆 {t.tour.newTitle}</h2>
+      <h2 className="screen-title">{official ? `🏅 ${t.tour.newOfficial}` : `🏆 ${t.tour.newTitle}`}</h2>
       <section className="card form">
         <label className="label">{t.tour.nameLbl}</label>
         <input className="text-input" maxLength={30} placeholder={t.tour.namePh} value={s.name} onChange={(e) => set('name', e.target.value)} />
+        {official ? (
+          <p className="fine left tour-official-note">🏅 {t.tour.officialNote}</p>
+        ) : (
+          <VisibilityPicker value={s.visibility ?? 'private'} onChange={(v) => set('visibility', v)} />
+        )}
         <label className="label">{t.modeLbl}</label>
         <Seg value={s.mode} options={[['1v1', t.modes['1v1'].name], ['2v2', t.modes['2v2'].name]]} onChange={(v) => set('mode', v)} />
         <label className="label">{t.tour.sizeLbl}</label>
         <Seg value={s.size} options={TOURNAMENT_SIZES.map((n) => [n, `${n} ${unit}`] as [TournamentSettings['size'], string])} onChange={(v) => set('size', v)} />
         <label className="label">{t.tour.buyInLbl}</label>
-        {guest ? (
+        {guest && !official ? (
           <p className="fine left people-only">🔒 {t.guestFreeOnly}</p>
         ) : (
           <>
@@ -136,6 +147,23 @@ export function TournamentForm({ profile, guest, onBack, onCreated }: {
                 onChange={(e) => set('buyIn', Math.min(TOURNAMENT.maxBuyIn, Math.max(0, Math.floor(Number(e.target.value) || 0))))} />
             </div>
             <Seg value={s.buyIn} options={[[0, t.free], [250, '250'], [500, '500'], [1000, '1,000'], [2500, '2,500']]} onChange={(v) => set('buyIn', v)} />
+          </>
+        )}
+        {official && (
+          <>
+            <label className="label">🏅 {t.tour.housePrize}</label>
+            <div className="join-row">
+              <input className="text-input" type="number" min={0} step={500} value={s.prize ?? 0}
+                onChange={(e) => set('prize', Math.min(TOURNAMENT.maxPrize, Math.max(0, Math.floor(Number(e.target.value) || 0))))} />
+            </div>
+            <Seg value={s.prize ?? 0} options={[[0, '0'], [1000, '1,000'], [5000, '5,000'], [10000, '10,000'], [25000, '25,000']]} onChange={(v) => set('prize', v)} />
+            <p className="fine left">{t.tour.prizeHint}</p>
+            <label className="label">{t.tour.descLbl}</label>
+            <textarea className="text-input tour-desc-input" rows={3} maxLength={TOURNAMENT.descriptionMax} placeholder={t.tour.descPh}
+              value={s.description ?? ''} onChange={(e) => set('description', e.target.value)} />
+            <label className="tour-check">
+              <input type="checkbox" checked={!!s.featured} onChange={(e) => set('featured', e.target.checked)} /> {t.tour.featureLbl}
+            </label>
           </>
         )}
         <label className="label">{t.targetLbl}</label>
@@ -156,11 +184,11 @@ export function TournamentForm({ profile, guest, onBack, onCreated }: {
         </p>
         <p className="fine left">{t.tour.checkInRule}</p>
         <p className="fine left">{t.tour.minPeople}</p>
-        {s.buyIn > 0 && <p className="fine left">🪙 {t.tour.potRule}</p>}
+        {(s.buyIn > 0 || (s.prize ?? 0) > 0) && <p className="fine left">🪙 {t.tour.potRule}</p>}
       </section>
       {error && <p className="error">{error}</p>}
-      <button className="btn primary wide" disabled={busy || s.name.trim().length < 3 || s.buyIn > profile.chips || !startOk} onClick={create}>
-        {t.tour.create}{s.buyIn > 0 ? ` · 🪙 ${s.buyIn.toLocaleString()}` : ''}
+      <button className="btn primary wide" disabled={busy || s.name.trim().length < 3 || (!official && s.buyIn > profile.chips) || !startOk} onClick={create}>
+        {t.tour.create}{s.buyIn > 0 && !official ? ` · 🪙 ${s.buyIn.toLocaleString()}` : ''}
       </button>
     </div>
   );
@@ -308,7 +336,8 @@ export function TournamentView(p: TournamentViewProps) {
   const { t, lang } = useI18n();
   const { tour, entries, matches, names, uid } = p;
   const checkins = p.checkins ?? new Set<string>();
-  const isHost = tour.host === uid;
+  // An official tournament's host is the admin who made it: they run it as an admin, they don't play.
+  const isHost = tour.host === uid && !tour.official;
   const admin = !!p.admin;
   const canManage = isHost || admin;
   const [editing, setEditing] = useState(false);
@@ -337,8 +366,10 @@ export function TournamentView(p: TournamentViewProps) {
     <>
       <header className="lobby-title">
         <h2>🏆 {tour.name}</h2>
+        {tour.official && <p className="tour-official">{t.tour.officialBy}</p>}
         <div className="rule-chips">
           <span className={`phase-chip ${tour.phase}`}>{t.tour.phase[tour.phase]}</span>
+          {!tour.official && <span>{t.tour.vis[tour.visibility ?? 'private']}</span>}
           <span>{t.modes[tour.mode].name}</span>
           <span>{t.targetLbl} {tour.rules.target}</span>
           <span>{tour.buy_in ? `🪙 ${tour.buy_in.toLocaleString()}` : t.free}</span>
@@ -347,6 +378,7 @@ export function TournamentView(p: TournamentViewProps) {
         </div>
         {admin && !isHost && <small className="tour-admin-note">🛡️ {t.tour.adminNote}</small>}
       </header>
+      {tour.description && <p className="tour-desc">{tour.description}</p>}
       {scheduled !== null && (
         <section className={`card tour-clock ${checkInIsOpen ? 'open' : ''}`}>
           <div className="tc-when">
@@ -366,11 +398,12 @@ export function TournamentView(p: TournamentViewProps) {
         </section>
       )}
 
-      {tour.buy_in > 0 && (
+      {(tour.buy_in > 0 || tour.pot > 0) && (
         <div className="tour-pot">
           <span>{t.tour.pot}</span>
           <b>🪙 {tour.pot.toLocaleString()}</b>
           <small>🥇 {first.toLocaleString()} · 🥈 {second.toLocaleString()}</small>
+          {tour.prize > 0 && <small className="tour-prize-line">{t.tour.prizeLine.replace('{n}', tour.prize.toLocaleString())}</small>}
         </div>
       )}
 
@@ -417,7 +450,7 @@ export function TournamentView(p: TournamentViewProps) {
                   <button className="link-btn signout" onClick={p.onCancel}>{t.tour.cancel}</button>
                 </>
               )}
-              {!isHost && <button className="link-btn signout" onClick={p.onLeave}>{t.tour.leave}</button>}
+              {!isHost && iAmIn && <button className="link-btn signout" onClick={p.onLeave}>{t.tour.leave}</button>}
             </>
           ) : isHost ? (
             <>
@@ -428,7 +461,7 @@ export function TournamentView(p: TournamentViewProps) {
           ) : (
             <>
               <p className="fine">{t.tour.waitingHost}</p>
-              <button className="link-btn signout" onClick={p.onLeave}>{t.tour.leave}</button>
+              {iAmIn && <button className="link-btn signout" onClick={p.onLeave}>{t.tour.leave}</button>}
             </>
           )}
         </>
@@ -531,6 +564,18 @@ export function TournamentView(p: TournamentViewProps) {
   );
 }
 
+/** Private (code or invite) or public (listed in Mesas → Torneos abiertos). */
+function VisibilityPicker({ value, onChange }: { value: Visibility; onChange: (v: Visibility) => void }) {
+  const { t } = useI18n();
+  return (
+    <>
+      <label className="label">{t.tour.visLbl}</label>
+      <Seg value={value} options={[['private', t.tour.vis.private], ['public', t.tour.vis.public]]} onChange={onChange} />
+      <p className="fine left">{t.tour.visHint[value]}</p>
+    </>
+  );
+}
+
 /** How the first round is matched: a draw, by experience, or the players pick. */
 function SeedingPicker({ value, onChange }: { value: Seeding; onChange: (v: Seeding) => void }) {
   const { t } = useI18n();
@@ -553,6 +598,9 @@ function EditTournamentSheet({ tour, admin, busy, onSave, onClose }: {
   const [turn, setTurn] = useState(tour.turn_seconds);
   const [seeding, setSeeding] = useState<Seeding>(tour.seeding ?? 'random');
   const [size, setSize] = useState(tour.size as TournamentSettings['size']);
+  const [visibility, setVisibility] = useState<Visibility>(tour.visibility ?? 'private');
+  const [prize, setPrize] = useState(tour.prize ?? 0);
+  const [description, setDescription] = useState(tour.description ?? '');
   // The start: as it is, minutes from now, or a time typed in.
   const [startIn, setStartIn] = useState<'keep' | number | 'custom'>('keep');
   const [custom, setCustom] = useState(() => localInput(tour.starts_at ? new Date(tour.starts_at).getTime() : Date.now() + 60 * 60_000));
@@ -567,6 +615,9 @@ function EditTournamentSheet({ tour, admin, busy, onSave, onClose }: {
     if (turn !== tour.turn_seconds) c.turnSeconds = turn;
     if (seeding !== (tour.seeding ?? 'random')) c.seeding = seeding;
     if (admin && size !== tour.size) c.size = size;
+    if (!tour.official && visibility !== (tour.visibility ?? 'private')) c.visibility = visibility;
+    if (admin && tour.official && prize !== tour.prize) c.prize = prize;
+    if (admin && tour.official && description.trim() !== (tour.description ?? '')) c.description = description;
     if (startsAt !== null) c.startsAt = startIn === 'custom' ? new Date(custom).getTime() : Date.now() + (startIn as number) * 60_000;
     if (Object.keys(c).length) onSave(c);
     else onClose();
@@ -578,6 +629,18 @@ function EditTournamentSheet({ tour, admin, busy, onSave, onClose }: {
         <h2>✏️ {t.tour.edit}</h2>
         <label className="label">{t.tour.nameLbl}</label>
         <input className="text-input" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} />
+        {!tour.official && <VisibilityPicker value={visibility} onChange={setVisibility} />}
+        {admin && tour.official && (
+          <>
+            <label className="label">🏅 {t.tour.housePrize}</label>
+            <input className="text-input" type="number" min={0} step={500} value={prize}
+              onChange={(e) => setPrize(Math.min(TOURNAMENT.maxPrize, Math.max(0, Math.floor(Number(e.target.value) || 0))))} />
+            <p className="fine left">{t.tour.prizeHint}</p>
+            <label className="label">{t.tour.descLbl}</label>
+            <textarea className="text-input tour-desc-input" rows={3} maxLength={TOURNAMENT.descriptionMax} placeholder={t.tour.descPh}
+              value={description} onChange={(e) => setDescription(e.target.value)} />
+          </>
+        )}
         <label className="label">{t.tour.startLbl}</label>
         <Seg<'keep' | number | 'custom'> value={startIn}
           options={[['keep', t.tour.keepTime], ...START_PRESETS.map((m) => [m, presetLabel(m)] as [number, string]), ['custom', t.tour.otherTime]]}
@@ -766,24 +829,28 @@ export function TournamentInvite({ peek, busy, onJoin }: { peek: TournamentPeek;
     <>
       <header className="lobby-title">
         <h2>🏆 {peek.name}</h2>
-        <p className="fine">{t.tour.hostedBy} {peek.host}</p>
+        {peek.official ? <p className="tour-official">{t.tour.officialBy}</p> : <p className="fine">{t.tour.hostedBy} {peek.host}</p>}
         <div className="rule-chips">
           <span className={`phase-chip ${peek.phase}`}>{t.tour.phase[peek.phase]}</span>
+          {peek.visibility && !peek.official && <span>{t.tour.vis[peek.visibility]}</span>}
           <span>{t.modes[peek.mode].name}</span>
           <span>{t.targetLbl} {peek.target}</span>
           <span>{peek.buyIn ? `🪙 ${peek.buyIn.toLocaleString()}` : t.free}</span>
+          {peek.turnSeconds && <span>⏱ {peek.turnSeconds}s</span>}
           <span>{t.tour.seedChip[peek.seeding ?? 'random']}</span>
         </div>
         {startsAt !== null && open && (
           <p className="tour-when">🕘 {t.tour.startsAt.replace('{when}', whenText(startsAt, lang, t))} · {t.tour.inTime.replace('{t}', untilText(startsAt - now))}</p>
         )}
       </header>
+      {peek.description && <p className="tour-desc">{peek.description}</p>}
       {startsAt !== null && open && <p className="fine">{t.tour.checkInRule}</p>}
-      {peek.buyIn > 0 && (
+      {(peek.buyIn > 0 || peek.pot > 0) && (
         <div className="tour-pot">
           <span>{t.tour.pot}</span>
           <b>🪙 {peek.pot.toLocaleString()}</b>
           <small>🥇 {first.toLocaleString()} · 🥈 {second.toLocaleString()}</small>
+          {(peek.prize ?? 0) > 0 && <small className="tour-prize-line">{t.tour.prizeLine.replace('{n}', peek.prize!.toLocaleString())}</small>}
         </div>
       )}
       <section className="card tour-entries">
@@ -817,11 +884,14 @@ export function TournamentInvite({ peek, busy, onJoin }: { peek: TournamentPeek;
 export function TournamentsSection({ uid, onCreate, onOpen }: { uid: string; onCreate: () => void; onOpen: (id: string) => void }) {
   const { t, lang } = useI18n();
   const list = useMyTournaments(uid);
+  // Open ones I'm already in show under "Mis torneos".
+  const open = usePublicTournaments(false)?.filter((x) => !x.member) ?? null;
   return (
     <section className="tour-section">
       <h3 className="section-title">🏆 {t.tour.title}</h3>
       <p className="fine left">{t.tour.sub}</p>
       <button className="btn primary" onClick={onCreate}>＋ {t.tour.create}</button>
+      {open && <OpenTournamentsList list={open} onOpen={onOpen} />}
       {list && list.length > 0 && (
         <div className="tour-list">
           <span className="label">{t.tour.mine}</span>
@@ -829,7 +899,7 @@ export function TournamentsSection({ uid, onCreate, onOpen }: { uid: string; onC
             <button key={x.id} className="tour-row" onClick={() => onOpen(x.id)}>
               <span className="tr-name">{x.name}</span>
               <span className="tr-meta">
-                {t.modes[x.mode].name} · {x.buy_in ? `🪙 ${x.buy_in.toLocaleString()}` : t.free}
+                {x.visibility === 'public' ? '🌐 ' : ''}{t.modes[x.mode].name} · {x.buy_in ? `🪙 ${x.buy_in.toLocaleString()}` : t.free}
                 {x.phase === 'lobby' && x.starts_at && ` · 🕘 ${whenText(new Date(x.starts_at).getTime(), lang, t)}`}
               </span>
               <span className={`phase-chip ${x.phase}`}>{t.tour.phase[x.phase]}</span>
@@ -839,5 +909,69 @@ export function TournamentsSection({ uid, onCreate, onOpen }: { uid: string; onC
       )}
       {list && list.length === 0 && <p className="fine">{t.tour.none}</p>}
     </section>
+  );
+}
+
+/** Mesas → Torneos abiertos: public tournaments taking sign-ups. */
+export function OpenTournamentsList({ list, onOpen }: { list: PublicTournament[]; onOpen: (id: string) => void }) {
+  const { t } = useI18n();
+  return (
+    <div className="tour-list">
+      <span className="label">🌐 {t.tour.open}</span>
+      {list.map((x) => <OpenTournamentRow key={x.id} x={x} onOpen={onOpen} />)}
+      {list.length === 0 && <p className="fine left">{t.tour.openNone}</p>}
+    </div>
+  );
+}
+
+/** One public tournament in Mesas → Torneos abiertos: tap for the details before joining. */
+function OpenTournamentRow({ x, onOpen }: { x: PublicTournament; onOpen: (id: string) => void }) {
+  const { t, lang } = useI18n();
+  const full = x.people >= x.capacity;
+  return (
+    <button className={`tour-row open-row ${x.official ? 'official' : ''}`} onClick={() => onOpen(x.id)}>
+      <span className="tr-name">{x.official && <em className="tr-badge">{t.tour.officialBadge}</em>}{x.name}</span>
+      <span className="tr-meta">
+        {x.host} · {t.modes[x.mode].name} · {x.buy_in ? `🪙 ${x.buy_in.toLocaleString()}` : t.free}
+        {x.prize > 0 && ` · 🏆 ${x.pot.toLocaleString()}`}
+        {x.starts_at && ` · 🕘 ${whenText(new Date(x.starts_at).getTime(), lang, t)}`}
+      </span>
+      <span className={`phase-chip ${full ? 'finished' : 'lobby'}`}>{full ? t.tour.full : `${x.people}/${x.capacity}`}</span>
+    </button>
+  );
+}
+
+/**
+ * The home screen's featured tournaments (an admin picks them): one card each, side by side when
+ * there are several. Nothing at all when there are none.
+ */
+export function FeaturedTournaments({ enabled, onOpen }: { enabled: boolean; onOpen: (id: string) => void }) {
+  const list = usePublicTournaments(true, enabled);
+  if (!list?.length) return null;
+  return (
+    <div className={`feat-tours ${list.length > 1 ? 'many' : ''}`}>
+      {list.map((x) => <FeaturedTournamentCard key={x.id} x={x} onOpen={onOpen} />)}
+    </div>
+  );
+}
+
+export function FeaturedTournamentCard({ x, onOpen }: { x: PublicTournament; onOpen: (id: string) => void }) {
+  const { t, lang } = useI18n();
+  const full = x.people >= x.capacity;
+  const prize = x.pot > 0 ? x.pot : 0;
+  return (
+    <button className={`feat-tour ${x.official ? 'official' : ''}`} onClick={() => onOpen(x.id)}>
+      <span className="ft-cup" aria-hidden>🏆</span>
+      <span className="ft-text">
+        <small className="ft-kicker">{x.official ? t.tour.officialBadge : t.tour.featuredKicker} · {t.modes[x.mode].name}</small>
+        <b className="ft-name">{x.name}</b>
+        <span className="ft-meta">
+          {x.starts_at && <span>🕘 {whenText(new Date(x.starts_at).getTime(), lang, t)}</span>}
+          {prize > 0 ? <span>🏆 {t.tour.prize} 🪙 {prize.toLocaleString()}</span> : <span>{t.free}</span>}
+          <span>👥 {t.tour.spots.replace('{n}', String(x.people)).replace('{total}', String(x.capacity))}</span>
+        </span>
+      </span>
+      <span className={`ft-cta ${x.member ? 'in' : ''}`}>{x.member ? t.tour.signedUpChip : full ? t.tour.full : t.tour.seeDetails}</span>
+    </button>
   );
 }

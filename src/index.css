@@ -1170,6 +1170,56 @@ button:disabled { cursor: default; }
 .tour-row .tr-meta { grid-row: 2; color: var(--muted); font-size: .78rem; }
 .tour-row .phase-chip { grid-row: 1 / span 2; grid-column: 2; font-size: .72rem; padding: 3px 9px; border-radius: 99px; }
 
+/* Open and official tournaments */
+.tour-row.official { background: linear-gradient(100deg, rgba(245,197,66,.16), rgba(255,255,255,.05) 70%); border-color: rgba(245,197,66,.45); }
+.tr-badge {
+  display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 99px; vertical-align: 1px;
+  background: var(--us); color: #3a2800; font-style: normal; font-size: .66rem; font-weight: 800;
+}
+.tour-official { margin: 2px 0 0; text-align: center; color: var(--us); font-weight: 700; font-size: .85rem; }
+.tour-official-note { color: #ffe08a; }
+.tour-desc {
+  margin: 0; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.06); border-left: 3px solid var(--us);
+  font-size: .9rem; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere;
+}
+.tour-pot .tour-prize-line { color: #ffe08a; font-weight: 700; }
+.tour-desc-input { resize: vertical; min-height: 64px; font: inherit; line-height: 1.4; }
+.tour-check { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-weight: 700; font-size: .9rem; cursor: pointer; }
+.tour-check input { width: 20px; height: 20px; accent-color: var(--us); flex: none; }
+.admin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tour-admin-row { flex-wrap: wrap; }
+.tour-admin-row > div:first-child { flex: 1 1 220px; min-width: 0; }
+.tour-admin-row.featured { box-shadow: inset 3px 0 0 var(--us); }
+.tour-admin-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.tour-admin-btns .btn { padding: 7px 10px; font-size: .8rem; }
+
+/* Home: featured tournaments (an admin picks them) */
+.feat-tours { display: flex; gap: 8px; margin: 2px 12px 6px; position: relative; z-index: 3; }
+.feat-tours.many { overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin-right: 0; padding-right: 12px; }
+.feat-tours.many::-webkit-scrollbar { display: none; }
+.feat-tour {
+  flex: 1 0 100%; scroll-snap-align: start; display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 8px 10px; border: 2px solid rgba(255,255,255,.9); border-radius: 14px; text-align: left; color: #fff;
+  background: linear-gradient(100deg, #7a3fd6, #4b27a8); box-shadow: 0 4px 0 #2e1872, 0 8px 16px rgba(0,0,0,.25);
+}
+.feat-tour.official { background: linear-gradient(100deg, #ffb52e, #e0761a); box-shadow: 0 4px 0 #9a4a08, 0 8px 16px rgba(0,0,0,.25); }
+.feat-tours.many .feat-tour { flex-basis: 86%; }
+.feat-tour:active { transform: translateY(3px); }
+.ft-cup { flex: none; font-size: 1.9rem; filter: drop-shadow(0 2px 0 rgba(0,0,0,.25)); }
+.ft-text { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.15; }
+.ft-kicker { font-size: .64rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ft-name {
+  font-family: var(--display); font-weight: 400; font-size: .98rem; line-height: 1.1; text-shadow: 0 2px 0 rgba(0,0,0,.3);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+.ft-meta { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: .72rem; font-weight: 700; opacity: .95; }
+.ft-cta {
+  flex: none; padding: 6px 10px; border-radius: 10px; background: #fff; color: #4b27a8; font-weight: 800; font-size: .78rem;
+  box-shadow: 0 2px 0 rgba(0,0,0,.2);
+}
+.feat-tour.official .ft-cta { color: #9a4a08; }
+.ft-cta.in { background: #3ddc84; color: #073b1f; }
+
 /* Install popup */
 .install-sheet { text-align: center; }
 .install-icon { border-radius: 20px; box-shadow: 0 8px 20px rgba(0,0,0,.4); margin-top: 4px; }

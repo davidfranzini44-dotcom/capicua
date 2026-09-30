@@ -13,6 +13,12 @@ export type TournamentMode = Extract<Mode, '1v1' | '2v2'>;
  */
 export type Seeding = 'random' | 'xp' | 'pick';
 export const SEEDINGS: Seeding[] = ['random', 'xp', 'pick'];
+/**
+ * Who can find it: 'private' — only with the code or an invite; 'public' — listed in Mesas →
+ * Torneos abiertos for anyone to join. Official tournaments (made by an admin) are always public.
+ */
+export type Visibility = 'private' | 'public';
+export const VISIBILITIES: Visibility[] = ['private', 'public'];
 export const TOURNAMENT_MODES: TournamentMode[] = ['1v1', '2v2'];
 /** Bracket slots a host can open: players in 1v1, pairs in 2v2. */
 export const TOURNAMENT_SIZES = [4, 8, 16] as const;
@@ -40,6 +46,11 @@ export const TOURNAMENT = {
   championXp: 100,
   runnerUpXp: 40,
   codeLength: 5,
+  /** Public tournaments one player may have open (not started) at a time. */
+  maxOpenPublic: 2,
+  /** The house prize an admin may add to an official tournament. */
+  maxPrize: 1_000_000,
+  descriptionMax: 200,
 };
 
 export const playersPerEntry = (mode: TournamentMode) => (mode === '2v2' ? 2 : 1);
@@ -61,7 +72,28 @@ export interface TournamentSettings {
   startsAt?: number;
   /** How the first round is matched (older tournaments: a draw). */
   seeding?: Seeding;
+  /** Private (code or invite) unless the host makes it public. */
+  visibility?: Visibility;
+  /**
+   * Made by an admin for everyone ("Capicúa" organizes it): always public, the admin doesn't
+   * play in it, and it may carry a house prize and a description. The server checks the admin.
+   */
+  official?: boolean;
+  /** Official only: chips the house adds to the pot (split 70/30 like the rest). */
+  prize?: number;
+  /** Official only: a few words for the details players see before joining. */
+  description?: string;
+  /** Official only: show it on the home screen from the start. */
+  featured?: boolean;
 }
+
+/** Tidy a description: trimmed, single spaces, no control characters; '' when empty. Null when too long. */
+export function cleanDescription(d: unknown): string | null {
+  const s = String(d ?? '').replace(/[\p{Cc}\u200b-\u200d\ufeff]/gu, ' ').replace(/\s+/g, ' ').trim();
+  return s.length > TOURNAMENT.descriptionMax ? null : s;
+}
+
+const validPrize = (p: unknown): p is number => Number.isInteger(p) && (p as number) >= 0 && (p as number) <= TOURNAMENT.maxPrize;
 
 export function validateTournament(s: Partial<TournamentSettings>, now = Date.now()): TournamentSettings | null {
   const name = String(s.name ?? '').trim().replace(/\s+/g, ' ');
@@ -81,13 +113,35 @@ export function validateTournament(s: Partial<TournamentSettings>, now = Date.no
     if (!Number.isFinite(s.startsAt) || s.startsAt < now + TOURNAMENT.minLeadMs - 60_000 || s.startsAt > now + TOURNAMENT.maxLeadMs) return null;
     out.startsAt = Math.round(s.startsAt);
   }
+  if (s.visibility !== undefined) {
+    if (!VISIBILITIES.includes(s.visibility)) return null;
+    out.visibility = s.visibility;
+  }
+  if (s.official) {
+    out.official = true;
+    out.visibility = 'public';
+    if (s.prize !== undefined) {
+      if (!validPrize(s.prize)) return null;
+      out.prize = s.prize;
+    }
+    if (s.description !== undefined) {
+      const d = cleanDescription(s.description);
+      if (d === null) return null;
+      if (d) out.description = d;
+    }
+    if (s.featured) out.featured = true;
+  } else if (s.prize || s.description || s.featured) {
+    // Only the house adds prizes, descriptions and home-screen spots.
+    return null;
+  }
   return out;
 }
 
 /**
  * Changes before the start. The host may change the name, the start time (or clear it: then
- * they start it by hand), the target, the turn timer and how the first round is matched; an
- * admin may also change the size. Buy-in and mode never change once people have joined.
+ * they start it by hand), the target, the turn timer, how the first round is matched and whether
+ * it's public; an admin may also change the size, and (official tournaments) the house prize and
+ * the description. Buy-in and mode never change once people have joined.
  */
 export interface TournamentEdit {
   name?: string;
@@ -96,6 +150,9 @@ export interface TournamentEdit {
   turnSeconds?: number;
   seeding?: Seeding;
   size?: (typeof TOURNAMENT_SIZES)[number];
+  visibility?: Visibility;
+  prize?: number;
+  description?: string;
 }
 
 export function validateTournamentEdit(c: TournamentEdit, admin: boolean, now = Date.now()): TournamentEdit | null {
@@ -125,6 +182,19 @@ export function validateTournamentEdit(c: TournamentEdit, admin: boolean, now = 
   if (c.size !== undefined) {
     if (!admin || !TOURNAMENT_SIZES.includes(c.size)) return null;
     out.size = c.size;
+  }
+  if (c.visibility !== undefined) {
+    if (!VISIBILITIES.includes(c.visibility)) return null;
+    out.visibility = c.visibility;
+  }
+  if (c.prize !== undefined) {
+    if (!admin || !validPrize(c.prize)) return null;
+    out.prize = c.prize;
+  }
+  if (c.description !== undefined) {
+    const d = cleanDescription(c.description);
+    if (!admin || d === null) return null;
+    out.description = d;
   }
   return Object.keys(out).length ? out : null;
 }
