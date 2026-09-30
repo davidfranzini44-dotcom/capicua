@@ -31,6 +31,7 @@ import { LookContext, useLookState } from '../lib/look';
 import { SocialContext, useSocial, useSocialState, type Friend } from '../lib/social';
 import type { Invite } from '../lib/social';
 import { InboxSheet, useInboxSummary } from './Inbox';
+import { useDirectMessages } from '../lib/directMessages';
 
 const AdminScreen = lazy(() => import('./Admin').then((m) => ({ default: m.AdminScreen })));
 
@@ -42,7 +43,7 @@ const WatchScreen = lazy(() => import('./Watch'));
 export const inviteCodeFromUrl = () => new URLSearchParams(location.search).get('sala')?.toUpperCase() ?? null;
 
 type View =
-  | { kind: 'main'; tab: Tab; notice?: string }
+  | { kind: 'main'; tab: Tab; notice?: string; inbox?: true | string }
   | { kind: 'queue'; stake: number; mode: Mode; ruleset?: Ruleset; notice?: string }
   | { kind: 'room'; roomId: string }
   | { kind: 'custom'; inviteFriend?: string }
@@ -120,6 +121,11 @@ export function Online() {
     if (params.get('tab') === 'tables') {
       history.replaceState(null, '', location.pathname);
       return setView({ kind: 'main', tab: 'tables' });
+    }
+    if (params.get('tab') === 'inbox') {
+      const chat = params.get('chat');
+      history.replaceState(null, '', location.pathname);
+      return setView({ kind: 'main', tab: 'home', inbox: chat || true });
     }
     const code = inviteCodeFromUrl();
     if (code) {
@@ -252,6 +258,7 @@ export function Online() {
             profile={profile} guest={guest} online
             tab={view.kind === 'main' ? view.tab : 'home'}
             notice={view.kind === 'main' ? view.notice : undefined}
+            openInbox={view.kind === 'main' ? view.inbox : undefined}
             onTab={(tab) => setView({ kind: 'main', tab })}
             onPractice={(mode, ruleset) => setView({ kind: 'practice', mode, ruleset })}
             onQueue={joinQueue}
@@ -305,6 +312,7 @@ interface MainProps {
   online: boolean;
   tab: Tab;
   notice?: string;
+  openInbox?: true | string;
   onTab: (t: Tab) => void;
   onPractice: (mode: Mode, ruleset?: Ruleset) => void;
   onSignIn?: () => void;
@@ -341,8 +349,9 @@ export function MainScreen(p: MainProps) {
   const signedIn = !!p.profile;
   const { chests, reload: reloadChests } = useChests(signedIn && !p.guest ? p.profile!.id : undefined);
   const missions = useMissions(signedIn && p.online);
+  const messages = useDirectMessages(signedIn ? p.profile!.id : undefined);
   const dailyReady = signedIn && !p.guest && canClaimDaily(p.profile);
-  const inbox = useInboxSummary(social, missions, chests, dailyReady);
+  const inbox = useInboxSummary(social, missions, chests, dailyReady, messages.unread);
   const push = usePush(signedIn && p.online ? p.profile!.id : undefined, lang);
   const install = useInstall();
 
@@ -369,6 +378,7 @@ export function MainScreen(p: MainProps) {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [refreshPush]);
   const closeSheet = useCallback(() => setSheet(null), []);
+  useEffect(() => { if (p.openInbox) setSheet('inbox'); }, [p.openInbox]);
 
   // Suggest the home-screen install after a moment on Inicio — never on top of another sheet,
   // and not after the notifications prompt already said to install (iPhone).
@@ -490,7 +500,8 @@ export function MainScreen(p: MainProps) {
       )}
       {sheet === 'missions' && <MissionsSheet m={missions} onClose={() => setSheet(null)} onChest={reloadChests} />}
       {sheet === 'inbox' && social && (
-        <InboxSheet summary={inbox} missions={missions} social={social} onClose={() => setSheet(null)}
+        <InboxSheet summary={inbox} missions={missions} social={social} messages={messages}
+          initialFriendId={typeof p.openInbox === 'string' ? p.openInbox : undefined} onClose={() => setSheet(null)}
           onAcceptInvite={acceptInboxInvite} onChestChanged={reloadChests}
           onOpenDaily={() => setSheet('coins')}
           onOpenChests={() => { setSheet(null); p.onTab('home'); }} />

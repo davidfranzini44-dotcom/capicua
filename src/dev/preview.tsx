@@ -53,6 +53,7 @@ import { ChatCircleDotsIcon } from '@phosphor-icons/react';
 import type { SponsorReport, TableSponsor } from '../lib/sponsor';
 import { SpectatorChatDock, SpectatorChatPreview } from '../ui/SpectatorChat';
 import { InboxSheet, type InboxSummary } from '../ui/Inbox';
+import type { DirectMessage, DirectMessages } from '../lib/directMessages';
 
 /** A made-up sponsor logo (transparent SVG) for the sponsored-table previews. */
 const FAKE_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 200">
@@ -306,16 +307,28 @@ function SpectatorChatTablePreview({ player = false, sponsored = false, empty = 
 
 function Screen({ s }: { s: string }) {
   const noop = () => {};
-  if (s === 'inbox') {
+  if (s === 'inbox' || s === 'inbox-chat') {
     const social = fakeSocial({ invites: [sampleInvite, sampleTournamentInvite] });
     const missions = fakeMissions();
     const readyChest = { id: 'ready', slot: 0, kind: 'gold' as const, unlock_at: new Date(Date.now() - 60_000).toISOString(), game_id: null };
+    const direct: DirectMessage[] = [
+      { id: 1, sender_id: 'f-yoka', recipient_id: 'me', body: '¿Jugamos una mesa esta noche?', created_at: new Date(Date.now() - 12 * 60_000).toISOString(), read_at: new Date().toISOString() },
+      { id: 2, sender_id: 'me', recipient_id: 'f-yoka', body: 'Sí, después de las ocho 👍', created_at: new Date(Date.now() - 10 * 60_000).toISOString(), read_at: new Date().toISOString() },
+      { id: 3, sender_id: 'f-robert', recipient_id: 'me', body: 'Ese juego estuvo buenísimo 🔥', created_at: new Date(Date.now() - 3 * 60_000).toISOString(), read_at: null },
+      { id: 4, sender_id: 'me', recipient_id: 'f-robert', body: '¡Sí! Casi nos dan una pollona 😅', created_at: new Date(Date.now() - 2 * 60_000).toISOString(), read_at: null },
+    ];
+    const withUser = (id: string) => direct.filter((m) => (m.sender_id === 'me' && m.recipient_id === id) || (m.sender_id === id && m.recipient_id === 'me'));
+    const dm: DirectMessages = {
+      uid: 'me', messages: direct, loading: false, send: async () => {}, read: async () => {}, unread: 1,
+      unreadWith: (id) => direct.filter((m) => m.sender_id === id && m.recipient_id === 'me' && !m.read_at).length,
+      withUser, lastWith: (id) => withUser(id).at(-1),
+    };
     const summary: InboxSummary = {
       incoming: sampleFriends.filter((f) => f.state === 'incoming'), roomInvites: [sampleInvite], tournamentInvites: [sampleTournamentInvite],
-      missionRewards: missions.missions.filter(missions.ready), readyChests: [readyChest], dailyReady: true, count: 6,
+      missionRewards: missions.missions.filter(missions.ready), readyChests: [readyChest], dailyReady: true, unreadMessages: 1, count: 7,
     };
     return <SocialContext.Provider value={social}><div className="game-shell"><main className="game-body" /></div><InboxSheet
-      summary={summary} missions={missions} social={social} onClose={noop} onAcceptInvite={async () => {}}
+      summary={summary} missions={missions} social={social} messages={dm} initialFriendId={s === 'inbox-chat' ? 'f-robert' : undefined} onClose={noop} onAcceptInvite={async () => {}}
       onOpenDaily={noop} onOpenChests={noop} onChestChanged={noop} /></SocialContext.Provider>;
   }
   if (s === 'fx-sounds') return <Soundboard />;

@@ -528,7 +528,9 @@ const dict = {
       title: 'Buzón', subtitle: 'Todo lo que espera por ti', all: 'Todo', social: 'Social', tournaments: 'Torneos', rewards: 'Premios',
       empty: 'Todo al día', emptySub: 'Las invitaciones, solicitudes y premios aparecerán aquí.',
       dailyTitle: 'Regalo diario disponible', dailySub: 'Tus chelitos de hoy están listos.', chestReady: 'Listo para abrir',
-      claim: 'Reclamar', open: 'Abrir', tournament: 'Torneo', free: 'Gratis',
+      claim: 'Reclamar', open: 'Abrir', tournament: 'Torneo', free: 'Gratis', messages: 'Mensajes',
+      startChat: 'Toca para conversar', you: 'Tú', online: 'En línea', offline: 'Desconectado',
+      sayHello: 'Saluda a {name}', privateChat: 'Este chat es privado entre ustedes dos.', messagePh: 'Escribe un mensaje…', send: 'Enviar mensaje',
     },
     teams: {
       switch: 'Cambiar de equipo', full: 'El otro equipo está lleno. El anfitrión puede cambiarlos.',
@@ -1327,7 +1329,9 @@ const dict = {
       title: 'Inbox', subtitle: 'Everything waiting for you', all: 'All', social: 'Social', tournaments: 'Events', rewards: 'Rewards',
       empty: 'All caught up', emptySub: 'Invitations, requests and rewards will appear here.',
       dailyTitle: 'Daily gift available', dailySub: "Today's chips are ready.", chestReady: 'Ready to open',
-      claim: 'Collect', open: 'Open', tournament: 'Tournament', free: 'Free',
+      claim: 'Collect', open: 'Open', tournament: 'Tournament', free: 'Free', messages: 'Messages',
+      startChat: 'Tap to start chatting', you: 'You', online: 'Online', offline: 'Offline',
+      sayHello: 'Say hello to {name}', privateChat: 'This chat is private between the two of you.', messagePh: 'Write a message…', send: 'Send message',
     },
     teams: {
       switch: 'Switch teams', full: 'The other team is full. The host can swap you.',

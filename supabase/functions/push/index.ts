@@ -50,6 +50,7 @@ function appServer(sql: postgres.Sql) {
 
 type Payload =
   | { kind: 'invite'; invite: string; details: { kind: 'room' | 'tournament'; from: string; mode: string; stake: number; code: string; name?: string } }
+  | { kind: 'direct_message'; from: string; name: string; body: string }
   | { kind: 'friend_request' | 'friend_accepted'; name: string }
   | { kind: 'match_ready' | 'match_last_call' | 'checkin_missed' | 'tournament_cancelled'; name: string; code: string }
   | { kind: 'checkin_open' | 'checkin_last' | 'tournament_soon'; name: string; code: string; minutes: number };
@@ -94,6 +95,12 @@ export function message(p: Payload, lang: 'es' | 'en'): Message | null {
         title: es ? `${p.name} aceptó tu solicitud` : `${p.name} accepted your request`,
         body: es ? 'Ya se pueden invitar a jugar' : 'You can invite each other to play now',
         url: '/?tab=tables', tag: 'friends', ttl: 86_400,
+      };
+    case 'direct_message':
+      return {
+        title: `💬 ${p.name}`,
+        body: p.body,
+        url: `/?tab=inbox&chat=${encodeURIComponent(p.from)}`, tag: `message-${p.from}`, ttl: 86_400,
       };
     case 'match_ready':
       return {

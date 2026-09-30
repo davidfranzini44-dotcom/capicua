@@ -2023,6 +2023,38 @@ export const handlers = {
     return { status: 'none' };
   },
 
+  /** Send a private message to an accepted friend. */
+  async direct_message_send(uid: string, { userId, text }: { userId: string; text: string }) {
+    return await sql.begin(async (tx) => {
+      await notBanned(tx, uid);
+      const body = String(text ?? '').trim().replace(/\s+/g, ' ');
+      if (!userId || userId === uid || body.length < 1 || body.length > 280 || /(https?:\/\/|www\.)/i.test(body)) {
+        throw new HttpError(400, 'bad_message');
+      }
+      const [a, b] = pair(uid, userId);
+      const [friend] = await tx`select 1 from friendships where user_a = ${a} and user_b = ${b} and status = 'accepted'`;
+      if (!friend) throw new HttpError(403, 'not_friends');
+      const [rate] = await tx`
+        select
+          exists(select 1 from direct_messages where sender_id = ${uid} and created_at > now() - interval '400 milliseconds') as too_soon,
+          (select count(*)::int from direct_messages where sender_id = ${uid} and created_at > now() - interval '1 minute') as minute`;
+      if (rate.too_soon || rate.minute >= 60) throw new HttpError(429, 'too_fast');
+      const [message] = await tx`
+        insert into direct_messages (sender_id, recipient_id, body) values (${uid}, ${userId}, ${body})
+        returning id, sender_id, recipient_id, body, created_at, read_at`;
+      return { message };
+    });
+  },
+
+  /** Mark everything this friend sent me as read. */
+  async direct_message_read(uid: string, { userId }: { userId: string }) {
+    const rows = await sql`
+      update direct_messages set read_at = now()
+      where recipient_id = ${uid} and sender_id = ${userId} and read_at is null
+      returning id`;
+    return { read: rows.length };
+  },
+
   /** Invite a friend to the private table or tournament I'm in. It pops up on their screen if they're online. */
   async friend_invite(uid: string, { userId, roomId, tournamentId }: { userId: string; roomId?: string; tournamentId?: string }) {
     const [a, b] = pair(uid, userId);
