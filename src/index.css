@@ -1030,6 +1030,8 @@ button:disabled { cursor: default; }
 .reward span { font-size: 1.4rem; }
 .reward b { font-family: var(--display); font-weight: 400; font-size: 1.2rem; }
 .reward.xp b { color: #8ef0ff; }
+.reward.xp:has(small) { display: grid; grid-template-columns: auto auto; column-gap: 8px; }
+.reward.xp small { grid-column: 2; color: #ffd95c; font-size: .68rem; font-weight: 900; text-transform: uppercase; }
 .reward.chips.up b { color: #7ee04f; }
 .reward.chips.down b { color: var(--them); }
 .reward.chest { flex-direction: column; gap: 2px; }

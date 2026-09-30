@@ -73,6 +73,8 @@ export interface TableViewProps {
   exitConfirm?: string;
   /** Online games earn XP; practice doesn't. */
   showXp?: boolean;
+  /** Extra XP for beating a stronger all-human side. Calculated from server-visible seat levels. */
+  rivalBonus?: number;
   /** A short message (e.g. a refused move) shown in the line under the hand, never over the table. */
   notice?: string | null;
   /**
@@ -661,7 +663,7 @@ export function TableView(props: TableViewProps) {
           sponsorCredit={props.sponsor ? <SponsorResultCard sponsor={props.sponsor} phase="hand" onTap={watching && !broadcast ? props.onSponsorTap : undefined} /> : undefined} />
       )}
       {showResult && view.winner !== null && (
-        <GameOver view={view} mySeat={mySeat} name={name} endActions={broadcast ? null : props.endActions} note={resultNote} showXp={props.showXp && !arcade && !watching}
+        <GameOver view={view} mySeat={mySeat} name={name} endActions={broadcast ? null : props.endActions} note={resultNote} showXp={props.showXp && !arcade && !watching} rivalBonus={props.rivalBonus}
           watching={!!watching}
           credit={props.sponsor ? <SponsorResultCard sponsor={props.sponsor} phase="match" onTap={broadcast ? undefined : props.onSponsorTap} /> : undefined} />
       )}
@@ -1057,8 +1059,9 @@ function Contributions({ view, mySeat, name }: { view: PublicState; mySeat: Seat
 }
 
 /** End of the game: celebration (or commiseration) plus a summary of how it went. */
-function GameOver({ view, mySeat, name, endActions, note, showXp, credit, watching }: {
+function GameOver({ view, mySeat, name, endActions, note, showXp, rivalBonus = 0, credit, watching }: {
   view: PublicState; mySeat: Seat; name: (s: Seat) => string; endActions: ReactNode; note?: ReactNode; showXp?: boolean;
+  rivalBonus?: number;
   /** "Mesa patrocinada por…" */
   credit?: ReactNode;
   /** A spectator: say who won, not "we won". */
@@ -1074,7 +1077,7 @@ function GameOver({ view, mySeat, name, endActions, note, showXp, credit, watchi
   const pollona = won && isPollona(view);
   const capicuas = view.tally.capicuas[mySide];
   const theirCapicuas = view.tally.capicuas.reduce((a, b) => a + b, 0) - capicuas;
-  const xp = gameXp({ won, capicuas, pollona, placedSecond: second });
+  const xp = gameXp({ won, capicuas, pollona, placedSecond: second }) + (won ? rivalBonus : 0);
   const winners = view.winner === null ? [] : seatsOf(mode).filter((s) => sideOf(mode, s) === view.winner).map(name);
   const title = watching ? t.theyWon.replace('{names}', winners.join(' & '))
     : won ? (mode === '2v2' ? t.weWon : t.youWon) : second ? t.second : mode === '2v2' ? t.weLost : t.youLost;
@@ -1109,7 +1112,7 @@ function GameOver({ view, mySeat, name, endActions, note, showXp, credit, watchi
         <Contributions view={view} mySeat={mySeat} name={name} />
 
         <div className="go-rewards">
-          {showXp && <div className="reward xp"><span>⭐</span><b>+{xp} XP</b></div>}
+          {showXp && <div className="reward xp"><span>⭐</span><b>+{xp} XP</b>{won && rivalBonus > 0 && <small>{t.summary.rivalBonus.replace('{xp}', String(rivalBonus))}</small>}</div>}
           {note}
         </div>
 

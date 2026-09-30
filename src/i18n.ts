@@ -255,7 +255,7 @@ const dict = {
       thanks: '¡Gracias por tu compra! Tus chelitos llegan en unos segundos.',
       cancelled: 'Compra cancelada. No se te cobró nada.',
     },
-    summary: { nextOne: '¡La próxima es tuya!', hands: 'Manos', tranquesWon: 'Tranques ganados', handsWon: 'Manos ganadas' },
+    summary: { nextOne: '¡La próxima es tuya!', hands: 'Manos', tranquesWon: 'Tranques ganados', handsWon: 'Manos ganadas', rivalBonus: 'Rival fuerte +{xp}' },
     between: {
       ready: 'Listo', waiting: 'Esperando a {names}', dealing: 'Repartiendo…', auto: 'La próxima mano sale en {s} s',
       title: 'Aportes de la partida', points: 'Pts', stars: '⭐', tiles: 'Fichas', passes: 'Pases', dominoes: 'Dominó',
@@ -1054,7 +1054,7 @@ const dict = {
       thanks: 'Thanks for your purchase! Your chips arrive in a few seconds.',
       cancelled: 'Purchase cancelled. You were not charged.',
     },
-    summary: { nextOne: 'Next one is yours!', hands: 'Hands', tranquesWon: 'Blocks won', handsWon: 'Hands won' },
+    summary: { nextOne: 'Next one is yours!', hands: 'Hands', tranquesWon: 'Blocks won', handsWon: 'Hands won', rivalBonus: 'Strong rival +{xp}' },
     between: {
       ready: 'Ready', waiting: 'Waiting for {names}', dealing: 'Dealing…', auto: 'Next hand deals in {s} s',
       title: 'Who brought what', points: 'Pts', stars: '⭐', tiles: 'Tiles', passes: 'Passes', dominoes: 'Dominó',

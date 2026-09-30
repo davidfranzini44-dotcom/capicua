@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { seatsOf, sideOf, type Mode, type Move, type Ruleset, type Seat } from '../../supabase/functions/_shared/domino.ts';
 import {
-  botsAllowed, minHumans, SIDE_BET_KINDS, sideBetLimit, sideBetMultiplier, voiceRoomFor, type SideBetKind,
+  botsAllowed, minHumans, rivalBonus, SIDE_BET_KINDS, sideBetLimit, sideBetMultiplier, voiceRoomFor, type SideBetKind,
 } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { OUT_OF_APP_MS, useFairPlay, type TableAlert } from '../lib/fairPlay';
@@ -540,6 +540,11 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
   }, [r.seats]);
   const names = [0, 1, 2, 3].map((s) => r.seats.find((x) => x.seat === s)?.name ?? '');
   const levels = [0, 1, 2, 3].map((s) => r.seats.find((x) => x.seat === s)?.level ?? null);
+  const rivalXp = room.kind !== 'custom' && view.winner !== null
+    && r.seats.length === seatsOf(room.mode).length
+    && r.seats.every((s) => !s.is_bot && !!s.user_id && !s.left_game)
+    ? rivalBonus(room.mode, view.winner, r.seats.map((s) => ({ seat: s.seat, level: s.level })))
+    : 0;
   const stats = usePlayerStats(r.seats.filter((s) => s.user_id && !s.is_bot).map((s) => s.user_id!));
   const avatars = [0, 1, 2, 3].map((s) => {
     const id = r.seats.find((x) => x.seat === s)?.user_id;
@@ -745,6 +750,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
         sponsor={sponsor}
         onSponsorTap={sponsor ? () => openSponsor(sponsor, game.id) : undefined}
         resultNote={resultNote}
+        rivalBonus={rivalXp}
         endActions={endActions}
         offline={offline}
         outOfApp={outOfApp}

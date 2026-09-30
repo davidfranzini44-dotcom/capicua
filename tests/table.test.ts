@@ -3,7 +3,7 @@ import { applyMove, CLASSIC_DR, newGame, type Mode, type Seat } from '../supabas
 import { chooseMove } from '../supabase/functions/_shared/bot.ts';
 import {
   autoAction, autoDelay, botsAllowed, chestReward, CHESTS, effectiveStake, packFor, rollChest, rushCost, salaFor, gameXp, levelFromXp, levelTitle, minHumans, needsReadyCheck, payouts, publicState, roomCode,
-  sideBetMultiplier, sideBetWon, TIMING, validateCustom, voiceRoomFor, xpForLevel, type SeatInfo,
+  rivalBonus, sideBetMultiplier, sideBetWon, TIMING, validateCustom, voiceRoomFor, xpForLevel, type SeatInfo,
   customRules, publicRules,
 } from '../supabase/functions/_shared/table.ts';
 import { tournamentRules } from '../supabase/functions/_shared/tournament.ts';
@@ -116,6 +116,16 @@ describe('levels & matchmaking', () => {
     expect(levelTitle(7).es).toBe('Tíguere');
     expect(levelTitle(40).es).toBe('Leyenda');
     expect(gameXp({ won: true, capicuas: 1, pollona: false })).toBe(55);
+  });
+
+  it('rewards a winner for beating higher-level rivals, capped at 20 XP', () => {
+    expect(rivalBonus('1v1', 0, [{ seat: 0, level: 5 }, { seat: 1, level: 6 }])).toBe(5);
+    expect(rivalBonus('1v1', 0, [{ seat: 0, level: 5 }, { seat: 1, level: 9 }])).toBe(10);
+    expect(rivalBonus('1v1', 0, [{ seat: 0, level: 5 }, { seat: 1, level: 20 }])).toBe(20);
+    expect(rivalBonus('1v1', 0, [{ seat: 0, level: 8 }, { seat: 1, level: 6 }])).toBe(0);
+    expect(rivalBonus('2v2', 0, [
+      { seat: 0, level: 5 }, { seat: 2, level: 7 }, { seat: 1, level: 10 }, { seat: 3, level: 12 },
+    ])).toBe(15);
   });
 
   it('bet tables: 1v1/2v2 people only, ffa needs 2 people, free tables can use bots', () => {

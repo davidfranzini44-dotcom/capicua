@@ -16,7 +16,7 @@ import {
 } from '../_shared/domino.ts';
 import {
   arcadeAllowed, autoAction, autoDelay, botsAllowed, CHEST_SLOTS, chestReward, CHESTS, CHIPS, customRules, effectiveStake, rollChest, rushCost, gameXp, LEAVER_XP, levelFromXp, LOBBY, matchRules, MAX_STRIKES,
-  MIN_PEOPLE_FOR_BOT_FILL, minHumans, MODES, needsReadyCheck, payouts, publicState, roomCode, rulesetOf, RULESETS, salaFor, seatsNeeded, SIDE_BET_KINDS,
+  MIN_PEOPLE_FOR_BOT_FILL, minHumans, MODES, needsReadyCheck, payouts, publicState, rivalBonus, roomCode, rulesetOf, RULESETS, salaFor, seatsNeeded, SIDE_BET_KINDS,
   sideBetLimit, sideBetMultiplier, sideBetWon, TURN_SECONDS, validateCustom, voiceRoomFor,
   type ChestKind, type SeatInfo, type SideBetKind,
 } from '../_shared/table.ts';
@@ -482,12 +482,20 @@ async function settle(tx: Tx, room: RoomDb, game: GameDb, end: GameState, seats:
     await tx`update rooms set phase = 'finished', updated_at = now() where id = ${room.id}`;
     return;
   }
+  // A Rival Bonus only exists when the winners really beat a complete human
+  // table. Private/custom tables and forfeited matches cannot be used to farm it.
+  const rivalXp = room.kind !== 'custom'
+    && seats.length === seatsNeeded(mode)
+    && seats.every((s) => !s.is_bot && !!s.user_id && !s.left_game)
+    && end.winner !== null
+    ? rivalBonus(mode, end.winner, seats.map((s) => ({ seat: s.seat as Seat, level: s.level })))
+    : 0;
   for (const s of humansOf(seats)) {
     const side = sideOf(mode, s.seat);
     const won = end.winner === side;
     const capicuas = end.tally.capicuas[side];
     const pollona = won && isPollona(end);
-    const xp = s.left_game ? LEAVER_XP : gameXp({ won, capicuas, pollona, placedSecond: mode === 'ffa' && order[1]?.side === side });
+    const xp = s.left_game ? LEAVER_XP : gameXp({ won, capicuas, pollona, placedSecond: mode === 'ffa' && order[1]?.side === side }) + (won ? rivalXp : 0);
     await tx`
       update profiles set xp = greatest(0, xp + ${xp}), games = games + 1, wins = wins + ${won ? 1 : 0},
         capicuas = capicuas + ${capicuas}, pollonas = pollonas + ${pollona ? 1 : 0}

@@ -367,6 +367,23 @@ export function gameXp(o: { won: boolean; capicuas: number; pollona: boolean; pl
 }
 export const LEAVER_XP = -30;
 
+/**
+ * Extra XP for beating a stronger human side. Callers decide whether a match
+ * qualifies (public/tournament, every chair human, nobody forfeited).
+ */
+export function rivalBonus(mode: Mode, winner: number, players: { seat: Seat; level: number }[]): number {
+  const winners = players.filter((p) => sideOf(mode, p.seat) === winner);
+  const rivals = players.filter((p) => sideOf(mode, p.seat) !== winner);
+  if (!winners.length || !rivals.length) return 0;
+  const average = (xs: typeof players) => xs.reduce((sum, p) => sum + p.level, 0) / xs.length;
+  const gap = Math.floor(average(rivals) - average(winners));
+  if (gap >= 8) return 20;
+  if (gap >= 5) return 15;
+  if (gap >= 3) return 10;
+  if (gap >= 1) return 5;
+  return 0;
+}
+
 // ---------- matchmaking ----------
 
 /** Levels within this many of each other skip the ready check and just count down. */
