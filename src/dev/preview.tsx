@@ -19,8 +19,8 @@ import { ShopTab } from '../ui/Shop';
 import { TableView } from '../ui/TableView';
 import { InstallSheet } from '../ui/MainScreen';
 import type { InstallKind } from '../lib/install';
-import { TournamentInvite, TournamentView } from '../ui/Tournament';
-import type { EntryRow, MatchRow, TournamentHistoryRow, TournamentRow } from '../lib/useTournament';
+import { TournamentForm, TournamentInvite, TournamentView } from '../ui/Tournament';
+import type { EntryRow, MatchRow, PairRow, TournamentHistoryRow, TournamentRow } from '../lib/useTournament';
 import type { GameState } from '../../supabase/functions/_shared/domino.ts';
 import { BoardDesignPreview } from './BoardDesignPreview';
 import { ArcadePreview } from './arcadePreview';
@@ -293,12 +293,16 @@ function Screen({ s }: { s: string }) {
       </div>
     );
   }
+  if (s === 'tournament-new') return <TournamentForm profile={profile} guest={false} onBack={noop} onCreated={noop} />;
   if (s.startsWith('tournament-')) {
     // tournament-lobby | tournament-bracket | tournament-final (I won: the celebration) | tournament-podium (seen by the
     // runner-up) | tournament-out (knocked out: watch the others) | tournament-noshow
     // | tournament-scheduled (before check-in) | tournament-checkin (open, not checked in) | tournament-checkin-host (all in: start now)
+    // tournament-pick (players pick their opponent) | tournament-xp (seeded by XP) | tournament-admin (an admin fixing it)
     const scheduled = s === 'tournament-scheduled' || s.startsWith('tournament-checkin');
-    const phase = s === 'tournament-lobby' || scheduled ? 'lobby' : s === 'tournament-final' || s === 'tournament-podium' ? 'finished' : 'playing';
+    const lobbyish = ['tournament-lobby', 'tournament-pick', 'tournament-xp', 'tournament-admin'].includes(s);
+    const phase = lobbyish || scheduled ? 'lobby' : s === 'tournament-final' || s === 'tournament-podium' ? 'finished' : 'playing';
+    const seeding = s === 'tournament-pick' ? 'pick' : s === 'tournament-xp' || s === 'tournament-admin' ? 'xp' : 'random';
     const me = s === 'tournament-podium' || s === 'tournament-out' ? 'y' : 'me';
     const names = { me: 'Wilfri', y: 'Yokasta', r: 'Robert', k: 'Kirsy', c: 'Chelo' } as Record<string, string>;
     const entries: EntryRow[] = ['me', 'y', 'r', 'k', 'c'].map((p, i) => ({
@@ -331,13 +335,19 @@ function Screen({ s }: { s: string }) {
     const tour: TournamentRow = {
       id: 't1', code: 'KXQTB', name: 'Copa del barrio', host: 'me', mode: '1v1', size: 8, buy_in: 500, rules: publicRules('1v1'),
       turn_seconds: 25, phase, rounds: phase === 'lobby' ? null : 3, pot: 2500, champion: phase === 'finished' ? 'e0' : null,
-      starts_at: scheduled ? new Date(Date.now() + (s === 'tournament-scheduled' ? 95 : 9) * 60_000).toISOString() : null, cancel_reason: null,
+      starts_at: scheduled || lobbyish ? new Date(Date.now() + (s === 'tournament-scheduled' || lobbyish ? 95 : 9) * 60_000).toISOString() : null, cancel_reason: null,
+      seeding,
     };
+    const xp = { me: 1_240, y: 6_200, r: 380, k: 2_100, c: 90 } as Record<string, number>;
+    const pairs: PairRow[] = s === 'tournament-pick' ? [{ entry_a: 'e1', entry_b: 'e2', set_by: 'player' }]
+      : s === 'tournament-admin' ? [{ entry_a: 'e0', entry_b: 'e3', set_by: 'admin' }] : [];
     const checkins = new Set(s === 'tournament-checkin' ? ['y', 'r'] : s === 'tournament-checkin-host' ? ['me', 'y', 'r', 'k'] : []);
     return (
       <div className="screen tour-screen">
-        <TournamentView tour={{ ...tour, host: s === 'tournament-checkin' ? 'y' : 'me' }} entries={phase === 'lobby' ? entries.slice(0, 4) : entries}
-          matches={matches} names={names} uid={me} checkins={checkins}
+        <TournamentView tour={{ ...tour, host: s === 'tournament-checkin' || s === 'tournament-admin' ? 'y' : 'me' }}
+          entries={phase === 'lobby' ? (lobbyish && s !== 'tournament-lobby' ? entries : entries.slice(0, 4)) : entries}
+          matches={matches} names={names} uid={me} checkins={checkins} admin={s === 'tournament-admin'} pairs={pairs} xp={xp}
+          onEdit={noop} onPair={noop} onUnpair={noop}
           onStart={noop} onCancel={noop} onLeave={noop} onKick={noop} onPlay={noop} onCheckIn={noop} onWatch={noop} />
       </div>
     );

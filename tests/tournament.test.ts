@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  afterFeeders, bracketSize, checkInOpen, firstRound, minEntries, nextMatch, noShowOutcome, placementFor, prizes, roundCount, stage, TOURNAMENT, validateTournament,
+  afterFeeders, bracketSize, checkInOpen, drawFirstRound, firstRound, keptPairs, minEntries, nextMatch, noShowOutcome, placementFor, prizes, roundCount, seedOrder, stage, TOURNAMENT, validateTournament, validateTournamentEdit,
 } from '../supabase/functions/_shared/tournament.ts';
 import { roomCode, voiceRoomFor } from '../supabase/functions/_shared/table.ts';
 
@@ -141,5 +141,71 @@ describe('settings', () => {
   it('tournament codes are 5 letters (tables are 4), and the whole table can talk', () => {
     expect(roomCode(Math.random, 5)).toMatch(/^[A-HJ-NP-Z]{5}$/);
     expect(voiceRoomFor('tournament', '2v2', 'ABCD', 1)).toBe('capicua-ABCD');
+  });
+});
+
+describe('how the first round is matched', () => {
+  const e = (id: string, xp: number) => ({ id, xp });
+  const eight = [e('a', 800), e('b', 700), e('c', 600), e('d', 500), e('e', 400), e('f', 300), e('g', 200), e('h', 100)];
+  const ids = (ms: [{ id: string }, { id: string } | null][]) => ms.map(([x, y]) => [x.id, y?.id ?? null]);
+
+  it('seed order keeps the top two apart until the final', () => {
+    expect(seedOrder(2)).toEqual([1, 2]);
+    expect(seedOrder(4)).toEqual([1, 4, 2, 3]);
+    expect(seedOrder(8)).toEqual([1, 8, 4, 5, 2, 7, 3, 6]);
+  });
+
+  it('by XP: the most XP plays the least, and the top two sit in opposite halves', () => {
+    const ms = ids(drawFirstRound(eight, 'xp'));
+    expect(ms).toEqual([['a', 'h'], ['d', 'e'], ['b', 'g'], ['c', 'f']]);
+  });
+
+  it('by XP with byes: the strongest get them, then best-left against weakest-left', () => {
+    const six = eight.slice(0, 6); // bracket of 8 → 2 byes
+    const ms = ids(drawFirstRound(six, 'xp'));
+    expect(ms).toHaveLength(4);
+    expect(ms.filter(([, b]) => b === null).map(([a]) => a).sort()).toEqual(['a', 'b']);
+    expect(ms).toContainEqual(['c', 'f']);
+    expect(ms).toContainEqual(['d', 'e']);
+    // a (1st) and b (2nd) in opposite halves
+    const slot = (id: string) => ms.findIndex(([x]) => x === id);
+    expect(Math.floor(slot('a') / 2)).not.toBe(Math.floor(slot('b') / 2));
+  });
+
+  it('fixed matches are kept as they are; everyone else is drawn, and each entry plays once', () => {
+    for (const seeding of ['random', 'pick', 'xp'] as const) {
+      const ms = ids(drawFirstRound(eight, seeding, [['a', 'b'], ['c', 'h']], seeded(3)));
+      expect(ms).toContainEqual(['a', 'b']);
+      expect(ms).toContainEqual(['c', 'h']);
+      expect(ms.flat().filter(Boolean).sort()).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
+    }
+  });
+
+  it('only as many fixed matches as still leave a real opponent or a bye for everyone', () => {
+    // 5 entries → bracket of 8, 3 byes → at most one real match.
+    expect(keptPairs(['a', 'b', 'c', 'd', 'e'], [['a', 'b'], ['c', 'd']])).toEqual([['a', 'b']]);
+    // Gone, repeated or self-pairs are skipped.
+    expect(keptPairs(['a', 'b', 'c', 'd'], [['a', 'z'], ['a', 'a'], ['b', 'c'], ['c', 'd'], ['a', 'd']])).toEqual([['b', 'c'], ['a', 'd']]);
+    const ms = drawFirstRound(eight.slice(0, 5), 'pick', [['a', 'b'], ['c', 'd']], seeded(1));
+    expect(ms).toHaveLength(4);
+    expect(ms.filter(([, b]) => b === null)).toHaveLength(3);
+  });
+});
+
+describe('editing before the start', () => {
+  const now = Date.now();
+  it('the host changes name, start time (or clears it), target, timer and matching', () => {
+    expect(validateTournamentEdit({ name: '  Copa   nueva ', target: 150, turnSeconds: 40, seeding: 'xp' }, false, now))
+      .toEqual({ name: 'Copa nueva', target: 150, turnSeconds: 40, seeding: 'xp' });
+    expect(validateTournamentEdit({ startsAt: now + 60 * 60_000 }, false, now)).toEqual({ startsAt: now + 60 * 60_000 });
+    expect(validateTournamentEdit({ startsAt: null }, false, now)).toEqual({ startsAt: null });
+  });
+  it('refuses what is out of range, and the size for anyone but an admin', () => {
+    expect(validateTournamentEdit({ startsAt: now + 60_000 }, false, now)).toBeNull();
+    expect(validateTournamentEdit({ target: 123 }, false, now)).toBeNull();
+    expect(validateTournamentEdit({ seeding: 'vip' as never }, false, now)).toBeNull();
+    expect(validateTournamentEdit({ size: 16 }, false, now)).toBeNull();
+    expect(validateTournamentEdit({ size: 16 }, true, now)).toEqual({ size: 16 });
+    expect(validateTournamentEdit({}, true, now)).toBeNull();
   });
 });

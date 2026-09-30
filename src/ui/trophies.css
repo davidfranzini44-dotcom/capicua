@@ -84,3 +84,27 @@ button.th-row:active { transform: scale(.99); }
 @media (prefers-reduced-motion: reduce) {
   .trophy-cup.gold.champion-cup, .champion-overlay { animation: none; }
 }
+
+/* Tournament lobby: how the first round is matched, and fixing it. */
+.te-xp { color: #ffe27a; font-size: .7rem; font-weight: 700; }
+.tour-admin-note { display: block; margin-top: 6px; color: #9fd0ff; font-size: .75rem; }
+.tour-admin-tools { display: grid; gap: 6px; }
+.tour-matchups { display: grid; gap: 8px; }
+.tm-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,.05);
+}
+.tm-row.mine { box-shadow: inset 3px 0 0 var(--us); }
+.tm-vs { min-width: 0; overflow-wrap: anywhere; line-height: 1.3; }
+.tm-vs i { font-style: normal; margin: 0 4px; }
+.tm-vs small, .tm-row > small { color: var(--muted, #c9d8cc); font-size: .72rem; }
+.tm-choose { display: grid; gap: 6px; }
+.tm-pick { justify-content: flex-start; text-align: left; }
+.tm-preview { display: grid; gap: 6px; }
+.tm-preview .tm-row { grid-template-columns: minmax(0, 1fr); }
+.tm-admin { display: grid; gap: 8px; padding-top: 6px; border-top: 1px dashed #ffffff22; }
+.tm-admin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; }
+.tm-admin-row i { font-style: normal; }
+.tm-admin-row select { min-width: 0; padding: 10px 8px; }
+.tour-edit { display: flex; flex-direction: column; gap: 8px; max-height: 90dvh; overflow-y: auto; }
+.tour-edit .label { margin-top: 6px; }

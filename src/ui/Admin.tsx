@@ -7,7 +7,7 @@ import { api, supabase } from '../lib/supabase';
 import { Avatar, useErrorText } from './common';
 import { SponsorsView } from './AdminSponsors';
 
-type Section = 'stats' | 'users' | 'fair' | 'sponsors' | 'tables' | 'ledger' | 'purchases';
+type Section = 'stats' | 'users' | 'fair' | 'sponsors' | 'tables' | 'tournaments' | 'ledger' | 'purchases';
 
 interface Stats {
   players: number; guests: number; new_today: number; games_today: number; live_tables: number; in_queue: number;
@@ -19,6 +19,10 @@ interface UserRow {
   avatar_url?: string | null;
 }
 interface TableRow { id: string; code: string; kind: string; mode: string; stake: number; phase: string; created_at: string; seats: { seat: number; name: string; bot: boolean; away: boolean }[] }
+interface TournamentAdminRow {
+  id: string; code: string; name: string; mode: string; size: number; phase: string; seeding: string;
+  starts_at: string | null; created_at: string; buy_in: number; host: string; entries: number;
+}
 interface LedgerRow { delta: number; reason: string; note: string | null; created_at: string; display_name?: string }
 interface PurchaseRow { pack: string; chips: number; amount_cents: number; status: string; created_at: string; display_name?: string; email?: string }
 interface FairReport {
@@ -39,12 +43,13 @@ interface FairUser {
 const money = (cents: number) => `US$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
 
-export function AdminScreen({ onExit }: { onExit: () => void }) {
+export function AdminScreen({ onExit, onTournament }: { onExit: () => void; onTournament?: (id: string) => void }) {
   const { t } = useI18n();
   const [section, setSection] = useState<Section>('stats');
   const [openUser, setOpenUser] = useState<string | null>(null);
   const tabs: [Section, string][] = [
     ['stats', t.admin.stats], ['users', t.admin.users], ['fair', t.admin.fair], ['sponsors', t.admin.sp.tab], ['tables', t.admin.tables],
+    ['tournaments', t.tour.title],
     ['ledger', t.admin.ledger], ['purchases', t.admin.purchases],
   ];
   return (
@@ -65,6 +70,7 @@ export function AdminScreen({ onExit }: { onExit: () => void }) {
           : section === 'fair' ? <FairPlayView onOpen={setOpenUser} />
           : section === 'sponsors' ? <SponsorsView />
           : section === 'tables' ? <TablesView />
+          : section === 'tournaments' ? <TournamentsAdminView onOpen={onTournament} />
           : section === 'ledger' ? <LedgerView />
           : <PurchasesView />}
       </main>
@@ -325,6 +331,32 @@ function TablesView() {
             <small>{r.seats.map((s) => `${s.name}${s.bot ? ' 🤖' : ''}${s.away ? ' 💤' : ''}`).join(', ')}</small>
           </div>
           <button className="btn ghost danger" onClick={() => close(r)}>{t.admin.close}</button>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Every tournament, the ones still to be played first; open one to edit it or fix its matches. */
+function TournamentsAdminView({ onOpen }: { onOpen?: (id: string) => void }) {
+  const { t } = useI18n();
+  const { data, error, reload } = useAdmin<TournamentAdminRow[]>('admin_tournaments');
+  if (error) return <p className="error">{error}</p>;
+  return (
+    <>
+      <button className="btn ghost" onClick={reload}>↻ {t.refresh}</button>
+      <p className="fine">{t.tour.adminNote}</p>
+      {data?.length === 0 && <p className="fine">—</p>}
+      {data?.map((r) => (
+        <div key={r.id} className="admin-card">
+          <div>
+            <b>{r.name}</b> · {r.code} · {r.mode} · <em>{t.tour.phase[r.phase as 'lobby'] ?? r.phase}</em>
+            <small>
+              {t.tour.seedChip[r.seeding] ?? r.seeding} · {r.entries}/{r.size} · {r.buy_in ? `🪙 ${r.buy_in.toLocaleString()}` : t.free}
+              {' · '}👑 {r.host}{r.starts_at ? ` · 🕘 ${when(r.starts_at)}` : ''}
+            </small>
+          </div>
+          {onOpen && <button className="btn primary" onClick={() => onOpen(r.id)}>{t.tour.edit}</button>}
         </div>
       ))}
     </>

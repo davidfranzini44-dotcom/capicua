@@ -2,12 +2,16 @@
 // sign-up lobby and the live bracket. Every change goes through the `game`
 // function; the bracket itself updates over Realtime.
 import { useEffect, useState, type CSSProperties } from 'react';
-import { checkInOpen, stage, TOURNAMENT, TOURNAMENT_SIZES, playersPerEntry, type TournamentSettings } from '../../supabase/functions/_shared/tournament.ts';
+import {
+  bracketSize, checkInOpen, drawFirstRound, stage, TOURNAMENT, TOURNAMENT_SIZES, playersPerEntry,
+  type Seeding, type TournamentEdit, type TournamentSettings,
+} from '../../supabase/functions/_shared/tournament.ts';
 import { useI18n, type Strings } from '../i18n';
 import { api, type Profile } from '../lib/supabase';
 import {
-  useMyTournaments, useTournament, type EntryRow, type MatchRow, type TournamentPeek, type TournamentRow,
+  useMyTournaments, useTournament, type EntryRow, type MatchRow, type PairRow, type TournamentPeek, type TournamentRow,
 } from '../lib/useTournament';
+import { supabase } from '../lib/supabase';
 import { useSocial } from '../lib/social';
 import { ChipBalance, useErrorText } from './common';
 import { InviteFriendsSheet } from './Friends';
@@ -84,7 +88,7 @@ export function TournamentForm({ profile, guest, onBack, onCreated }: {
 }) {
   const { t, lang } = useI18n();
   const errText = useErrorText();
-  const [s, setS] = useState<TournamentSettings>({ name: '', mode: '1v1', size: 8, buyIn: guest ? 0 : 500, target: 100, turnSeconds: 25 });
+  const [s, setS] = useState<TournamentSettings>({ name: '', mode: '1v1', size: 8, buyIn: guest ? 0 : 500, target: 100, turnSeconds: 25, seeding: 'random' });
   // When it starts: minutes from now, or 'custom' with the time typed in.
   const [startIn, setStartIn] = useState<number | 'custom'>(30);
   const [custom, setCustom] = useState(() => localInput(Date.now() + 60 * 60_000));
@@ -138,6 +142,7 @@ export function TournamentForm({ profile, guest, onBack, onCreated }: {
         <Seg value={s.target} options={[[100, '100'], [150, '150'], [200, '200']]} onChange={(v) => set('target', v)} />
         <label className="label">{t.turnTimerLbl}</label>
         <Seg value={s.turnSeconds} options={[[15, '15s'], [25, '25s'], [40, '40s']]} onChange={(v) => set('turnSeconds', v)} />
+        <SeedingPicker value={s.seeding ?? 'random'} onChange={(v) => set('seeding', v)} />
         <label className="label">{t.tour.startLbl}</label>
         <Seg<number | 'custom'> value={startIn}
           options={[...START_PRESETS.map((m) => [m, presetLabel(m)] as [number, string]), ['custom', t.tour.otherTime]]}
@@ -176,6 +181,11 @@ export function TournamentScreen({ id, code, uid, profile, onBack, onRoom, onWat
   const [peek, setPeek] = useState<TournamentPeek | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // An app admin may fix any tournament (they read it as a member does).
+  const [admin, setAdmin] = useState(false);
+  useEffect(() => {
+    supabase.rpc('is_admin').then(({ data: ok }) => setAdmin(ok === true), () => {});
+  }, []);
 
   const needPeek = !tid || data.missing;
   useEffect(() => {
@@ -248,6 +258,10 @@ export function TournamentScreen({ id, code, uid, profile, onBack, onRoom, onWat
       {top}
       <TournamentView
         tour={data.t} entries={data.entries} matches={data.matches} checkins={data.checkins} names={data.names} uid={uid} busy={busy}
+        admin={admin} pairs={data.pairs} xp={data.xp}
+        onEdit={(changes) => run(() => api('tournament_edit', { id: tid, changes }))}
+        onPair={(a, b) => run(() => api('tournament_pair', { id: tid, a, b }))}
+        onUnpair={(entryId) => run(() => api('tournament_unpair', { id: tid, entryId }))}
         onStart={() => run(() => api('tournament_start', { id: tid }))}
         onCheckIn={() => run(() => api('tournament_checkin', { id: tid }))}
         onCancel={() => confirm(t.tour.cancelConfirm) && run(() => api('tournament_cancel', { id: tid }))}
@@ -278,6 +292,15 @@ export interface TournamentViewProps {
   onPlay: (roomId: string) => void;
   /** Watch a match being played (every member may). */
   onWatch?: (roomId: string) => void;
+  /** An app admin: may edit anything and fix any match. */
+  admin?: boolean;
+  /** First-round matches fixed before the draw. */
+  pairs?: PairRow[];
+  /** Everyone's XP, for matching by experience. */
+  xp?: Record<string, number>;
+  onEdit?: (changes: TournamentEdit) => void;
+  onPair?: (a: string, b: string) => void;
+  onUnpair?: (entryId: string) => void;
 }
 
 /** Everything a member sees: sign-ups before the start, then the bracket. */
@@ -286,6 +309,9 @@ export function TournamentView(p: TournamentViewProps) {
   const { tour, entries, matches, names, uid } = p;
   const checkins = p.checkins ?? new Set<string>();
   const isHost = tour.host === uid;
+  const admin = !!p.admin;
+  const canManage = isHost || admin;
+  const [editing, setEditing] = useState(false);
   const mine = entries.find((e) => e.player1 === uid || e.player2 === uid) ?? null;
   const people = entries.reduce((n, e) => n + (e.player2 ? 2 : 1), 0);
   const capacity = tour.size * playersPerEntry(tour.mode);
@@ -317,7 +343,9 @@ export function TournamentView(p: TournamentViewProps) {
           <span>{t.targetLbl} {tour.rules.target}</span>
           <span>{tour.buy_in ? `🪙 ${tour.buy_in.toLocaleString()}` : t.free}</span>
           <span>⏱ {tour.turn_seconds}s</span>
+          <span>{t.tour.seedChip[tour.seeding ?? 'random']}</span>
         </div>
+        {admin && !isHost && <small className="tour-admin-note">🛡️ {t.tour.adminNote}</small>}
       </header>
       {scheduled !== null && (
         <section className={`card tour-clock ${checkInIsOpen ? 'open' : ''}`}>
@@ -357,13 +385,27 @@ export function TournamentView(p: TournamentViewProps) {
                   <span key={i} className={`te-name ${checkInIsOpen && checkins.has(pid) ? 'here' : ''}`}>
                     {checkInIsOpen && checkins.has(pid) && <i className="te-here" aria-label="check-in">✓</i>}
                     {pid === tour.host && '👑 '}{nameOf(pid)}
-                    {isHost && pid !== uid && <button className="te-kick" onClick={() => p.onKick(pid)} aria-label="✕">✕</button>}
+                    {canManage && pid !== uid && pid !== tour.host && <button className="te-kick" onClick={() => p.onKick(pid)} aria-label="✕">✕</button>}
+                    {tour.seeding === 'xp' && p.xp && <small className="te-xp">{(p.xp[pid] ?? 0).toLocaleString()} XP</small>}
                   </span>
                 ) : tour.mode === '2v2' ? <span key={i} className="te-open">{t.tour.lookingPartner}</span> : null)}
               </div>
             ))}
           </section>
           {tour.mode === '2v2' && <p className="fine">{t.tour.soloNote}</p>}
+          <MatchupsPanel tour={tour} entries={entries} pairs={p.pairs ?? []} xp={p.xp ?? {}} mine={mine} admin={admin} busy={p.busy}
+            label={label} onPair={p.onPair} onUnpair={p.onUnpair} />
+          {canManage && p.onEdit && <button className="btn ghost wide" onClick={() => setEditing(true)}>✏️ {t.tour.edit}</button>}
+          {editing && p.onEdit && (
+            <EditTournamentSheet tour={tour} admin={admin} busy={p.busy}
+              onSave={(c) => { p.onEdit!(c); setEditing(false); }} onClose={() => setEditing(false)} />
+          )}
+          {admin && !isHost && (
+            <div className="tour-admin-tools">
+              <button className="btn primary wide" disabled={p.busy} onClick={p.onStart}>🛡️ {t.tour.adminStart}</button>
+              <button className="link-btn signout" onClick={p.onCancel}>🛡️ {t.tour.cancel}</button>
+            </div>
+          )}
           {scheduled !== null ? (
             <>
               {isHost && (
@@ -489,6 +531,165 @@ export function TournamentView(p: TournamentViewProps) {
   );
 }
 
+/** How the first round is matched: a draw, by experience, or the players pick. */
+function SeedingPicker({ value, onChange }: { value: Seeding; onChange: (v: Seeding) => void }) {
+  const { t } = useI18n();
+  return (
+    <>
+      <label className="label">{t.tour.seedLbl}</label>
+      <Seg value={value} options={[['random', t.tour.seed.random], ['xp', t.tour.seed.xp], ['pick', t.tour.seed.pick]]} onChange={onChange} />
+      <p className="fine left">{t.tour.seedHint[value]}</p>
+    </>
+  );
+}
+
+/** Before the start: the host edits the settings (never the matches); an admin also the size. */
+function EditTournamentSheet({ tour, admin, busy, onSave, onClose }: {
+  tour: TournamentRow; admin: boolean; busy?: boolean; onSave: (c: TournamentEdit) => void; onClose: () => void;
+}) {
+  const { t, lang } = useI18n();
+  const [name, setName] = useState(tour.name);
+  const [target, setTarget] = useState(tour.rules.target);
+  const [turn, setTurn] = useState(tour.turn_seconds);
+  const [seeding, setSeeding] = useState<Seeding>(tour.seeding ?? 'random');
+  const [size, setSize] = useState(tour.size as TournamentSettings['size']);
+  // The start: as it is, minutes from now, or a time typed in.
+  const [startIn, setStartIn] = useState<'keep' | number | 'custom'>('keep');
+  const [custom, setCustom] = useState(() => localInput(tour.starts_at ? new Date(tour.starts_at).getTime() : Date.now() + 60 * 60_000));
+  const now = useNow(true);
+  const startsAt = startIn === 'keep' ? null : startIn === 'custom' ? new Date(custom).getTime() : now + startIn * 60_000;
+  const startOk = startsAt === null || (Number.isFinite(startsAt) && startsAt >= now + TOURNAMENT.minLeadMs - 30_000 && startsAt <= now + TOURNAMENT.maxLeadMs);
+  const unit = tour.mode === '2v2' ? t.tour.pairs : t.tour.players;
+  const save = () => {
+    const c: TournamentEdit = {};
+    if (name.trim() !== tour.name) c.name = name;
+    if (target !== tour.rules.target) c.target = target;
+    if (turn !== tour.turn_seconds) c.turnSeconds = turn;
+    if (seeding !== (tour.seeding ?? 'random')) c.seeding = seeding;
+    if (admin && size !== tour.size) c.size = size;
+    if (startsAt !== null) c.startsAt = startIn === 'custom' ? new Date(custom).getTime() : Date.now() + (startIn as number) * 60_000;
+    if (Object.keys(c).length) onSave(c);
+    else onClose();
+  };
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet game-sheet tour-edit" role="dialog" aria-modal="true" aria-label={t.tour.edit} onClick={(e) => e.stopPropagation()}>
+        <button className="sheet-x" onClick={onClose} aria-label={t.close}>✕</button>
+        <h2>✏️ {t.tour.edit}</h2>
+        <label className="label">{t.tour.nameLbl}</label>
+        <input className="text-input" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} />
+        <label className="label">{t.tour.startLbl}</label>
+        <Seg<'keep' | number | 'custom'> value={startIn}
+          options={[['keep', t.tour.keepTime], ...START_PRESETS.map((m) => [m, presetLabel(m)] as [number, string]), ['custom', t.tour.otherTime]]}
+          onChange={setStartIn} />
+        {startIn === 'custom' && (
+          <input className="text-input" type="datetime-local" value={custom} min={localInput(now + TOURNAMENT.minLeadMs)}
+            max={localInput(now + TOURNAMENT.maxLeadMs)} onChange={(e) => setCustom(e.target.value)} />
+        )}
+        <p className={`fine left tour-when ${startOk ? '' : 'error'}`}>
+          🕘 {!startOk ? t.errors.bad_settings
+            : startsAt !== null ? t.tour.startsAt.replace('{when}', whenText(startsAt, lang, t))
+            : tour.starts_at ? t.tour.startsAt.replace('{when}', whenText(new Date(tour.starts_at).getTime(), lang, t)) : t.tour.manualStart}
+        </p>
+        {startsAt !== null && <p className="fine left">{t.tour.recheckIn}</p>}
+        <label className="label">{t.targetLbl}</label>
+        <Seg value={target} options={[[100, '100'], [150, '150'], [200, '200']]} onChange={setTarget} />
+        <label className="label">{t.turnTimerLbl}</label>
+        <Seg value={turn} options={[[15, '15s'], [25, '25s'], [40, '40s']]} onChange={setTurn} />
+        <SeedingPicker value={seeding} onChange={setSeeding} />
+        {admin && (
+          <>
+            <label className="label">🛡️ {t.tour.sizeLbl}</label>
+            <Seg value={size} options={TOURNAMENT_SIZES.map((n) => [n, `${n} ${unit}`] as [TournamentSettings['size'], string])} onChange={setSize} />
+          </>
+        )}
+        <button className="btn primary wide" disabled={busy || name.trim().length < 3 || !startOk} onClick={save}>{t.tour.saveChanges}</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The first round before the draw. 'pick': players choose their opponent (the rest is drawn).
+ * 'xp': how it would be seeded right now. Admins fix any match by hand, in any mode.
+ */
+function MatchupsPanel({ tour, entries, pairs, xp, mine, admin, busy, label, onPair, onUnpair }: {
+  tour: TournamentRow; entries: EntryRow[]; pairs: PairRow[]; xp: Record<string, number>; mine: EntryRow | null; admin: boolean; busy?: boolean;
+  label: (id: string | null) => string; onPair?: (a: string, b: string) => void; onUnpair?: (entryId: string) => void;
+}) {
+  const { t } = useI18n();
+  const [fixA, setFixA] = useState('');
+  const [fixB, setFixB] = useState('');
+  const seeding = tour.seeding ?? 'random';
+  const shown = pairs.filter((x) => x.set_by === 'admin' || seeding === 'pick');
+  if (seeding === 'random' && !admin && !shown.length) return null;
+  const pairOf = (id: string) => shown.find((x) => x.entry_a === id || x.entry_b === id);
+  const full = (e: EntryRow) => tour.mode !== '2v2' || !!e.player2;
+  // Teams at the start (in 2v2 the solos pair up) → how many matches can be chosen.
+  const teams = tour.mode === '2v2' ? entries.filter((e) => e.player2).length + Math.floor(entries.filter((e) => !e.player2).length / 2) : entries.length;
+  const room = Math.max(0, teams - bracketSize(Math.max(teams, 2)) / 2 - pairs.length);
+  const canPick = seeding === 'pick' && !!mine && full(mine) && !pairOf(mine.id) && !!onPair;
+  const strength = (e: EntryRow) => [e.player1, e.player2].reduce((n, x) => n + (x ? xp[x] ?? 0 : 0), 0);
+  const preview = seeding === 'xp' && entries.length >= 2
+    ? drawFirstRound(entries.filter(full).map((e) => ({ id: e.id, xp: strength(e) })), 'xp',
+      pairs.filter((x) => x.set_by === 'admin').map((x) => [x.entry_a, x.entry_b] as [string, string]))
+    : null;
+  return (
+    <section className="card tour-matchups">
+      <div className="te-head"><span className="label">{t.tour.matchupsTitle}</span></div>
+      {seeding === 'pick' && <p className="fine left">{room > 0 ? t.tour.pickRule.replace('{n}', String(room)) : t.tour.pickFull}</p>}
+      {shown.map((x) => (
+        <div key={`${x.entry_a}-${x.entry_b}`} className={`tm-row ${mine && (x.entry_a === mine.id || x.entry_b === mine.id) ? 'mine' : ''}`}>
+          <span className="tm-vs"><b>{label(x.entry_a)}</b> <i>⚔️</i> <b>{label(x.entry_b)}</b></span>
+          <small>{x.set_by === 'admin' ? `🛡️ ${t.tour.fixedByAdmin}` : `🤝 ${t.tour.chosen}`}</small>
+          {onUnpair && (admin || (x.set_by === 'player' && mine && (x.entry_a === mine.id || x.entry_b === mine.id))) && (
+            <button className="link-btn" disabled={busy} onClick={() => onUnpair(mine && !admin ? mine.id : x.entry_a)}>{t.tour.undo}</button>
+          )}
+        </div>
+      ))}
+      {canPick && room > 0 && (
+        <div className="tm-choose">
+          <small className="fine left">{t.tour.pickYours}</small>
+          {entries.filter((e) => e.id !== mine!.id && full(e) && !pairOf(e.id)).map((e) => (
+            <button key={e.id} className="btn ghost tm-pick" disabled={busy} onClick={() => onPair!(mine!.id, e.id)}>⚔️ {label(e.id)}</button>
+          ))}
+        </div>
+      )}
+      {seeding === 'pick' && mine && !full(mine) && <p className="fine left">{t.tour.pickNeedsPair}</p>}
+      {preview && (
+        <div className="tm-preview">
+          <small className="fine left">{t.tour.xpPreview}</small>
+          {preview.map(([a, b], i) => (
+            <div key={i} className="tm-row">
+              <span className="tm-vs"><b>{label(a.id)}</b> <small>{a.xp.toLocaleString()} XP</small>
+                {b ? <> <i>⚔️</i> <b>{label(b.id)}</b> <small>{b.xp.toLocaleString()} XP</small></> : <small> · {t.tour.byeNext}</small>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {admin && onPair && entries.length >= 2 && (
+        <div className="tm-admin">
+          <small className="fine left">🛡️ {t.tour.adminFix}</small>
+          <div className="tm-admin-row">
+            <select className="text-input" value={fixA} onChange={(e) => setFixA(e.target.value)} aria-label="A">
+              <option value="">—</option>
+              {entries.map((e) => <option key={e.id} value={e.id}>{label(e.id)}</option>)}
+            </select>
+            <i>⚔️</i>
+            <select className="text-input" value={fixB} onChange={(e) => setFixB(e.target.value)} aria-label="B">
+              <option value="">—</option>
+              {entries.filter((e) => e.id !== fixA).map((e) => <option key={e.id} value={e.id}>{label(e.id)}</option>)}
+            </select>
+          </div>
+          <button className="btn primary wide" disabled={busy || !fixA || !fixB || fixA === fixB}
+            onClick={() => { onPair(fixA, fixB); setFixA(''); setFixB(''); }}>{t.tour.fixMatch}</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function MatchCard({ m, mine, label, now, onPlay, onWatch }: {
   m: MatchRow; mine: EntryRow | null; label: (id: string | null) => string; now: number; onPlay: (roomId: string) => void;
   onWatch?: (roomId: string) => void;
@@ -571,6 +772,7 @@ export function TournamentInvite({ peek, busy, onJoin }: { peek: TournamentPeek;
           <span>{t.modes[peek.mode].name}</span>
           <span>{t.targetLbl} {peek.target}</span>
           <span>{peek.buyIn ? `🪙 ${peek.buyIn.toLocaleString()}` : t.free}</span>
+          <span>{t.tour.seedChip[peek.seeding ?? 'random']}</span>
         </div>
         {startsAt !== null && open && (
           <p className="tour-when">🕘 {t.tour.startsAt.replace('{when}', whenText(startsAt, lang, t))} · {t.tour.inTime.replace('{t}', untilText(startsAt - now))}</p>

@@ -227,7 +227,7 @@ export function Online() {
         return <QueueScreen {...view} onMatched={(roomId) => setView({ kind: 'room', roomId })} onCancel={() => setView(home)}
           onPractice={(mode, ruleset) => setView({ kind: 'practice', mode, ruleset })} onCustom={() => setView({ kind: 'custom' })} />;
       case 'admin':
-        return <Suspense fallback={<Loading />}><AdminScreen onExit={() => setView(home)} /></Suspense>;
+        return <Suspense fallback={<Loading />}><AdminScreen onExit={() => setView(home)} onTournament={(id) => setView({ kind: 'tournament', id })} /></Suspense>;
       case 'custom':
         return (
           <CustomForm profile={profile} guest={guest} onBack={() => setView({ kind: 'main', tab: 'tables' })} onCreated={async (roomId) => {

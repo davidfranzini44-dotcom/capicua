@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Rules } from '../../supabase/functions/_shared/domino.ts';
-import type { TournamentMode } from '../../supabase/functions/_shared/tournament.ts';
+import type { Seeding, TournamentMode } from '../../supabase/functions/_shared/tournament.ts';
 import { supabase } from './supabase';
 
 export interface TournamentRow {
@@ -20,7 +20,12 @@ export interface TournamentRow {
   /** Scheduled start (ISO); null on older tournaments the host starts by hand. */
   starts_at: string | null;
   cancel_reason: 'host' | 'not_enough' | null;
+  /** How the first round is matched. */
+  seeding: Seeding;
 }
+
+/** A first-round match fixed before the draw: a players' pick, or an admin's. */
+export interface PairRow { entry_a: string; entry_b: string; set_by: 'player' | 'admin' }
 
 export interface EntryRow {
   id: string;
@@ -56,11 +61,12 @@ export interface TournamentPeek {
   host: string;
   pot: number;
   startsAt: string | null;
+  seeding?: Seeding;
   member: boolean;
   entries: { id: string; names: string[]; open: boolean }[];
 }
 
-const T_COLS = 'id, code, name, host, mode, size, buy_in, rules, turn_seconds, phase, rounds, pot, champion, starts_at, cancel_reason';
+const T_COLS = 'id, code, name, host, mode, size, buy_in, rules, turn_seconds, phase, rounds, pot, champion, starts_at, cancel_reason, seeding';
 
 /**
  * Live view of one tournament for its members: settings, sign-ups, the
@@ -74,16 +80,20 @@ export function useTournament(id: string | null) {
   /** Who has checked in (scheduled tournaments, during the 15 minutes before the start). */
   const [checkins, setCheckins] = useState<Set<string>>(new Set());
   const [names, setNames] = useState<Record<string, string>>({});
+  /** Everyone's XP (for matching by experience). */
+  const [xp, setXp] = useState<Record<string, number>>({});
+  const [pairs, setPairs] = useState<PairRow[]>([]);
   const [missing, setMissing] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [{ data: tr }, { data: es }, { data: ms }, { data: cs }] = await Promise.all([
+    const [{ data: tr }, { data: es }, { data: ms }, { data: cs }, { data: ps0 }] = await Promise.all([
       supabase.from('tournaments').select(T_COLS).eq('id', id).maybeSingle(),
       supabase.from('tournament_entries').select('id, player1, player2, eliminated_round, placement').eq('tournament_id', id).order('created_at'),
       supabase.from('tournament_matches').select('id, round, slot, entry_a, entry_b, room_id, winner, status, result, ready_by')
         .eq('tournament_id', id).order('round').order('slot'),
       supabase.from('tournament_checkins').select('user_id').eq('tournament_id', id),
+      supabase.from('tournament_pairs').select('entry_a, entry_b, set_by').eq('tournament_id', id).order('created_at'),
     ]);
     if (!tr) return setMissing(true);
     setMissing(false);
@@ -91,9 +101,11 @@ export function useTournament(id: string | null) {
     setEntries((es ?? []) as EntryRow[]);
     setMatches((ms ?? []) as MatchRow[]);
     setCheckins(new Set((cs ?? []).map((c) => c.user_id as string)));
+    setPairs((ps0 ?? []) as PairRow[]);
     const ids = [...new Set([tr.host, ...(es ?? []).flatMap((e) => [e.player1, e.player2])].filter(Boolean))] as string[];
-    const { data: ps } = await supabase.from('profiles').select('id, display_name').in('id', ids);
+    const { data: ps } = await supabase.from('profiles').select('id, display_name, xp').in('id', ids);
     setNames(Object.fromEntries((ps ?? []).map((p) => [p.id, p.display_name])));
+    setXp(Object.fromEntries((ps ?? []).map((p) => [p.id, Number(p.xp ?? 0)])));
   }, [id]);
 
   useEffect(() => {
@@ -104,6 +116,7 @@ export function useTournament(id: string | null) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tournament_entries', filter: `tournament_id=eq.${id}` }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tournament_matches', filter: `tournament_id=eq.${id}` }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tournament_checkins', filter: `tournament_id=eq.${id}` }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tournament_pairs', filter: `tournament_id=eq.${id}` }, load)
       .subscribe((status) => status === 'SUBSCRIBED' && load());
     const onVisible = () => document.visibilityState === 'visible' && load();
     document.addEventListener('visibilitychange', onVisible);
@@ -113,7 +126,7 @@ export function useTournament(id: string | null) {
     };
   }, [id, load]);
 
-  return { t, entries, matches, checkins, names, missing, reload: load };
+  return { t, entries, matches, checkins, names, xp, pairs, missing, reload: load };
 }
 
 /** Tournaments I'm in or host, newest first (cancelled ones hidden). */

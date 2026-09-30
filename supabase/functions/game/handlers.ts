@@ -21,8 +21,8 @@ import {
   type ChestKind, type SeatInfo, type SideBetKind,
 } from '../_shared/table.ts';
 import {
-  afterFeeders, checkInOpen, firstRound, minEntries, noShowOutcome, placementFor, playersPerEntry, prizes, roundCount, TOURNAMENT, tournamentRules,
-  validateTournament, type TournamentMode,
+  afterFeeders, bracketSize, checkInOpen, drawFirstRound, minEntries, noShowOutcome, placementFor, playersPerEntry, prizes, roundCount, TOURNAMENT,
+  tournamentRules, validateTournament, validateTournamentEdit, type Seeding, type TournamentEdit, type TournamentMode,
 } from '../_shared/tournament.ts';
 import { canUse, chipPrice, lookById } from '../_shared/cosmetics.ts';
 import { pickWeighted, sponsorMatches, validateSponsor } from '../_shared/sponsors.ts';
@@ -77,6 +77,8 @@ interface TournamentDb {
   starts_at: Date | null;
   /** Check-in reminders sent: 1 = check-in open, 2 = last call. */
   reminded: number;
+  /** How the first round is matched (migration 20261014000000). */
+  seeding: Seeding;
 }
 interface EntryDb { id: string; player1: string; player2: string | null }
 interface MatchDb {
@@ -599,9 +601,13 @@ async function checkedIn(tx: Tx, tournamentId: string) {
  * cancelled with everyone's buy-in back. By the host: a scheduled tournament
  * starts early only once everyone signed up has checked in.
  */
-async function startTournament(tx: Tx, t: TournamentDb, by: 'host' | 'clock') {
+/**
+ * `by`: the host (only once everyone checked in), the clock at the start time (whoever didn't
+ * check in is taken off), or an admin (starts it as it stands, nobody taken off).
+ */
+async function startTournament(tx: Tx, t: TournamentDb, by: 'host' | 'clock' | 'admin') {
   const dropped: string[] = [];
-  if (t.starts_at) {
+  if (t.starts_at && by !== 'admin') {
     const here = await checkedIn(tx, t.id);
     const missing = (await signedUp(tx, t.id)).filter((p) => !here.has(p));
     if (by === 'host') {
@@ -633,7 +639,7 @@ async function startTournament(tx: Tx, t: TournamentDb, by: 'host' | 'clock') {
   }
   const people = entries.reduce((n, e) => n + playersOf(e).length, 0);
   if (entries.length < minEntries(t.mode) || people < TOURNAMENT.minPlayers) {
-    if (by === 'host') throw new HttpError(409, 'tournament_need_people'); // rolls back any pairing above
+    if (by !== 'clock') throw new HttpError(409, 'tournament_need_people'); // rolls back any pairing above
     // Not enough people showed up: call it off, everyone gets their buy-in back.
     for (const e of entries) for (const p of playersOf(e)) await refundBuyIn(tx, t, p);
     await tx`update tournaments set phase = 'cancelled', cancel_reason = 'not_enough' where id = ${t.id}`;
@@ -643,7 +649,20 @@ async function startTournament(tx: Tx, t: TournamentDb, by: 'host' | 'clock') {
   for (const p of dropped) await notify(tx, p, { kind: 'checkin_missed', name: t.name, code: t.code });
   const rounds = roundCount(entries.length);
   await tx`update tournaments set phase = 'playing', rounds = ${rounds}, started_at = now() where id = ${t.id}`;
-  const pairs = firstRound(entries.map((e) => e.id));
+  // The first round: fixed matches (an admin's first, then players' picks in a 'pick'
+  // tournament) and everyone else drawn or seeded by XP (a pair counts both players' XP).
+  const strength = await tx<{ id: string; xp: number }[]>`
+    select e.id, coalesce(p1.xp, 0) + coalesce(p2.xp, 0) as xp
+    from tournament_entries e join profiles p1 on p1.id = e.player1 left join profiles p2 on p2.id = e.player2
+    where e.tournament_id = ${t.id}`;
+  const fixed = await tx<{ entry_a: string; entry_b: string; set_by: string }[]>`
+    select entry_a, entry_b, set_by from tournament_pairs where tournament_id = ${t.id}
+    order by (set_by = 'admin') desc, created_at`;
+  const pairs = drawFirstRound(
+    entries.map((e) => ({ id: e.id, xp: Number(strength.find((x) => x.id === e.id)?.xp ?? 0) })),
+    t.seeding ?? 'random',
+    fixed.filter((f) => f.set_by === 'admin' || t.seeding === 'pick').map((f) => [f.entry_a, f.entry_b] as [string, string]),
+  ).map(([a, b]) => [a.id, b?.id ?? null] as [string, string | null]);
   for (let r = 1; r <= rounds; r++) {
     for (let slot = 0; slot < 2 ** (rounds - r); slot++) {
       const [a, b] = r === 1 ? pairs[slot] : [null, null];
@@ -1249,9 +1268,9 @@ export const handlers = {
       let t: TournamentDb | undefined;
       for (let i = 0; i < 8 && !t; i++) {
         [t] = await tx<TournamentDb[]>`
-          insert into tournaments (code, name, host, mode, size, buy_in, rules, turn_seconds)
+          insert into tournaments (code, name, host, mode, size, buy_in, rules, turn_seconds, seeding)
           values (${roomCode(Math.random, TOURNAMENT.codeLength)}, ${s.name}, ${uid}, ${s.mode}, ${s.size}, ${s.buyIn},
-                  ${tx.json(tournamentRules(s) as never)}, ${s.turnSeconds})
+                  ${tx.json(tournamentRules(s) as never)}, ${s.turnSeconds}, ${s.seeding ?? 'random'})
           on conflict (code) do nothing returning *`;
       }
       if (!t) throw new HttpError(503, 'no_code_available');
@@ -1282,7 +1301,7 @@ export const handlers = {
     const [host] = await sql`select display_name from profiles where id = ${t.host}`;
     return {
       id: t.id, code: t.code, name: t.name, mode: t.mode, size: t.size, buyIn: t.buy_in, phase: t.phase,
-      target: t.rules.target, host: host?.display_name ?? '', pot: Number(t.pot),
+      target: t.rules.target, host: host?.display_name ?? '', pot: Number(t.pot), seeding: t.seeding ?? 'random',
       startsAt: t.starts_at ? new Date(t.starts_at).toISOString() : null,
       member: t.host === uid || entries.some((e) => e.player1 === uid || e.player2 === uid),
       entries: entries.map((e) => ({ id: e.id, names: [e.name1, e.name2].filter(Boolean), open: t.mode === '2v2' && !e.player2 })),
@@ -1348,7 +1367,7 @@ export const handlers = {
   async tournament_kick(uid: string, { id, userId }: { id: string; userId: string }) {
     return await sql.begin(async (tx) => {
       const t = await lockTournament(tx, id);
-      if (t.host !== uid) throw new HttpError(403, 'host_only');
+      if (t.host !== uid && !(await isAdmin(tx, uid))) throw new HttpError(403, 'host_only');
       if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
       if (userId === uid) throw new HttpError(409, 'host_cannot_leave');
       const e = (await entriesOf(tx, t.id)).find((x) => x.player1 === userId || x.player2 === userId);
@@ -1360,7 +1379,7 @@ export const handlers = {
   async tournament_cancel(uid: string, { id }: { id: string }) {
     return await sql.begin(async (tx) => {
       const t = await lockTournament(tx, id);
-      if (t.host !== uid) throw new HttpError(403, 'host_only');
+      if (t.host !== uid && !(await isAdmin(tx, uid))) throw new HttpError(403, 'host_only');
       if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
       for (const e of await entriesOf(tx, t.id)) for (const p of playersOf(e)) await refundBuyIn(tx, t, p);
       await tx`update tournaments set phase = 'cancelled', cancel_reason = 'host' where id = ${t.id}`;
@@ -1376,11 +1395,110 @@ export const handlers = {
   async tournament_start(uid: string, { id }: { id: string }) {
     return await sql.begin(async (tx) => {
       const t = await lockTournament(tx, id);
-      if (t.host !== uid) throw new HttpError(403, 'host_only');
+      const host = t.host === uid;
+      if (!host && !(await isAdmin(tx, uid))) throw new HttpError(403, 'host_only');
       if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
-      await startTournament(tx, t, 'host');
+      await startTournament(tx, t, host ? 'host' : 'admin');
       return { ok: true };
     });
+  },
+
+  /**
+   * Before the start: the host changes name, start time (or clears it), target, timer and how
+   * the first round is matched; an admin may also change the size. A new start time clears
+   * the check-ins and the reminders (everyone checks in again for the new time).
+   */
+  async tournament_edit(uid: string, { id, changes }: { id: string; changes: TournamentEdit }) {
+    return await sql.begin(async (tx) => {
+      const t = await lockTournament(tx, id);
+      const admin = await isAdmin(tx, uid);
+      if (t.host !== uid && !admin) throw new HttpError(403, 'host_only');
+      if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
+      const c = validateTournamentEdit((changes ?? {}) as TournamentEdit, admin);
+      if (!c) throw new HttpError(400, 'bad_settings');
+      if (c.name) await tx`update tournaments set name = ${c.name} where id = ${t.id}`;
+      if (c.target) await tx`update tournaments set rules = ${tx.json(tournamentRules({ mode: t.mode, target: c.target }) as never)} where id = ${t.id}`;
+      if (c.turnSeconds) await tx`update tournaments set turn_seconds = ${c.turnSeconds} where id = ${t.id}`;
+      if (c.size) {
+        const people = (await entriesOf(tx, t.id)).reduce((n, e) => n + playersOf(e).length, 0);
+        if (people > c.size * playersPerEntry(t.mode)) throw new HttpError(409, 'tournament_full');
+        await tx`update tournaments set size = ${c.size} where id = ${t.id}`;
+      }
+      if (c.seeding && c.seeding !== t.seeding) {
+        await tx`update tournaments set seeding = ${c.seeding} where id = ${t.id}`;
+        // Players' picks only count in a 'pick' tournament (an admin's fixed matches stay).
+        if (c.seeding !== 'pick') await tx`delete from tournament_pairs where tournament_id = ${t.id} and set_by = 'player'`;
+      }
+      if (c.startsAt !== undefined) {
+        const at = c.startsAt === null ? null : new Date(c.startsAt);
+        await tx`update tournaments set starts_at = ${at}, reminded = 0 where id = ${t.id}`;
+        await tx`delete from tournament_checkins where tournament_id = ${t.id}`;
+        if (at && checkInOpen(at.getTime(), Date.now()) && (await signedUp(tx, t.id)).includes(uid)) {
+          await tx`insert into tournament_checkins (tournament_id, user_id) values (${t.id}, ${uid}) on conflict do nothing`;
+        }
+      }
+      return { ok: true };
+    });
+  },
+
+  /**
+   * Fix a first-round match before the start. An admin pairs any two entries (replacing
+   * whatever either was in). A player, when the host let players pick, pairs their own entry
+   * with another still free (in 2v2, full pairs only) while the bracket still has room.
+   */
+  async tournament_pair(uid: string, { id, a, b }: { id: string; a: string; b: string }) {
+    return await sql.begin(async (tx) => {
+      const t = await lockTournament(tx, id);
+      if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
+      const entries = await entriesOf(tx, t.id);
+      const ea = entries.find((e) => e.id === a);
+      const eb = entries.find((e) => e.id === b);
+      if (!ea || !eb || a === b) throw new HttpError(404, 'team_not_found');
+      if (await isAdmin(tx, uid)) {
+        await tx`delete from tournament_pairs where tournament_id = ${t.id}
+                 and (entry_a in (${a}, ${b}) or entry_b in (${a}, ${b}))`;
+        await tx`insert into tournament_pairs (tournament_id, entry_a, entry_b, set_by) values (${t.id}, ${a}, ${b}, 'admin')`;
+        return { ok: true };
+      }
+      if (t.seeding !== 'pick') throw new HttpError(409, 'pick_closed');
+      const mine = entries.find((e) => e.player1 === uid || e.player2 === uid);
+      if (!mine || mine.id !== a) throw new HttpError(403, 'not_in_tournament');
+      if (t.mode === '2v2' && (!ea.player2 || !eb.player2)) throw new HttpError(409, 'pick_needs_pair');
+      const pairs = await tx<{ entry_a: string; entry_b: string }[]>`select entry_a, entry_b from tournament_pairs where tournament_id = ${t.id}`;
+      if (pairs.some((x) => [x.entry_a, x.entry_b].some((e) => e === a || e === b))) throw new HttpError(409, 'pick_taken');
+      // Solos in 2v2 pair up at the start: count the teams there will be.
+      const teams = t.mode === '2v2' ? entries.filter((e) => e.player2).length + Math.floor(entries.filter((e) => !e.player2).length / 2) : entries.length;
+      if (pairs.length >= teams - bracketSize(teams) / 2) throw new HttpError(409, 'pick_full');
+      await tx`insert into tournament_pairs (tournament_id, entry_a, entry_b, set_by) values (${t.id}, ${a}, ${b}, 'player')`;
+      return { ok: true };
+    });
+  },
+
+  /** Undo a fixed match: an admin, any; a player, a pick their own entry is in. */
+  async tournament_unpair(uid: string, { id, entryId }: { id: string; entryId: string }) {
+    return await sql.begin(async (tx) => {
+      const t = await lockTournament(tx, id);
+      if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
+      if (await isAdmin(tx, uid)) {
+        await tx`delete from tournament_pairs where tournament_id = ${t.id} and ${entryId} in (entry_a, entry_b)`;
+        return { ok: true };
+      }
+      const mine = (await entriesOf(tx, t.id)).find((e) => e.player1 === uid || e.player2 === uid);
+      if (!mine || mine.id !== entryId) throw new HttpError(403, 'not_in_tournament');
+      await tx`delete from tournament_pairs where tournament_id = ${t.id} and set_by = 'player' and ${entryId} in (entry_a, entry_b)`;
+      return { ok: true };
+    });
+  },
+
+  /** Admin: every tournament, the ones still to be played first. */
+  async admin_tournaments(uid: string) {
+    await adminOnly(uid);
+    return await sql`
+      select t.id, t.code, t.name, t.mode, t.size, t.phase, t.seeding, t.starts_at, t.created_at, t.buy_in, h.display_name as host,
+        (select count(*)::int from tournament_entries e where e.tournament_id = t.id) as entries
+      from tournaments t join profiles h on h.id = t.host
+      order by (t.phase = 'lobby') desc, (t.phase = 'playing') desc, t.created_at desc
+      limit 60`;
   },
 
   /**

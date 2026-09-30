@@ -6,6 +6,13 @@ import type { Mode, Rules } from './domino.ts';
 import { paseSalidaFor, TARGETS } from './table.ts';
 
 export type TournamentMode = Extract<Mode, '1v1' | '2v2'>;
+/**
+ * How the first round is matched: a draw ('random'), by experience — the most XP plays the
+ * least ('xp') — or the players pick their opponents before the start ('pick'). Whatever
+ * the mode, an admin can fix any match by hand.
+ */
+export type Seeding = 'random' | 'xp' | 'pick';
+export const SEEDINGS: Seeding[] = ['random', 'xp', 'pick'];
 export const TOURNAMENT_MODES: TournamentMode[] = ['1v1', '2v2'];
 /** Bracket slots a host can open: players in 1v1, pairs in 2v2. */
 export const TOURNAMENT_SIZES = [4, 8, 16] as const;
@@ -52,6 +59,8 @@ export interface TournamentSettings {
    * on tournaments made by an older app: the host starts those by hand.
    */
   startsAt?: number;
+  /** How the first round is matched (older tournaments: a draw). */
+  seeding?: Seeding;
 }
 
 export function validateTournament(s: Partial<TournamentSettings>, now = Date.now()): TournamentSettings | null {
@@ -63,12 +72,61 @@ export function validateTournament(s: Partial<TournamentSettings>, now = Date.no
   if (!TARGETS.includes(s.target as 100)) return null;
   if (![15, 25, 40].includes(s.turnSeconds!)) return null;
   const out: TournamentSettings = { name, mode: s.mode, size: s.size!, buyIn: s.buyIn!, target: s.target!, turnSeconds: s.turnSeconds! };
+  if (s.seeding !== undefined) {
+    if (!SEEDINGS.includes(s.seeding)) return null;
+    out.seeding = s.seeding;
+  }
   if (s.startsAt !== undefined && s.startsAt !== null) {
     // A minute of slack for the time it takes to press Create.
     if (!Number.isFinite(s.startsAt) || s.startsAt < now + TOURNAMENT.minLeadMs - 60_000 || s.startsAt > now + TOURNAMENT.maxLeadMs) return null;
     out.startsAt = Math.round(s.startsAt);
   }
   return out;
+}
+
+/**
+ * Changes before the start. The host may change the name, the start time (or clear it: then
+ * they start it by hand), the target, the turn timer and how the first round is matched; an
+ * admin may also change the size. Buy-in and mode never change once people have joined.
+ */
+export interface TournamentEdit {
+  name?: string;
+  startsAt?: number | null;
+  target?: number;
+  turnSeconds?: number;
+  seeding?: Seeding;
+  size?: (typeof TOURNAMENT_SIZES)[number];
+}
+
+export function validateTournamentEdit(c: TournamentEdit, admin: boolean, now = Date.now()): TournamentEdit | null {
+  const out: TournamentEdit = {};
+  if (c.name !== undefined) {
+    const name = String(c.name).trim().replace(/\s+/g, ' ');
+    if (name.length < 3 || name.length > 30) return null;
+    out.name = name;
+  }
+  if (c.startsAt !== undefined) {
+    if (c.startsAt === null) out.startsAt = null;
+    else if (!Number.isFinite(c.startsAt) || c.startsAt < now + TOURNAMENT.minLeadMs - 60_000 || c.startsAt > now + TOURNAMENT.maxLeadMs) return null;
+    else out.startsAt = Math.round(c.startsAt);
+  }
+  if (c.target !== undefined) {
+    if (!TARGETS.includes(c.target as 100)) return null;
+    out.target = c.target;
+  }
+  if (c.turnSeconds !== undefined) {
+    if (![15, 25, 40].includes(c.turnSeconds)) return null;
+    out.turnSeconds = c.turnSeconds;
+  }
+  if (c.seeding !== undefined) {
+    if (!SEEDINGS.includes(c.seeding)) return null;
+    out.seeding = c.seeding;
+  }
+  if (c.size !== undefined) {
+    if (!admin || !TOURNAMENT_SIZES.includes(c.size)) return null;
+    out.size = c.size;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 /** Check-in is open from 15 minutes before the start. */
@@ -109,6 +167,65 @@ export function firstRound<T>(entries: T[], rng: () => number = Math.random): [T
   for (let m = 0; m < size / 2; m++) {
     matches.push(m < byes ? [drawn[i++], null] : [drawn[i++], drawn[i++]]);
   }
+  return shuffle(matches, rng);
+}
+
+/** Bracket order of seeds 1…n (n a power of two): seeds 1 and 2 can only meet in the final. */
+export function seedOrder(n: number): number[] {
+  let order = [1];
+  while (order.length < n) {
+    const m = order.length * 2;
+    order = order.flatMap((s) => [s, m + 1 - s]);
+  }
+  return order;
+}
+
+/**
+ * Matches fixed before the draw (an admin's, or players' picks) that can still be kept, in the
+ * order given: both entries still in, nobody twice, and no more than leave everyone else a
+ * real opponent or a bye (n − size/2 pairs at most).
+ */
+export function keptPairs(ids: string[], pairs: [string, string][]): [string, string][] {
+  const limit = ids.length - bracketSize(ids.length) / 2;
+  const present = new Set(ids);
+  const used = new Set<string>();
+  const out: [string, string][] = [];
+  for (const [a, b] of pairs) {
+    if (out.length >= limit) break;
+    if (a === b || !present.has(a) || !present.has(b) || used.has(a) || used.has(b)) continue;
+    used.add(a);
+    used.add(b);
+    out.push([a, b]);
+  }
+  return out;
+}
+
+export interface Seedable { id: string; xp: number }
+
+/**
+ * The first round, in bracket order. Fixed matches go in as they are; everyone else is drawn
+ * ('random', 'pick') or seeded by experience ('xp'): the byes go to the most XP, the best left
+ * plays the least XP left, and the strongest matches are spread so the top two can only meet
+ * in the final. Never two byes in one match.
+ */
+export function drawFirstRound<T extends Seedable>(entries: T[], seeding: Seeding, fixed: [string, string][] = [], rng: () => number = Math.random): [T, T | null][] {
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const size = bracketSize(entries.length);
+  const matches: [T, T | null][] = keptPairs(entries.map((e) => e.id), fixed).map(([a, b]) => [byId.get(a)!, byId.get(b)!]);
+  const taken = new Set(matches.flatMap(([a, b]) => [a.id, b!.id]));
+  const byes = size - entries.length;
+  let rest = entries.filter((e) => !taken.has(e.id));
+  if (seeding === 'xp') {
+    rest = [...rest].sort((x, y) => y.xp - x.xp || (x.id < y.id ? -1 : 1));
+    for (const e of rest.splice(0, byes)) matches.push([e, null]);
+    while (rest.length >= 2) matches.push([rest.shift()!, rest.pop()!]);
+    const top = (m: [T, T | null]) => Math.max(m[0].xp, m[1]?.xp ?? -Infinity);
+    const ranked = [...matches].sort((a, b) => top(b) - top(a));
+    return seedOrder(size / 2).map((rank) => ranked[rank - 1]);
+  }
+  rest = shuffle(rest, rng);
+  for (const e of rest.splice(0, byes)) matches.push([e, null]);
+  while (rest.length >= 2) matches.push([rest.shift()!, rest.shift()!]);
   return shuffle(matches, rng);
 }
 
