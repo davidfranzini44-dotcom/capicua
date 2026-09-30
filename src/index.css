@@ -1239,6 +1239,15 @@ button:disabled { cursor: default; }
 .em-when b, .em-when span { display: block; white-space: nowrap; }
 .em-when b { font-weight: 900; text-transform: capitalize; }
 .em-when span { font-weight: 700; opacity: .9; }
+/* Small phones: the mode buttons' icons come closer, so the medallion gets a little smaller. */
+@media (max-width: 360px) {
+  .event-medals { left: 5px; min-width: 84px; width: 84px; }
+  .em-ring { width: 56px; height: 56px; }
+  .em-ring .trophy-cup { width: 34px; height: 39px; }
+  .em-ribbon { font-size: .68rem; padding: 2px 6px 3px; }
+  .em-prize { font-size: .66rem; padding: 1px 6px; }
+  .em-when { font-size: .62rem; padding: 2px 6px; }
+}
 
 /* Install popup */
 .install-sheet { text-align: center; }
