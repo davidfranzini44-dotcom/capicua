@@ -16,6 +16,8 @@ import { ArcadeSheet, GameShell, HomeTab, InstallSheet, ModeSheet, SettingsSheet
 import { PracticeTable } from './PracticeTable';
 import { ShopTab } from './Shop';
 import { TournamentForm, TournamentScreen, TournamentsSection } from './Tournament';
+import { TournamentHistoryList } from './Trophies';
+import { useTournamentHistory } from '../lib/useTournament';
 import { FriendsSection, InviteToast, joinInvitedRoom, LastSeenRow, PushRow, QuickInviteSheet } from './Friends';
 import { usePresenceHeartbeat } from '../lib/presence';
 import { SpectatorsHearRow } from './Spectators';
@@ -46,7 +48,9 @@ type View =
   | { kind: 'admin' }
   | { kind: 'tournament'; id?: string; code?: string }
   | { kind: 'newTournament' }
-  | { kind: 'watch'; friendId: string; name: string };
+  | { kind: 'watch'; friendId: string; name: string }
+  /** A match of one of my tournaments, from the bracket (back to it on leaving). */
+  | { kind: 'watchMatch'; roomId: string; tournamentId: string };
 
 const home: View = { kind: 'main', tab: 'home' };
 
@@ -196,6 +200,7 @@ export function Online() {
             id={view.id} code={view.code} uid={uid!} profile={profile}
             onBack={() => setView({ kind: 'main', tab: 'tables' })}
             onRoom={(roomId) => setView({ kind: 'room', roomId })}
+            onWatch={(roomId, tournamentId) => setView({ kind: 'watchMatch', roomId, tournamentId })}
           />
         );
       case 'newTournament':
@@ -210,6 +215,12 @@ export function Online() {
       return (
         <Suspense fallback={<Loading />}>
           <WatchScreen key={view.friendId} friendId={view.friendId} friendName={view.name} uid={uid!} onExit={() => setView({ kind: 'main', tab: 'tables' })} />
+        </Suspense>
+      );
+    case 'watchMatch':
+      return (
+        <Suspense fallback={<Loading />}>
+          <WatchScreen key={view.roomId} roomId={view.roomId} uid={uid!} onExit={() => setView({ kind: 'tournament', id: view.tournamentId })} />
         </Suspense>
       );
     case 'queue':
@@ -384,7 +395,7 @@ export function MainScreen(p: MainProps) {
       />
     );
   } else if (p.tab === 'profile') {
-    body = <ProfileTab profile={p.profile!} guest={p.guest} onLinkGoogle={linkGoogle} />;
+    body = <ProfileTab profile={p.profile!} guest={p.guest} onLinkGoogle={linkGoogle} onTournament={p.onTournament} />;
   } else if (p.tab === 'shop') {
     body = <ShopTab profile={p.profile!} guest={p.guest} onLinkGoogle={linkGoogle} />;
   } else {
@@ -545,10 +556,13 @@ function TablesTab({ guest, onCustom, onRoom, onCode, tournaments, friends }: {
   );
 }
 
-function ProfileTab({ profile, guest, onLinkGoogle }: { profile: Profile; guest: boolean; onLinkGoogle: () => void }) {
+function ProfileTab({ profile, guest, onLinkGoogle, onTournament }: {
+  profile: Profile; guest: boolean; onLinkGoogle: () => void; onTournament?: (id: string) => void;
+}) {
   const { t } = useI18n();
   const [renaming, setRenaming] = useState(false);
   const stats = usePlayerStats([profile.id])[profile.id];
+  const history = useTournamentHistory(profile.id);
   const level = levelFromXp(profile.xp);
   const from = xpForLevel(level);
   const to = xpForLevel(level + 1);
@@ -573,6 +587,8 @@ function ProfileTab({ profile, guest, onLinkGoogle }: { profile: Profile; guest:
         <div><b>🏆 {stats?.tournaments_won ?? 0}</b><small>{t.tour.trophies}</small></div>
         <div><b>🪙 {(stats?.biggest_pot ?? 0).toLocaleString()}</b><small>{t.stats.biggestPot}</small></div>
       </div>
+      <h3 className="section-title">🏆 {t.tour.history}</h3>
+      <TournamentHistoryList rows={history} self onOpen={onTournament} />
       <LookPicker />
       {guest && (
         <section className="guest-card">

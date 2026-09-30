@@ -288,10 +288,8 @@ describe('spectators share too', () => {
     await fails(rpc(U.named, 'shared_room', ROOM), 'link_gone');
   });
 
-  it('a spectator with no friend at the table, or whose watch ran out, makes none', async () => {
-    await db.query(`insert into public.room_spectators (room_id, user_id) values ($1, $2)`, [ROOM, U.stranger]);
-    await fails(rpc(U.stranger, 'create_room_share_link', ROOM), 'not_seated');
-    await db.query('delete from public.room_spectators where user_id = $1', [U.stranger]);
+  // (Since 20261013000000 anyone watching may share: see tournamentHistory.rls.test.ts.)
+  it('a spectator whose watch ran out makes none', async () => {
     await db.query(`update public.room_spectators set expires_at = now() - interval '1 minute' where user_id = $1`, [U.friend]);
     await fails(rpc(U.friend, 'create_room_share_link', ROOM), 'not_seated');
   });

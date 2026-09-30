@@ -1,13 +1,15 @@
-// A player's card: photo, level and record, chips, when they were last online,
-// and adding them as a friend. At the table it also carries actions for that
-// player (mute, report).
+// A player's card: photo, level and record, chips, when they were last online, the
+// tournaments they won, and adding them as a friend. At the table it also carries
+// actions for that player (mute, report).
 import type { ReactNode } from 'react';
 import { levelFromXp, xpForLevel } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { timeAgo, useLastSeen } from '../lib/presence';
 import type { PlayerStats } from '../lib/useRoom';
+import { useTournamentHistory } from '../lib/useTournament';
 import { Avatar, LevelBadge } from './common';
 import { AddFriendButton } from './Friends';
+import './trophies.css';
 
 /**
  * `loading`: the record is still on its way — its numbers show "…" instead of zeros.
@@ -27,6 +29,8 @@ export function ProfileCard({ stats, onClose, actions, loading = false, online }
   const to = xpForLevel(level + 1);
   const winRate = stats.games ? Math.round((100 * stats.wins) / stats.games) : 0;
   const n = (v: ReactNode) => (loading ? '…' : v);
+  // Their titles: the tournaments they won (the latest three).
+  const titles = (useTournamentHistory(stats.id) ?? []).filter((r) => r.placement === 1).slice(0, 3);
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet profile-card" onClick={(e) => e.stopPropagation()}>
@@ -35,6 +39,11 @@ export function ProfileCard({ stats, onClose, actions, loading = false, online }
         {stats.friend_code && <small className="player-code" title={t.names.codeTitle}>#{stats.friend_code}</small>}
         {presence}
         <LevelBadge xp={stats.xp} big />
+        {titles.length > 0 && (
+          <div className="profile-titles" aria-label={t.tour.titles}>
+            {titles.map((r) => <span key={r.id}>🏆 {r.name}</span>)}
+          </div>
+        )}
         <AddFriendButton userId={stats.id} />
         {actions && <div className="card-actions">{actions}</div>}
         <div className="xp-bar wide"><span style={{ width: `${(100 * (stats.xp - from)) / (to - from)}%` }} /></div>
@@ -45,6 +54,7 @@ export function ProfileCard({ stats, onClose, actions, loading = false, online }
           <div><b>{n(stats.pollonas)}</b><small>{t.stats.pollonas}</small></div>
           <div className="half"><b>{n(stats.chips == null ? '…' : `🪙 ${stats.chips.toLocaleString()}`)}</b><small>{t.stats.chips}</small></div>
           <div className="half"><b>{n(`🪙 ${stats.biggest_pot.toLocaleString()}`)}</b><small>{t.stats.biggestPot}</small></div>
+          <div className="span2"><b>{n(`🏆 ${stats.tournaments_won ?? 0}`)}</b><small>{t.tour.trophies}</small></div>
         </div>
         <button className="btn ghost wide" onClick={onClose}>{t.close}</button>
       </div>

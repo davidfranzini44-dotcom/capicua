@@ -20,7 +20,7 @@ import { TableView } from '../ui/TableView';
 import { InstallSheet } from '../ui/MainScreen';
 import type { InstallKind } from '../lib/install';
 import { TournamentInvite, TournamentView } from '../ui/Tournament';
-import type { EntryRow, MatchRow, TournamentRow } from '../lib/useTournament';
+import type { EntryRow, MatchRow, TournamentHistoryRow, TournamentRow } from '../lib/useTournament';
 import type { GameState } from '../../supabase/functions/_shared/domino.ts';
 import { BoardDesignPreview } from './BoardDesignPreview';
 import { ArcadePreview } from './arcadePreview';
@@ -44,6 +44,7 @@ import { SponsorBacks, SponsorCard, SponsorEditor, type SponsorStatsRow } from '
 import { SponsorReportView } from '../ui/SponsorReport';
 import { ListenButton, SpectatorsSheet } from '../ui/Spectators';
 import { ShareMatchSheet } from '../ui/ShareMatchSheet';
+import { FinalTrophy, TournamentHistoryList } from '../ui/Trophies';
 import type { ShareLinkState } from '../lib/useShareLink';
 import { BroadcastCanvas, BroadcastSetup, ShareProblem, SharedTableView, type SharedBoard } from '../ui/SharedWatch';
 import '../ui/share.css';
@@ -293,10 +294,12 @@ function Screen({ s }: { s: string }) {
     );
   }
   if (s.startsWith('tournament-')) {
-    // tournament-lobby | tournament-bracket | tournament-final | tournament-noshow
+    // tournament-lobby | tournament-bracket | tournament-final (I won: the celebration) | tournament-podium (seen by the
+    // runner-up) | tournament-out (knocked out: watch the others) | tournament-noshow
     // | tournament-scheduled (before check-in) | tournament-checkin (open, not checked in) | tournament-checkin-host (all in: start now)
     const scheduled = s === 'tournament-scheduled' || s.startsWith('tournament-checkin');
-    const phase = s === 'tournament-lobby' || scheduled ? 'lobby' : s === 'tournament-final' ? 'finished' : 'playing';
+    const phase = s === 'tournament-lobby' || scheduled ? 'lobby' : s === 'tournament-final' || s === 'tournament-podium' ? 'finished' : 'playing';
+    const me = s === 'tournament-podium' || s === 'tournament-out' ? 'y' : 'me';
     const names = { me: 'Wilfri', y: 'Yokasta', r: 'Robert', k: 'Kirsy', c: 'Chelo' } as Record<string, string>;
     const entries: EntryRow[] = ['me', 'y', 'r', 'k', 'c'].map((p, i) => ({
       id: `e${i}`, player1: p, player2: null,
@@ -334,9 +337,38 @@ function Screen({ s }: { s: string }) {
     return (
       <div className="screen tour-screen">
         <TournamentView tour={{ ...tour, host: s === 'tournament-checkin' ? 'y' : 'me' }} entries={phase === 'lobby' ? entries.slice(0, 4) : entries}
-          matches={matches} names={names} uid="me" checkins={checkins}
-          onStart={noop} onCancel={noop} onLeave={noop} onKick={noop} onPlay={noop} onCheckIn={noop} />
+          matches={matches} names={names} uid={me} checkins={checkins}
+          onStart={noop} onCancel={noop} onLeave={noop} onKick={noop} onPlay={noop} onCheckIn={noop} onWatch={noop} />
       </div>
+    );
+  }
+  if (s === 'trophy-history') {
+    // A player's tournaments on their profile.
+    const day = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    const rows: TournamentHistoryRow[] = [
+      { id: 'a', name: 'Copa del barrio', mode: '1v1', size: 8, rounds: 3, pot: 2500, finished_at: day(1), placement: 1, eliminated_round: null, entries: 7, partner: null, champion: 'Wilfri' },
+      { id: 'b', name: 'Viernes de dominó', mode: '2v2', size: 4, rounds: 2, pot: 0, finished_at: day(6), placement: 2, eliminated_round: 2, entries: 4, partner: 'Yokasta', champion: 'Robert & Kirsy' },
+      { id: 'c', name: 'Torneo del colmado', mode: '1v1', size: 8, rounds: 3, pot: 4000, finished_at: day(12), placement: 3, eliminated_round: 2, entries: 8, partner: null, champion: 'Chelo' },
+      { id: 'd', name: 'Liga de la esquina con un nombre largo', mode: '1v1', size: 16, rounds: 4, pot: 0, finished_at: day(30), placement: 9, eliminated_round: 1, entries: 12, partner: null, champion: 'Papo' },
+    ];
+    return (
+      <div className="tab-page profile-page">
+        <h3 className="section-title">🏆 Mis torneos</h3>
+        <TournamentHistoryList rows={rows} self onOpen={noop} />
+        <h3 className="section-title">🏆 Mis torneos (vacío)</h3>
+        <TournamentHistoryList rows={[]} self />
+      </div>
+    );
+  }
+  if (s === 'final-trophy' || s === 'final-second') {
+    // The end of a tournament's final, in the result sheet.
+    let g = newGame(() => 0.37, publicRules('1v1'));
+    for (let i = 0; i < 400 && !g.handResult; i++) g = applyMove(g, forcedMove(g, g.turn) ?? chooseMove(g, g.turn, () => 0.5));
+    const view = { ...publicState(g), scores: [104, 57], winner: s === 'final-trophy' ? 0 : 1 };
+    return (
+      <TableView view={view} myHand={[]} mySeat={0} names={['', 'Yokasta']} onPlay={noop} onNextHand={noop} onExit={noop}
+        chat={{}} onChat={noop} resultNote={<FinalTrophy won={s === 'final-trophy'} tournament="Copa del barrio" />}
+        endActions={<><button className="btn primary">🏆 Ver el trofeo</button><button className="btn ghost">Salir</button></>} />
     );
   }
   if (s.startsWith('install-')) {

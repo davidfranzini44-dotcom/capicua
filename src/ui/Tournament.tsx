@@ -11,6 +11,8 @@ import {
 import { useSocial } from '../lib/social';
 import { ChipBalance, useErrorText } from './common';
 import { InviteFriendsSheet } from './Friends';
+import { markTrophySeen, trophySeen } from '../lib/tournamentPlace';
+import { ChampionCelebration, TrophyCup } from './Trophies';
 
 const inviteUrl = (code: string) => `${location.origin}${location.pathname}?torneo=${code}`;
 
@@ -162,8 +164,10 @@ export function TournamentForm({ profile, guest, onBack, onCreated }: {
 // ---------- the tournament screen ----------
 
 /** A tournament by id, or an invite by code. Non-members see the invite preview until they sign up. */
-export function TournamentScreen({ id, code, uid, profile, onBack, onRoom }: {
+export function TournamentScreen({ id, code, uid, profile, onBack, onRoom, onWatch }: {
   id?: string; code?: string; uid: string; profile: Profile; onBack: () => void; onRoom: (roomId: string) => void;
+  /** Watch one of this tournament's matches as a spectator. */
+  onWatch?: (roomId: string, tournamentId: string) => void;
 }) {
   const { t } = useI18n();
   const errText = useErrorText();
@@ -250,6 +254,7 @@ export function TournamentScreen({ id, code, uid, profile, onBack, onRoom }: {
         onLeave={() => confirm(t.tour.leaveConfirm) && run(async () => { await api('tournament_leave', { id: tid }); onBack(); })}
         onKick={(userId) => confirm(t.tour.kickConfirm) && run(() => api('tournament_kick', { id: tid, userId }))}
         onPlay={onRoom}
+        onWatch={onWatch && tid ? (roomId) => onWatch(roomId, tid) : undefined}
       />
       {error && <p className="error">{error}</p>}
     </div>
@@ -271,6 +276,8 @@ export interface TournamentViewProps {
   onLeave: () => void;
   onKick: (userId: string) => void;
   onPlay: (roomId: string) => void;
+  /** Watch a match being played (every member may). */
+  onWatch?: (roomId: string) => void;
 }
 
 /** Everything a member sees: sign-ups before the start, then the bracket. */
@@ -295,6 +302,10 @@ export function TournamentView(p: TournamentViewProps) {
   const checkInIsOpen = scheduled !== null && checkInOpen(scheduled, now);
   const here = players.filter((x) => checkins.has(x)).length;
   const iAmIn = players.includes(uid);
+  // The champion's moment: once per tournament on this device, the first time they see it over.
+  const champEntry = tour.phase === 'finished' ? entries.find((e) => e.placement === 1) ?? null : null;
+  const [celebrated, setCelebrated] = useState(false);
+  const celebrate = !!champEntry && !!mine && mine.id === champEntry.id && !celebrated && !trophySeen(tour.id);
 
   return (
     <>
@@ -393,20 +404,46 @@ export function TournamentView(p: TournamentViewProps) {
             </div>
           );
         }
-        return champ && (
-          <div className="tour-champion">
-            <span className="trophy">🏆</span>
-            <strong>{mine?.id === champ.id ? t.tour.youWon : t.tour.champion}</strong>
+        const semis = entries.filter((e) => e.placement === 3);
+        return (
+          <section className="tour-podium" aria-label={t.tour.champion}>
+            <TrophyCup size={112} className="champion-cup" />
+            <span className="podium-label">{mine?.id === champ.id ? t.tour.youWon : t.tour.champion}</span>
             <b className="champ-name">{label(champ.id)}</b>
-            {tour.pot > 0 && <small>{t.tour.prize}: 🪙 {first.toLocaleString()}</small>}
-            {runner && <small>🥈 {t.tour.runnerUp}: {label(runner.id)}{tour.pot > 0 ? ` · 🪙 ${second.toLocaleString()}` : ''}</small>}
-          </div>
+            {tour.pot > 0 && <small className="podium-prize">{t.tour.prize}: 🪙 {first.toLocaleString()}</small>}
+            {(runner || semis.length > 0) && (
+              <div className="podium-rest">
+                {runner && (
+                  <div className="podium-row">
+                    <TrophyCup size={30} metal="silver" />
+                    <span><small>{t.tour.runnerUp}</small><b>{label(runner.id)}</b></span>
+                    {tour.pot > 0 && <small className="podium-prize">🪙 {second.toLocaleString()}</small>}
+                  </div>
+                )}
+                {semis.length > 0 && (
+                  <div className="podium-row">
+                    <TrophyCup size={30} metal="bronze" />
+                    <span><small>{t.tour.semifinalists}</small><b>{semis.map((e) => label(e.id)).join(' · ')}</b></span>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
         );
       })()}
+      {celebrate && champEntry && (
+        <ChampionCelebration tournament={tour.name} names={label(champEntry.id)} prize={first} pair={tour.mode === '2v2'}
+          onClose={() => { markTrophySeen(tour.id); setCelebrated(true); }} />
+      )}
 
       {tour.phase === 'playing' && mine && (() => {
         if (mine.eliminated_round && tour.rounds) {
-          return <div className="tour-me out">{t.tour.outIn} {t.tour.stages[stage(mine.eliminated_round, tour.rounds)].toLowerCase()}</div>;
+          return (
+            <div className="tour-me out">
+              {t.tour.outIn} {t.tour.stages[stage(mine.eliminated_round, tour.rounds)].toLowerCase()}
+              {p.onWatch && <small>{t.tour.watchHint}</small>}
+            </div>
+          );
         }
         const next = matches.filter((m) => m.status !== 'done' && (m.entry_a === mine.id || m.entry_b === mine.id)).sort((a, b) => a.round - b.round)[0];
         if (next?.room_id && next.status === 'ready') {
@@ -437,7 +474,7 @@ export function TournamentView(p: TournamentViewProps) {
               <h4>{t.tour.stages[stage(r, tour.rounds!)]}</h4>
               <div className="br-matches">
                 {matches.filter((m) => m.round === r).map((m) => (
-                  <MatchCard key={m.id} m={m} mine={mine} label={label} now={now} onPlay={p.onPlay} />
+                  <MatchCard key={m.id} m={m} mine={mine} label={label} now={now} onPlay={p.onPlay} onWatch={p.onWatch} />
                 ))}
               </div>
             </div>
@@ -452,8 +489,9 @@ export function TournamentView(p: TournamentViewProps) {
   );
 }
 
-function MatchCard({ m, mine, label, now, onPlay }: {
+function MatchCard({ m, mine, label, now, onPlay, onWatch }: {
   m: MatchRow; mine: EntryRow | null; label: (id: string | null) => string; now: number; onPlay: (roomId: string) => void;
+  onWatch?: (roomId: string) => void;
 }) {
   const { t } = useI18n();
   const isMine = !!mine && (m.entry_a === mine.id || m.entry_b === mine.id);
@@ -481,6 +519,9 @@ function MatchCard({ m, mine, label, now, onPlay }: {
       {status && <small className="br-status">{status}</small>}
       {isMine && m.room_id && (m.status === 'ready' || m.status === 'playing') && (
         <button className="btn primary br-play" onClick={() => onPlay(m.room_id!)}>▶ {t.tour.play}</button>
+      )}
+      {!isMine && onWatch && m.room_id && m.status === 'playing' && (
+        <button className="btn ghost br-play br-watch" onClick={() => onWatch(m.room_id!)}>{t.tour.watch}</button>
       )}
     </div>
   );

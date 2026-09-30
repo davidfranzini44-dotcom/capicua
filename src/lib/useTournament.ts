@@ -135,3 +135,53 @@ export function useMyTournaments(uid: string | undefined) {
   }, [uid]);
   return list;
 }
+
+/** One tournament someone played, as their history lists it (migration 20261013000000). */
+export interface TournamentHistoryRow {
+  id: string;
+  name: string;
+  mode: TournamentMode;
+  size: number;
+  rounds: number | null;
+  pot: number;
+  finished_at: string;
+  placement: number | null;
+  eliminated_round: number | null;
+  /** Players or pairs that took part. */
+  entries: number;
+  partner: string | null;
+  /** The winner's name(s); null when nobody played the final. */
+  champion: string | null;
+}
+
+/** A player's finished tournaments, newest first (null while loading). */
+export function useTournamentHistory(userId: string | null | undefined): TournamentHistoryRow[] | null {
+  const [rows, setRows] = useState<{ user: string; list: TournamentHistoryRow[] } | null>(null);
+  useEffect(() => {
+    if (!userId) return;
+    let live = true;
+    supabase.rpc('tournament_history', { p_user: userId }).then(({ data }) => {
+      if (live) setRows({ user: userId, list: ((data ?? []) as TournamentHistoryRow[]).map((r) => ({ ...r, pot: Number(r.pot) })) });
+    }, () => { if (live) setRows({ user: userId, list: [] }); });
+    return () => { live = false; };
+  }, [userId]);
+  return rows && rows.user === userId ? rows.list : null;
+}
+
+/** For a tournament table: the tournament's name and whether this match is its final. */
+export function useTournamentMatch(roomId: string, tournamentId: string | null): { name: string; final: boolean } | null {
+  const [info, setInfo] = useState<{ room: string; name: string; final: boolean } | null>(null);
+  useEffect(() => {
+    if (!tournamentId) return;
+    let live = true;
+    Promise.all([
+      supabase.from('tournament_matches').select('round').eq('room_id', roomId).maybeSingle(),
+      supabase.from('tournaments').select('name, rounds').eq('id', tournamentId).maybeSingle(),
+    ]).then(([m, tr]) => {
+      if (!live || !tr.data) return;
+      setInfo({ room: roomId, name: tr.data.name as string, final: !!m.data && m.data.round === tr.data.rounds });
+    }, () => {});
+    return () => { live = false; };
+  }, [roomId, tournamentId]);
+  return info?.room === roomId ? { name: info.name, final: info.final } : null;
+}

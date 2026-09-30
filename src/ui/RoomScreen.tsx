@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { seatsOf, type Mode, type Move, type Ruleset, type Seat } from '../../supabase/functions/_shared/domino.ts';
+import { seatsOf, sideOf, type Mode, type Move, type Ruleset, type Seat } from '../../supabase/functions/_shared/domino.ts';
 import {
   botsAllowed, minHumans, SIDE_BET_KINDS, sideBetLimit, sideBetMultiplier, voiceRoomFor, type SideBetKind,
 } from '../../supabase/functions/_shared/table.ts';
@@ -23,6 +23,8 @@ import { Avatar, ChipBalance, LevelBadge, useErrorText } from './common';
 import { InviteFriendsSheet } from './Friends';
 import { ProfileCard } from './ProfileCard';
 import { ReportButton } from './Report';
+import { FinalTrophy } from './Trophies';
+import { useTournamentMatch } from '../lib/useTournament';
 import { TableView } from './TableView';
 import { VoiceButton } from './VoiceButton';
 
@@ -669,9 +671,14 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
 
   const isHost = room.host === uid;
   const wonBets = r.bets.filter((b) => b.game_id === game.id && b.status === 'won');
-  const resultNote = view.winner !== null && net !== null ? (
+  // A tournament's final: the cup for the winners, silver for the others.
+  const tourMatch = useTournamentMatch(room.id, room.kind === 'tournament' ? room.tournament_id : null);
+  const finalTrophy = tourMatch?.final && view.winner !== null
+    ? <FinalTrophy won={view.winner === sideOf(view.rules.mode, mySeat)} tournament={tourMatch.name} pair={view.rules.mode === '2v2'} /> : null;
+  const resultNote = view.winner !== null && (net !== null || finalTrophy) ? (
     <>
-      {(game.stake > 0 || net !== 0) && (
+      {finalTrophy}
+      {net !== null && (game.stake > 0 || net !== 0) && (
         <div className={`reward chips ${net >= 0 ? 'up' : 'down'}`}>
           <span>🪙</span><b>{net >= 0 ? '+' : '−'}{Math.abs(net).toLocaleString()}</b>
         </div>
@@ -687,7 +694,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
 
   const endActions = room.kind === 'tournament' ? (
     <>
-      {onTournament && <button className="btn primary" onClick={onTournament}>🏆 {t.tour.back}</button>}
+      {onTournament && <button className="btn primary" onClick={onTournament}>{finalTrophy ? t.tour.seeTrophy : `🏆 ${t.tour.back}`}</button>}
       <button className="btn ghost" onClick={onLeave}>{t.exit}</button>
     </>
   ) : room.kind === 'public' ? (

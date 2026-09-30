@@ -1,5 +1,5 @@
-// Watching a friend's game: the board from their seat, their hand face down,
-// nobody's tiles revealed. Loaded on demand (like the table screen).
+// Watching a friend's game — or any match of a tournament I'm in: the board from a
+// player's seat, their hand face down, nobody's tiles revealed. Loaded on demand.
 import { useEffect, useState } from 'react';
 import { ChatCircleDotsIcon } from '@phosphor-icons/react';
 import type { Seat } from '../../supabase/functions/_shared/domino.ts';
@@ -15,25 +15,37 @@ import { openSponsor, useSponsor } from '../lib/sponsor';
 import { useShareLink } from '../lib/useShareLink';
 import { ShareMatchSheet } from './ShareMatchSheet';
 
-export default function WatchScreen({ friendId, friendName, uid, onExit }: {
-  friendId: string; friendName: string; uid: string; onExit: () => void;
+const WATCH_ERRORS = ['not_friends', 'friend_not_playing', 'already_in_room', 'not_in_tournament', 'not_a_tournament_match'];
+
+/** Either a friend to follow, or (`roomId`) a match of one of my tournaments. */
+export default function WatchScreen({ friendId, friendName, roomId: matchRoom, uid, onExit }: {
+  friendId?: string; friendName?: string; roomId?: string; uid: string; onExit: () => void;
 }) {
   const { t } = useI18n();
   const errText = useErrorText();
-  const [roomId, setRoomId] = useState<string | null>(null);
+  const [target, setTarget] = useState<{ roomId: string; friendId: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.rpc('watch_friend', { p_friend: friendId }).then(({ data, error: e }) => {
-      if (e) setError(errText(new ApiError(['not_friends', 'friend_not_playing', 'already_in_room'].includes(e.message) ? e.message : 'server_error')));
-      else setRoomId(data as string);
-    });
+    const fail = (message: string) => setError(errText(new ApiError(WATCH_ERRORS.includes(message) ? message : 'server_error')));
+    if (matchRoom) {
+      supabase.rpc('watch_tournament_match', { p_room: matchRoom }).then(({ data, error: e }) => {
+        if (e) return fail(e.message);
+        const r = data as { room_id: string; focus: string; name: string };
+        setTarget({ roomId: r.room_id, friendId: r.focus, name: r.name });
+      });
+    } else if (friendId) {
+      supabase.rpc('watch_friend', { p_friend: friendId }).then(({ data, error: e }) => {
+        if (e) fail(e.message);
+        else setTarget({ roomId: data as string, friendId, name: friendName ?? '' });
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [friendId]);
+  }, [friendId, matchRoom]);
 
   if (error) return <Message text={error} onBack={onExit} back={t.watch.back} />;
-  if (!roomId) return <div className="screen center"><p>{t.loading}</p></div>;
-  return <WatchTable roomId={roomId} friendId={friendId} friendName={friendName} uid={uid} onExit={onExit} />;
+  if (!target) return <div className="screen center"><p>{t.loading}</p></div>;
+  return <WatchTable roomId={target.roomId} friendId={target.friendId} friendName={target.name} uid={uid} onExit={onExit} />;
 }
 
 function Message({ text, onBack, back }: { text: string; onBack: () => void; back: string }) {
