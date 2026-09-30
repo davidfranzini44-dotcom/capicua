@@ -428,7 +428,7 @@ export function TableView(props: TableViewProps) {
   };
 
   return (
-    <div className={`table-screen table-redesign mode-${mode} ${arcade ? 'ruleset-arcade' : ''} ${props.presentation === 'classic' ? '' : 'table-focus'} ${broadcast ? 'table-broadcast' : ''} ${props.spectatorChat ? 'has-spectator-chat' : ''} ${watching && props.spectatorChat ? 'spectator-layout' : ''} ${look.className}`} style={look.style} onKeyDown={(e) => {
+    <div className={`table-screen table-redesign mode-${mode} ${arcade ? 'ruleset-arcade' : ''} ${props.presentation === 'classic' ? '' : 'table-focus'} ${broadcast ? 'table-broadcast' : ''} ${props.spectatorChat ? 'has-spectator-chat' : ''} ${!watching && (props.sponsor || props.spectatorChat) ? 'has-player-stack' : ''} ${watching && props.spectatorChat ? 'spectator-layout' : ''} ${look.className}`} style={look.style} onKeyDown={(e) => {
       if (e.key === 'Escape') { setPending(null); setChatOpen(false); setDraft(null); setPowersOpen(false); }
     }}>
       <header className="table-header">

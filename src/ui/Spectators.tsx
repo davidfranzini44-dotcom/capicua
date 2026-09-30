@@ -73,7 +73,7 @@ export function SpectatorsSheet({ watchers, count, uid, listeners, messages, onS
   /** Spectators only: say something to the table. */
   onSend?: (text: string) => Promise<void>;
   /** Players only: my choices. */
-  player?: { hear: boolean; onHear: (v: boolean) => void; showMessages: boolean; onShowMessages: (v: boolean) => void; air?: AirControl };
+  player?: { hear?: boolean; onHear?: (v: boolean) => void; showMessages: boolean; onShowMessages: (v: boolean) => void; air?: AirControl };
   onClose: () => void;
 }) {
   const { t } = useI18n();
@@ -118,10 +118,10 @@ export function SpectatorsSheet({ watchers, count, uid, listeners, messages, onS
       )}
       {player && (
         <>
-          <label className="setting-row push-row">
+          {player.onHear && <label className="setting-row push-row">
             <span>🎧 {t.spec.hear}<small>{t.spec.hearHint}</small></span>
-            <input type="checkbox" checked={player.hear} onChange={(e) => player.onHear(e.target.checked)} />
-          </label>
+            <input type="checkbox" checked={player.hear ?? false} onChange={(e) => player.onHear?.(e.target.checked)} />
+          </label>}
           {listeners && listeners.size > 0 && <small className="fine left">{t.spec.hearCount.replace('{n}', String(listeners.size))}</small>}
           {player.air && <AirRow air={player.air} />}
           <label className="setting-row push-row">

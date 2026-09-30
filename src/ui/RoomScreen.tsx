@@ -779,7 +779,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
       {specOpen && (
         <SpectatorsSheet watchers={watcherList} count={watcherCount} uid={uid} listeners={voice?.listeners} messages={specChat.messages}
           onShare={canShare ? () => { setSpecOpen(false); setShareOpen(true); } : undefined}
-          player={hear ? { hear: hear.on, onHear: hear.set, showMessages: showSpecMessages, onShowMessages: (on) => { setShowSpecMessages(on); if (on) setSpecCollapsed(false); }, air } : undefined}
+          player={{ hear: hear?.on, onHear: hear?.set, showMessages: showSpecMessages, onShowMessages: (on) => { setShowSpecMessages(on); if (on) setSpecCollapsed(false); }, air }}
           onClose={() => setSpecOpen(false)} />
       )}
       {shareOpen && <ShareMatchSheet share={share} air={air} onClose={() => setShareOpen(false)} />}

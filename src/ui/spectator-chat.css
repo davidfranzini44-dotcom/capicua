@@ -86,15 +86,16 @@ button.spectator-message:hover { background: #ffffff08; }
 
 @media (max-height: 740px) and (max-width: 699px) {
   .spectator-chat-dock { padding: 7px; gap: 5px; }
-  .spectator-chat-messages .spectator-message:first-child { display: none; }
+  .spectator-chat-messages .spectator-message:not(:last-child) { display: none; }
   .spectator-chat-messages { max-height: 94px; }
   .spectator-message { padding-block: 4px; }
   .spectator-message-avatar { width: 29px; height: 29px; }
   .spectator-reactions button { min-height: 34px; }
-  .spectator-chat-preview .spectator-preview-messages .spectator-message:first-child { display: none; }
+  /* Keep the newest message visible, including when it is the only message. */
+  .spectator-chat-preview .spectator-preview-messages .spectator-message:not(:last-child) { display: none; }
 }
 @media (max-height: 640px) and (max-width: 699px) {
   .spectator-chat-dock:not(.collapsed) .spectator-presence { display: none; }
   .spectator-chat-dock:not(.collapsed) .spectator-chat-messages { height: 40px; max-height: 40px; }
-  .spectator-chat-preview:not(.collapsed) .spectator-preview-messages { display: none; }
+  .spectator-chat-preview { padding-block: 4px; }
 }

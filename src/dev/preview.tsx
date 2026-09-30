@@ -43,7 +43,7 @@ import { feltById, tilesById } from '../../supabase/functions/_shared/cosmetics.
 import '../ui/table.css';
 import { SponsorBacks, SponsorCard, SponsorEditor, type SponsorStatsRow } from '../ui/AdminSponsors';
 import { SponsorReportView } from '../ui/SponsorReport';
-import { ListenButton, SpectatorsSheet } from '../ui/Spectators';
+import { ListenButton, SpectatorsSheet, useUnread } from '../ui/Spectators';
 import { ShareMatchSheet } from '../ui/ShareMatchSheet';
 import { FinalTrophy, TournamentHistoryList } from '../ui/Trophies';
 import type { ShareLinkState } from '../lib/useShareLink';
@@ -261,9 +261,14 @@ const initialSpectatorMessages = [
   { id: 3, user_id: 'me', name: 'Wilfri', body: 'Dale que ya casi', created_at: new Date().toISOString() },
 ];
 
-function SpectatorChatTablePreview({ player = false, sponsored = false }: { player?: boolean; sponsored?: boolean }) {
+function SpectatorChatTablePreview({ player = false, sponsored = false, empty = false, single = false }: { player?: boolean; sponsored?: boolean; empty?: boolean; single?: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [messages, setMessages] = useState(initialSpectatorMessages);
+  const [messages, setMessages] = useState(empty ? [] : single ? initialSpectatorMessages.slice(0, 1) : initialSpectatorMessages);
+  const [open, setOpen] = useState(false);
+  const [showMessages, setShowMessages] = useState(true);
+  const unread = useUnread(messages, 'me', open || (showMessages && !collapsed));
+  const count = empty ? 0 : 7;
+  const watchers = empty ? [] : previewWatchers;
   const game = useMemo(() => {
     let next = newGame(() => 0.37, publicRules('2v2'));
     for (let i = 0; i < 14 && !next.handResult; i++) next = applyMove(next, forcedMove(next, next.turn) ?? chooseMove(next, next.turn, () => 0.5));
@@ -271,10 +276,10 @@ function SpectatorChatTablePreview({ player = false, sponsored = false }: { play
   }, []);
   const view = { ...publicState(game), turn: 2 as Seat };
   const chat = player
-    ? <SpectatorChatPreview count={7} uid="me" messages={messages} collapsed={collapsed} unread={2}
-        onCollapsedChange={setCollapsed} onOpen={() => {}} onShare={() => {}} />
-    : <SpectatorChatDock watchers={previewWatchers} count={7} uid="me" messages={messages} collapsed={collapsed} unread={2}
-        onCollapsedChange={setCollapsed} onOpenWatchers={() => {}} onShare={() => {}}
+    ? showMessages && (count > 0 || messages.length > 0) ? <SpectatorChatPreview count={count} uid="me" messages={messages} collapsed={collapsed} unread={unread}
+        onCollapsedChange={setCollapsed} onOpen={() => setOpen(true)} onShare={() => {}} /> : undefined
+    : <SpectatorChatDock watchers={watchers} count={count} uid="me" messages={messages} collapsed={collapsed} unread={unread}
+        onCollapsedChange={setCollapsed} onOpenWatchers={() => setOpen(true)} onShare={() => {}}
         onSend={async (body) => setMessages((all) => [...all, { id: all.length + 1, user_id: 'me', name: 'Wilfri', body, created_at: new Date().toISOString() }])} />;
   return (
     <SocialContext.Provider value={fakeSocial()}>
@@ -282,10 +287,13 @@ function SpectatorChatTablePreview({ player = false, sponsored = false }: { play
         names={player ? ['Wilfri', 'Yokasta', 'Robert', 'Kirsy'] : ['Wilfri', 'Yokasta', 'Robert', 'Kirsy']}
         avatars={[face('#3b7dd8'), face('#c0487a'), null, face('#2d8a5f')]}
         onPlay={() => {}} onNextHand={() => {}} onExit={() => {}} chat={{}} onChat={() => {}} endActions={null}
-        turnDeadline={Date.now() + 9000} watchers={previewWatchers.map((w) => w.name)} watcherCount={7}
-        onWatchersTap={() => {}} watchersUnread={2} onShare={() => {}} spectatorChat={chat}
+        turnDeadline={Date.now() + 9000} watchers={watchers.map((w) => w.name)} watcherCount={count}
+        onWatchersTap={() => setOpen(true)} watchersUnread={showMessages ? unread : 0} onShare={() => {}} spectatorChat={chat}
         sponsor={sponsored ? { ...FAKE_SPONSOR, id: 'sp-spectator-chat-preview-v5', tileUrl: FAKE_TILE_LOGO } : undefined} onSponsorTap={sponsored ? () => {} : undefined}
         watching={player ? undefined : { name: 'Robert', onLeave: () => {}, tools: <ListenButton voice={fakeVoice({ status: 'on' })} /> }} />
+      {open && <SpectatorsSheet watchers={watchers} count={count} uid="me" messages={messages}
+        player={player ? { showMessages, onShowMessages: (on) => { setShowMessages(on); if (on) setCollapsed(false); } } : undefined}
+        onClose={() => setOpen(false)} />}
     </SocialContext.Provider>
   );
 }
@@ -299,6 +307,8 @@ function Screen({ s }: { s: string }) {
   if (s.startsWith('arcade')) return <ArcadePreview s={s} />;
   if (s === 'spectator-chat' || s === 'spectator-chat-sponsored') return <SpectatorChatTablePreview sponsored={s.endsWith('sponsored')} />;
   if (s === 'player-spectator-chat') return <SpectatorChatTablePreview player sponsored />;
+  if (s === 'player-spectator-chat-single') return <SpectatorChatTablePreview player sponsored single />;
+  if (s === 'player-sponsored-empty') return <SpectatorChatTablePreview player sponsored empty />;
   if (s.startsWith('main')) {
     // main | main-guest | main-out (signed out) | main-offline (no Supabase) | main-<tab>
     const signedOut = s === 'main-out' || s === 'main-offline';

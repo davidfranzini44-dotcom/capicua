@@ -334,11 +334,12 @@
   .table-redesign .my-area:not(.watching) .table-tools > .practice-voice { background: #ffffff08; border-style: dashed; }
   .table-redesign .my-area:not(.watching) .table-tools > .practice-voice small { font-size: inherit; font-weight: 700; }
   .table-redesign .my-area:not(.watching) .table-tools > .voice-pill .vp-count { top: -6px; right: -6px; }
-  .table-redesign.has-spectator-chat .my-area:not(.watching) > .player-spectator-stack { grid-column: 1 / -1; grid-row: 1; }
-  .table-redesign.has-spectator-chat .my-area:not(.watching) > .hand { grid-row: 2; }
-  .table-redesign.has-spectator-chat .my-area:not(.watching) > .table-instruction { grid-row: 3; }
-  .table-redesign.has-spectator-chat .my-area:not(.watching) .table-tools > :first-child,
-  .table-redesign.has-spectator-chat .my-area:not(.watching) .table-tools > :last-child { grid-row: 3; }
+  /* A sponsor still occupies a full row when nobody is watching or chat is hidden. */
+  .table-redesign.has-player-stack .my-area:not(.watching) > .player-spectator-stack { grid-column: 1 / -1; grid-row: 1; }
+  .table-redesign.has-player-stack .my-area:not(.watching) > .hand { grid-row: 2; }
+  .table-redesign.has-player-stack .my-area:not(.watching) > .table-instruction { grid-row: 3; }
+  .table-redesign.has-player-stack .my-area:not(.watching) .table-tools > :first-child,
+  .table-redesign.has-player-stack .my-area:not(.watching) .table-tools > :last-child { grid-row: 3; }
 }
 /* Tiny phones: all three opponents share the top strip, the board takes the rest. */
 @media (max-height: 640px) and (max-width: 699px) {
@@ -698,9 +699,9 @@ button.spectator-sponsor-mini { cursor: pointer; }
   .table-redesign.spectator-layout .spectator-message { min-height: 38px; }
   .table-redesign.spectator-layout .table-instruction { min-height: 22px; margin: 0; font-size: .72rem; }
   .table-redesign.spectator-layout .self-seat { min-width: 194px; padding: 4px 8px 4px 4px; column-gap: 7px; }
-  .table-redesign.has-spectator-chat .my-area:not(.watching) { padding-top: 7px; }
-  .table-redesign.has-spectator-chat .player-spectator-stack { gap: 4px; }
-  .table-redesign.has-spectator-chat .player-spectator-stack > .sponsor-credit { padding: 1px 4px; font-size: .67rem; }
+  .table-redesign.has-player-stack .my-area:not(.watching) { padding-top: 7px; }
+  .table-redesign.has-player-stack .player-spectator-stack { gap: 4px; }
+  .table-redesign.has-player-stack .player-spectator-stack > .sponsor-credit { padding: 1px 4px; font-size: .67rem; }
 }
 @media (max-height: 640px) and (max-width: 699px) {
   .table-redesign.spectator-layout { grid-template-rows: auto minmax(210px, 1fr) auto; }
