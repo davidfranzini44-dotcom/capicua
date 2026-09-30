@@ -524,6 +524,12 @@ const dict = {
       forfeitGo: 'Abandonar y unirme', keepPlaying: 'Seguir aquí',
       areFriends: 'Son amigos', requestPending: 'Solicitud enviada', acceptRequest: 'Aceptar solicitud', addFriend: 'Agregar amigo',
     },
+    inbox: {
+      title: 'Buzón', subtitle: 'Todo lo que espera por ti', all: 'Todo', social: 'Social', tournaments: 'Torneos', rewards: 'Premios',
+      empty: 'Todo al día', emptySub: 'Las invitaciones, solicitudes y premios aparecerán aquí.',
+      dailyTitle: 'Regalo diario disponible', dailySub: 'Tus chelitos de hoy están listos.', chestReady: 'Listo para abrir',
+      claim: 'Reclamar', open: 'Abrir', tournament: 'Torneo', free: 'Gratis',
+    },
     teams: {
       switch: 'Cambiar de equipo', full: 'El otro equipo está lleno. El anfitrión puede cambiarlos.',
       arrange: 'Organizar equipos', shuffle: 'Equipos al azar', done: 'Listo',
@@ -1316,6 +1322,12 @@ const dict = {
       forfeitWarn: "If you accept, you leave it: a bot plays your seat to the end, you lose {xp} XP and you can't come back.",
       forfeitGo: 'Leave and join', keepPlaying: 'Stay here',
       areFriends: 'Friends', requestPending: 'Request sent', acceptRequest: 'Accept request', addFriend: 'Add friend',
+    },
+    inbox: {
+      title: 'Inbox', subtitle: 'Everything waiting for you', all: 'All', social: 'Social', tournaments: 'Events', rewards: 'Rewards',
+      empty: 'All caught up', emptySub: 'Invitations, requests and rewards will appear here.',
+      dailyTitle: 'Daily gift available', dailySub: "Today's chips are ready.", chestReady: 'Ready to open',
+      claim: 'Collect', open: 'Open', tournament: 'Tournament', free: 'Free',
     },
     teams: {
       switch: 'Switch teams', full: 'The other team is full. The host can swap you.',

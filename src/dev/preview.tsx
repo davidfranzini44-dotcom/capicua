@@ -52,6 +52,7 @@ import '../ui/share.css';
 import { ChatCircleDotsIcon } from '@phosphor-icons/react';
 import type { SponsorReport, TableSponsor } from '../lib/sponsor';
 import { SpectatorChatDock, SpectatorChatPreview } from '../ui/SpectatorChat';
+import { InboxSheet, type InboxSummary } from '../ui/Inbox';
 
 /** A made-up sponsor logo (transparent SVG) for the sponsored-table previews. */
 const FAKE_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 200">
@@ -96,6 +97,11 @@ const sampleInvite: Invite = {
   id: 'i1', from_user: 'f-yoka', to_user: 'me', room_id: 'r9', tournament_id: null, status: 'sent',
   expires_at: new Date(Date.now() + 600_000).toISOString(),
   details: { kind: 'room', from: 'Yokasta', mode: '2v2', stake: 500, code: 'QWER', target: 150 },
+};
+const sampleTournamentInvite: Invite = {
+  id: 'it1', from_user: 'f-robert', to_user: 'me', room_id: null, tournament_id: 'tour-1', status: 'sent',
+  expires_at: new Date(Date.now() + 600_000).toISOString(),
+  details: { kind: 'tournament', from: 'Robert', mode: '2v2', stake: 1000, code: 'PAREJ', name: 'Parejas del viernes' },
 };
 const fakeSocial = (over: Partial<Social> = {}): Social => ({
   uid: 'me', friends: sampleFriends, invites: [], sent: [{ ...sampleInvite, id: 'i2', from_user: 'me', to_user: 'f-robert', room_id: 'r1', status: 'sent' }],
@@ -300,6 +306,18 @@ function SpectatorChatTablePreview({ player = false, sponsored = false, empty = 
 
 function Screen({ s }: { s: string }) {
   const noop = () => {};
+  if (s === 'inbox') {
+    const social = fakeSocial({ invites: [sampleInvite, sampleTournamentInvite] });
+    const missions = fakeMissions();
+    const readyChest = { id: 'ready', slot: 0, kind: 'gold' as const, unlock_at: new Date(Date.now() - 60_000).toISOString(), game_id: null };
+    const summary: InboxSummary = {
+      incoming: sampleFriends.filter((f) => f.state === 'incoming'), roomInvites: [sampleInvite], tournamentInvites: [sampleTournamentInvite],
+      missionRewards: missions.missions.filter(missions.ready), readyChests: [readyChest], dailyReady: true, count: 6,
+    };
+    return <SocialContext.Provider value={social}><div className="game-shell"><main className="game-body" /></div><InboxSheet
+      summary={summary} missions={missions} social={social} onClose={noop} onAcceptInvite={async () => {}}
+      onOpenDaily={noop} onOpenChests={noop} onChestChanged={noop} /></SocialContext.Provider>;
+  }
   if (s === 'fx-sounds') return <Soundboard />;
   if (s === 'board-motion') return <BoardDesignPreview auto />;
   if (s === 'board-design') return <BoardDesignPreview />;

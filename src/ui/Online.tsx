@@ -29,6 +29,8 @@ import { LookPicker } from './LookPicker';
 import { ProfileCard } from './ProfileCard';
 import { LookContext, useLookState } from '../lib/look';
 import { SocialContext, useSocial, useSocialState, type Friend } from '../lib/social';
+import type { Invite } from '../lib/social';
+import { InboxSheet, useInboxSummary } from './Inbox';
 
 const AdminScreen = lazy(() => import('./Admin').then((m) => ({ default: m.AdminScreen })));
 
@@ -316,7 +318,7 @@ interface MainProps {
   onWatch?: (friend: Friend) => void;
 }
 
-type SheetState = null | 'settings' | 'coins' | 'code' | 'install' | 'push' | 'missions' | 'arcade' | { mode: Mode };
+type SheetState = null | 'settings' | 'coins' | 'code' | 'install' | 'push' | 'missions' | 'arcade' | 'inbox' | { mode: Mode };
 
 /** How long someone looks at the home screen before we suggest installing. */
 const INSTALL_NUDGE_MS = 8000;
@@ -339,6 +341,8 @@ export function MainScreen(p: MainProps) {
   const signedIn = !!p.profile;
   const { chests, reload: reloadChests } = useChests(signedIn && !p.guest ? p.profile!.id : undefined);
   const missions = useMissions(signedIn && p.online);
+  const dailyReady = signedIn && !p.guest && canClaimDaily(p.profile);
+  const inbox = useInboxSummary(social, missions, chests, dailyReady);
   const push = usePush(signedIn && p.online ? p.profile!.id : undefined, lang);
   const install = useInstall();
 
@@ -390,13 +394,30 @@ export function MainScreen(p: MainProps) {
     if (e) throw new ApiError('link_failed');
   });
   const signInOr = (fn: () => void) => () => (signedIn ? fn() : p.onSignIn?.());
+  const acceptInboxInvite = async (inv: Invite, forfeit = false): Promise<'in_game' | void> => {
+    if (!social) return;
+    if (inv.tournament_id) {
+      const result = await social.answer(inv, true);
+      if (result.tournamentId) {
+        setSheet(null);
+        p.onTournament?.(result.tournamentId);
+      }
+      return;
+    }
+    if (!inv.room_id) return;
+    const joined = await joinInvitedRoom(inv.room_id, forfeit);
+    if (joined === 'in_game') return 'in_game';
+    social.answer(inv, true).catch(() => {});
+    setSheet(null);
+    p.onRoom?.(joined.roomId);
+  };
 
   let body: ReactNode;
   if (p.tab === 'home') {
     body = (
       <HomeTab
         profile={p.profile} guest={p.guest} online={p.online}
-        dailyReady={signedIn && !p.guest && canClaimDaily(p.profile)}
+        dailyReady={dailyReady}
         activeRoom={activeRoom}
         notice={error}
         onResume={() => activeRoom && p.onRoom?.(activeRoom)}
@@ -450,8 +471,8 @@ export function MainScreen(p: MainProps) {
     <GameShell
       tab={p.tab}
       onTab={p.onTab}
-      badges={{ tables: social?.friends.filter((f) => f.state === 'incoming').length ?? 0, home: p.tab === 'home' ? 0 : missions.claimable }}
-      top={<TopBar profile={p.profile} onSettings={() => setSheet('settings')} onCoins={() => setSheet('coins')} onLevel={() => p.onTab('profile')} onSignIn={p.online ? p.onSignIn : undefined} />}
+      badges={{ home: p.tab === 'home' ? 0 : missions.claimable }}
+      top={<TopBar profile={p.profile} onSettings={() => setSheet('settings')} onInbox={signedIn && social ? () => setSheet('inbox') : undefined} inboxCount={inbox.count} onCoins={() => setSheet('coins')} onLevel={() => p.onTab('profile')} onSignIn={p.online ? p.onSignIn : undefined} />}
     >
       {body}
       {p.tab !== 'home' && error && <p className={error === t.shop.thanks ? 'note-ok center' : 'error'}>{error}</p>}
@@ -468,6 +489,12 @@ export function MainScreen(p: MainProps) {
         )} />
       )}
       {sheet === 'missions' && <MissionsSheet m={missions} onClose={() => setSheet(null)} onChest={reloadChests} />}
+      {sheet === 'inbox' && social && (
+        <InboxSheet summary={inbox} missions={missions} social={social} onClose={() => setSheet(null)}
+          onAcceptInvite={acceptInboxInvite} onChestChanged={reloadChests}
+          onOpenDaily={() => setSheet('coins')}
+          onOpenChests={() => { setSheet(null); p.onTab('home'); }} />
+      )}
       {sheet === 'coins' && p.profile && (
         <CoinsSheet profile={p.profile} guest={p.guest} onClose={() => setSheet(null)} onError={setError} onLinkGoogle={linkGoogle} />
       )}

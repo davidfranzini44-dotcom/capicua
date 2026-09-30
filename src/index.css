@@ -661,7 +661,7 @@ button:disabled { cursor: default; }
 
 /* Top bar: settings + level pill + coin pill */
 .top-bar {
-  display: flex; align-items: center; gap: 14px;
+  display: flex; align-items: center; gap: 9px;
   padding: calc(8px + env(safe-area-inset-top)) 12px 8px 10px;
   background: linear-gradient(#17497d, #0d2c4f);
   box-shadow: 0 3px 0 rgba(0,0,0,.3);
@@ -672,7 +672,17 @@ button:disabled { cursor: default; }
   background: linear-gradient(#5db2ff, #1f6fd1);
   box-shadow: 0 3px 0 #164f96, inset 0 2px 0 rgba(255,255,255,.45);
 }
-.tb-gear:active, .tb-pill:active { transform: translateY(2px); }
+.tb-inbox {
+  width: 40px; height: 40px; flex: none; display: grid; place-items: center; position: relative;
+  border: 0; border-radius: 12px; color: #fff; font-size: 1.35rem;
+  background: linear-gradient(#31c987,#128555); box-shadow: 0 3px 0 #08603b, inset 0 2px 0 rgba(255,255,255,.35);
+}
+.tb-inbox svg { width: 22px; height: 22px; }
+.tb-inbox-count {
+  position: absolute; top: -5px; right: -5px; min-width: 19px; height: 19px; display: grid; place-items: center;
+  padding: 0 4px; border: 2px solid #123a62; border-radius: 10px; color: #fff; background: #e9414d; font: 900 .64rem var(--font);
+}
+.tb-gear:active, .tb-inbox:active, .tb-pill:active { transform: translateY(2px); }
 .tb-pill {
   flex: 1; min-width: 0; height: 32px; position: relative;
   display: flex; align-items: center; gap: 6px;

@@ -11,6 +11,7 @@ import type { Profile } from '../lib/supabase';
 import { isSoundOn, setSoundOn } from '../quickchat';
 import { Avatar } from './common';
 import { TileShape } from './Tile';
+import { EnvelopeSimpleIcon } from '@phosphor-icons/react';
 
 export type Tab = 'shop' | 'profile' | 'home' | 'tables' | 'ranking';
 
@@ -45,8 +46,9 @@ export function GameShell({ tab, onTab, top, children, badges }: {
   );
 }
 
-export function TopBar({ profile, onSettings, onCoins, onLevel, onSignIn }: {
+export function TopBar({ profile, onSettings, onCoins, onLevel, onSignIn, onInbox, inboxCount = 0 }: {
   profile: Profile | null; onSettings: () => void; onCoins: () => void; onLevel: () => void; onSignIn?: () => void;
+  onInbox?: () => void; inboxCount?: number;
 }) {
   const { t } = useI18n();
   const level = profile ? levelFromXp(profile.xp) : 1;
@@ -55,6 +57,10 @@ export function TopBar({ profile, onSettings, onCoins, onLevel, onSignIn }: {
   return (
     <header className="top-bar">
       <button className="tb-gear" onClick={onSettings} aria-label={t.settings}>⚙️</button>
+      {profile && onInbox && <button className="tb-inbox" onClick={onInbox} aria-label={t.inbox.title}>
+        <EnvelopeSimpleIcon weight="fill" aria-hidden />
+        {inboxCount > 0 && <b className="tb-inbox-count">{inboxCount > 9 ? '9+' : inboxCount}</b>}
+      </button>}
       {profile ? (
         <>
           <button className="tb-pill level-pill" onClick={onLevel}>
