@@ -705,7 +705,7 @@ function Scores({ view, mySeat, name, colorOf, pot, watchers, watcherCount, watc
   const middle = (
     <div className="target">
       {t.to} {view.rules.target}
-      <small>{t.hand} {view.handNo}{(seen || onWatchersTap) ? (
+      <small>{t.hand} {view.handNo}{seen > 0 ? (
         onWatchersTap ? (
           <button type="button" className={`watchers watchers-btn ${seen ? '' : 'none'}`} onClick={onWatchersTap}
             aria-label={`${t.spec.title}: ${seen}${watchers?.length ? ` (${watchers.join(', ')})` : ''}${unread ? ` · ${unread}` : ''}`}>
