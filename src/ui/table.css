@@ -310,7 +310,7 @@
 @media (max-width: 699px) {
   .table-redesign .my-area:not(.watching) {
     display: grid; grid-template-columns: var(--tool-w) minmax(0, 1fr) var(--tool-w); align-items: center; column-gap: 8px;
-    --tool-w: 68px; --tool-h: 52px;
+    --tool-w: 68px; --tool-h: 52px; --tool-circle: min(var(--tool-w), var(--tool-h));
   }
   .table-redesign .my-area:not(.watching) > .hand { grid-column: 1 / -1; }
   .table-redesign .my-area:not(.watching) > .table-instruction {
@@ -323,9 +323,9 @@
   .table-redesign .my-area:not(.watching) .table-tools > .voice-pill,
   .table-redesign .my-area:not(.watching) .table-tools > .table-chat-button,
   .table-redesign .my-area:not(.watching) .table-tools > .practice-voice {
-    width: var(--tool-w); min-width: 0; height: var(--tool-h); min-height: var(--tool-h); margin-top: 8px; padding: 4px 2px;
+    width: var(--tool-circle); min-width: var(--tool-circle); height: var(--tool-circle); min-height: var(--tool-circle); margin-top: 8px; padding: 4px 2px;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-    border-radius: 16px; border-width: 1px; font-size: 10.5px; font-weight: 800; line-height: 1.1;
+    justify-self: center; border-radius: 50%; border-width: 1px; font-size: 10px; font-weight: 800; line-height: 1.05;
     white-space: normal; text-align: center; letter-spacing: 0;
   }
   .table-redesign .my-area:not(.watching) .table-tools > * svg { width: 22px; height: 22px; flex: none; }
