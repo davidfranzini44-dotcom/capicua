@@ -4,7 +4,7 @@
 // second phone that TikTok LIVE screen-shares. Nobody's fichas ever reach this screen. At a
 // private table, the voices of the players who put theirs on air can be heard too.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChatCircleDotsIcon, SpeakerHighIcon } from '@phosphor-icons/react';
+import { SpeakerHighIcon } from '@phosphor-icons/react';
 import type { Seat } from '../../supabase/functions/_shared/domino.ts';
 import type { PublicState } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
@@ -19,6 +19,7 @@ import { airVoices } from '../lib/voiceAccess';
 import { allWatchers, useSpectatorChat } from '../lib/watch';
 import { ListenButton, SpectatorsSheet, useSpectatorToast, useUnread } from './Spectators';
 import { TableView, type ChatBubbles } from './TableView';
+import { SpectatorChatDock } from './SpectatorChat';
 import './share.css';
 
 /** Set while the guest session this screen made is in use, so leaving can sign it out again. */
@@ -194,8 +195,9 @@ function SharedTable({ roomId, uid, token, onLeave }: { roomId: string; uid: str
   } : null), [token, endsAt, gameId, focus]);
   const specChat = useSpectatorChat(roomId);
   const [specOpen, setSpecOpen] = useState(false);
-  const specToast = useSpectatorToast(specChat.messages, uid, true);
-  const specUnread = useUnread(specChat.messages, uid, specOpen);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const specToast = useSpectatorToast(specChat.messages, uid, chatCollapsed);
+  const specUnread = useUnread(specChat.messages, uid, specOpen || !chatCollapsed);
   // Writing to the table takes a name; a guest session made just to watch reads along.
   const [canWrite, setCanWrite] = useState(false);
   useEffect(() => {
@@ -211,9 +213,13 @@ function SharedTable({ roomId, uid, token, onLeave }: { roomId: string; uid: str
     <>
       <SharedTableView board={board} status={r.status === 'live' ? 'live' : 'reconnecting'} endsAt={Date.parse(info.ends_at)}
         watchers={watchers.list.map((w) => w.name)} watcherCount={watchers.count} unread={specUnread} notice={specToast}
-        onWatchersTap={() => setSpecOpen(true)} onLeave={onLeave} onMessage={() => setSpecOpen(true)}
+        onWatchersTap={() => setSpecOpen(true)} onLeave={onLeave}
         onSponsorTap={board.sponsor ? () => openSponsor(board.sponsor!, gameId ?? undefined) : undefined}
         speaking={speaking} listen={onAir.length > 0 || voice.status === 'on' ? <ListenButton voice={voice} /> : undefined}
+        spectatorChat={<SpectatorChatDock watchers={watchers.list} count={watchers.count} uid={uid} messages={specChat.messages}
+          onSend={canWrite ? specChat.send : undefined} readOnlyNote={canWrite ? undefined : t.share.readOnly}
+          collapsed={chatCollapsed} unread={specUnread} onCollapsedChange={setChatCollapsed} onOpenWatchers={() => setSpecOpen(true)}
+          onShare={reshare && board.view.winner === null ? () => setShareOpen(true) : undefined} />}
         onShare={reshare && board.view.winner === null ? () => setShareOpen(true) : undefined} />
       {specOpen && (
         <SpectatorsSheet watchers={watchers.list} count={watchers.count} uid={uid} messages={specChat.messages}
@@ -226,12 +232,12 @@ function SharedTable({ roomId, uid, token, onLeave }: { roomId: string; uid: str
 }
 
 /** The normal spectator table for a shared match (also what the design preview draws). */
-export function SharedTableView({ board, status, endsAt, watchers, watcherCount, unread = 0, notice, onWatchersTap, onLeave, onMessage, onSponsorTap, speaking, listen, onShare }: {
+export function SharedTableView({ board, status, endsAt, watchers, watcherCount, unread = 0, notice, onWatchersTap, onLeave, onSponsorTap, speaking, listen, spectatorChat, onShare }: {
   board: SharedBoard; status: 'live' | 'reconnecting'; endsAt: number | null;
   watchers: string[]; watcherCount: number; unread?: number; notice?: string | null;
-  onWatchersTap: () => void; onLeave: () => void; onMessage: () => void; onSponsorTap?: () => void;
+  onWatchersTap: () => void; onLeave: () => void; onSponsorTap?: () => void;
   /** Voice by link: who is talking, and the listen button (private tables with a voice on air). */
-  speaking?: Set<Seat>; listen?: ReactNode;
+  speaking?: Set<Seat>; listen?: ReactNode; spectatorChat?: ReactNode;
   /** Pass the link on. */
   onShare?: () => void;
 }) {
@@ -247,19 +253,13 @@ export function SharedTableView({ board, status, endsAt, watchers, watcherCount,
       onPlay={noop} onNextHand={noop} onExit={onLeave} chat={board.chat} onChat={noop} away={board.away}
       pot={board.pot} turnDeadline={board.turnDeadline} sponsor={board.sponsor} onSponsorTap={onSponsorTap}
       notice={hostAway ?? notice} speaking={speaking} onShare={onShare}
+      spectatorChat={spectatorChat}
       watchers={watchers} watcherCount={watcherCount} onWatchersTap={onWatchersTap} watchersUnread={unread}
       resultNote={closesIn ? <p className="share-closes" role="timer">{t.share.closesIn.replace('{t}', closesIn)}</p> : undefined}
       endActions={<button className="btn primary" onClick={onLeave}>{t.share.goHome}</button>}
       watching={{
         name: board.names[focus], onLeave, status,
-        tools: (
-          <>
-            {listen}
-            <button className="btn ghost watch-msg" onClick={onMessage}>
-              <ChatCircleDotsIcon size={20} weight="fill" />{t.spec.message}{unread > 0 && <i className="watchers-dot" aria-hidden />}
-            </button>
-          </>
-        ),
+        tools: listen,
       }}
     />
   );
@@ -273,6 +273,22 @@ async function enterFullscreen() {
   const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
   if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: 'hide' });
   else await el.webkitRequestFullscreen?.();
+}
+
+type LockableOrientation = ScreenOrientation & {
+  lock?: (orientation: 'portrait-primary') => Promise<void>;
+  unlock?: () => void;
+};
+
+/** Fullscreen/PWA browsers may lock the capture phone upright. CSS below is the fallback. */
+async function lockPortrait() {
+  const orientation = typeof screen !== 'undefined' ? screen.orientation as LockableOrientation | undefined : undefined;
+  if (orientation?.lock) await orientation.lock('portrait-primary');
+}
+
+function unlockPortrait() {
+  const orientation = typeof screen !== 'undefined' ? screen.orientation as LockableOrientation | undefined : undefined;
+  orientation?.unlock?.();
 }
 
 /** Keep the screen on while `on` (asked again whenever the page comes back). */
@@ -327,8 +343,12 @@ function BroadcastScreen({ roomId, uid, onLeave }: { roomId: string; uid: string
     if (full) {
       try { await enterFullscreen(); } catch { setFsFailed(true); }
     }
+    // Orientation lock is allowed mainly in fullscreen or an installed PWA. Failure is
+    // harmless: BroadcastCanvas still keeps the content inside a centered portrait stage.
+    try { await lockPortrait(); } catch { /* browser/TikTok controls the orientation */ }
     setStarted(true);
   };
+  useEffect(() => () => unlockPortrait(), []);
   const castVoice: CastVoice | undefined = info && voice.status !== 'unavailable'
     ? { isPrivate, names: board ? onAir.map((s) => board.names[s]).filter(Boolean) : [], on: voiceOn, set: setCastVoice } : undefined;
   if (!started) {
@@ -404,6 +424,7 @@ export function BroadcastCanvas({ board, overlay, onLeave, speaking, voice }: {
       onPointerDown={() => { cancelHold(); hold.current = setTimeout(() => setExitOpen(true), 900); }}
       onPointerUp={cancelHold} onPointerCancel={cancelHold} onPointerLeave={cancelHold}
       onContextMenu={(e) => e.preventDefault()}>
+      <div className="broadcast-stage">
       {board && overlay !== 'ended' && (
         <TableView presentation="broadcast"
           view={board.view} myHand={[]} mySeat={board.focus} names={board.names} levels={board.levels} avatars={board.avatars}
@@ -433,6 +454,7 @@ export function BroadcastCanvas({ board, overlay, onLeave, speaking, voice }: {
         </div>
       )}
       <span className="sr-only">{t.share.castExitHint}</span>
+      </div>
     </div>
   );
 }

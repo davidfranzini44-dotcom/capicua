@@ -1,7 +1,6 @@
 // Watching a friend's game — or any match of a tournament I'm in: the board from a
 // player's seat, their hand face down, nobody's tiles revealed. Loaded on demand.
 import { useEffect, useState } from 'react';
-import { ChatCircleDotsIcon } from '@phosphor-icons/react';
 import type { Seat } from '../../supabase/functions/_shared/domino.ts';
 import { useI18n } from '../i18n';
 import { ApiError, supabase } from '../lib/supabase';
@@ -14,6 +13,7 @@ import { ListenButton, SpectatorsSheet, useSpectatorToast, useUnread } from './S
 import { openSponsor, useSponsor } from '../lib/sponsor';
 import { useShareLink } from '../lib/useShareLink';
 import { ShareMatchSheet } from './ShareMatchSheet';
+import { SpectatorChatDock } from './SpectatorChat';
 
 const WATCH_ERRORS = ['not_friends', 'friend_not_playing', 'already_in_room', 'not_in_tournament', 'not_a_tournament_match'];
 
@@ -69,8 +69,9 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
   const watcherList = useWatcherList(roomId);
   const specChat = useSpectatorChat(roomId);
   const [specOpen, setSpecOpen] = useState(false);
-  const specToast = useSpectatorToast(specChat.messages, uid, true);
-  const specUnread = useUnread(specChat.messages, uid, specOpen);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const specToast = useSpectatorToast(specChat.messages, uid, chatCollapsed);
+  const specUnread = useUnread(specChat.messages, uid, specOpen || !chatCollapsed);
   // A friend watching shares the match too: their own link, shown from their friend's seat.
   const share = useShareLink(roomId, r.game?.id ?? null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -134,14 +135,12 @@ function WatchTable({ roomId, friendId, friendName, uid, onExit }: {
       onWatchersTap={() => setSpecOpen(true)}
       watchersUnread={specUnread}
       onShare={canShare ? () => setShareOpen(true) : undefined}
+      spectatorChat={<SpectatorChatDock watchers={watcherList} uid={uid} messages={specChat.messages} onSend={specChat.send}
+        collapsed={chatCollapsed} unread={specUnread} onCollapsedChange={setChatCollapsed} onOpenWatchers={() => setSpecOpen(true)}
+        onShare={canShare ? () => setShareOpen(true) : undefined} />}
       watching={{
         name: friendName, onLeave: leave,
-        tools: (
-          <>
-            <ListenButton voice={voice} />
-            <button className="btn ghost watch-msg" onClick={() => setSpecOpen(true)}><ChatCircleDotsIcon size={20} weight="fill" />{t.spec.message}{specUnread > 0 && <i className="watchers-dot" aria-hidden />}</button>
-          </>
-        ),
+        tools: <ListenButton voice={voice} />,
       }}
     />
     {specOpen && (

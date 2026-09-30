@@ -51,6 +51,7 @@ import { BroadcastCanvas, BroadcastSetup, ShareProblem, SharedTableView, type Sh
 import '../ui/share.css';
 import { ChatCircleDotsIcon } from '@phosphor-icons/react';
 import type { SponsorReport, TableSponsor } from '../lib/sponsor';
+import { SpectatorChatDock, SpectatorChatPreview } from '../ui/SpectatorChat';
 
 /** A made-up sponsor logo (transparent SVG) for the sponsored-table previews. */
 const FAKE_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 200">
@@ -251,6 +252,44 @@ function Soundboard() {
   </main>;
 }
 
+const previewWatchers = [
+  { id: 'f-papo', name: 'Papo' }, { id: 'f-chelo', name: 'Chelo' }, { id: 'me', name: 'Wilfri' },
+];
+const initialSpectatorMessages = [
+  { id: 1, user_id: 'f-papo', name: 'Papo', body: '¡Qué tranque tan bueno!', created_at: new Date(Date.now() - 4 * 60_000).toISOString() },
+  { id: 2, user_id: 'f-chelo', name: 'Chelo', body: 'Robert está en llamas hoy 🔥', created_at: new Date(Date.now() - 2 * 60_000).toISOString() },
+  { id: 3, user_id: 'me', name: 'Wilfri', body: 'Dale que ya casi', created_at: new Date().toISOString() },
+];
+
+function SpectatorChatTablePreview({ player = false, sponsored = false }: { player?: boolean; sponsored?: boolean }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [messages, setMessages] = useState(initialSpectatorMessages);
+  const game = useMemo(() => {
+    let next = newGame(() => 0.37, publicRules('2v2'));
+    for (let i = 0; i < 14 && !next.handResult; i++) next = applyMove(next, forcedMove(next, next.turn) ?? chooseMove(next, next.turn, () => 0.5));
+    return next;
+  }, []);
+  const view = { ...publicState(game), turn: 2 as Seat };
+  const chat = player
+    ? <SpectatorChatPreview count={7} uid="me" messages={messages} collapsed={collapsed} unread={2}
+        onCollapsedChange={setCollapsed} onOpen={() => {}} onShare={() => {}} />
+    : <SpectatorChatDock watchers={previewWatchers} count={7} uid="me" messages={messages} collapsed={collapsed} unread={2}
+        onCollapsedChange={setCollapsed} onOpenWatchers={() => {}} onShare={() => {}}
+        onSend={async (body) => setMessages((all) => [...all, { id: all.length + 1, user_id: 'me', name: 'Wilfri', body, created_at: new Date().toISOString() }])} />;
+  return (
+    <SocialContext.Provider value={fakeSocial()}>
+      <TableView view={view} myHand={player ? game.hands[0] : []} mySeat={player ? 0 : 2}
+        names={player ? ['Wilfri', 'Yokasta', 'Robert', 'Kirsy'] : ['Wilfri', 'Yokasta', 'Robert', 'Kirsy']}
+        avatars={[face('#3b7dd8'), face('#c0487a'), null, face('#2d8a5f')]}
+        onPlay={() => {}} onNextHand={() => {}} onExit={() => {}} chat={{}} onChat={() => {}} endActions={null}
+        turnDeadline={Date.now() + 9000} watchers={previewWatchers.map((w) => w.name)} watcherCount={7}
+        onWatchersTap={() => {}} watchersUnread={2} onShare={() => {}} spectatorChat={chat}
+        sponsor={sponsored ? { ...FAKE_SPONSOR, id: 'sp-spectator-chat-preview-v5', tileUrl: FAKE_TILE_LOGO } : undefined} onSponsorTap={sponsored ? () => {} : undefined}
+        watching={player ? undefined : { name: 'Robert', onLeave: () => {}, tools: <ListenButton voice={fakeVoice({ status: 'on' })} /> }} />
+    </SocialContext.Provider>
+  );
+}
+
 function Screen({ s }: { s: string }) {
   const noop = () => {};
   if (s === 'fx-sounds') return <Soundboard />;
@@ -258,6 +297,8 @@ function Screen({ s }: { s: string }) {
   if (s === 'board-design') return <BoardDesignPreview />;
   if (s === 'board-focus') return <BoardDesignPreview focus />;
   if (s.startsWith('arcade')) return <ArcadePreview s={s} />;
+  if (s === 'spectator-chat' || s === 'spectator-chat-sponsored') return <SpectatorChatTablePreview sponsored={s.endsWith('sponsored')} />;
+  if (s === 'player-spectator-chat') return <SpectatorChatTablePreview player sponsored />;
   if (s.startsWith('main')) {
     // main | main-guest | main-out (signed out) | main-offline (no Supabase) | main-<tab>
     const signedOut = s === 'main-out' || s === 'main-offline';
@@ -808,7 +849,7 @@ function Screen({ s }: { s: string }) {
     const voiced = s === 'shared-watch-voice';
     return (
       <SharedTableView board={board} status={s === 'shared-reconnecting' ? 'reconnecting' : 'live'} endsAt={Date.now() + 102_000}
-        watchers={['Nadia', '3 con enlace']} watcherCount={4} unread={1} onWatchersTap={noop} onLeave={noop} onMessage={noop}
+        watchers={['Nadia', '3 con enlace']} watcherCount={4} unread={1} onWatchersTap={noop} onLeave={noop}
         speaking={voiced ? new Set<Seat>([2]) : undefined} listen={voiced ? <ListenButton voice={fakeVoice({ status: 'on' })} /> : undefined}
         onShare={noop} />
     );

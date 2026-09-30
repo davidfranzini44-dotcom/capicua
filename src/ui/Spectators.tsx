@@ -1,15 +1,18 @@
 // Spectators at a table: who's watching (and listening), what they say, and —
 // for spectators — a way to say something and to listen to the players' voice.
 // Players choose whether spectators may hear them and whether to see their messages.
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { CircleNotchIcon, HeadphonesIcon, SpeakerHighIcon, WarningCircleIcon } from '@phosphor-icons/react';
 import { useI18n } from '../i18n';
 import { supabase } from '../lib/supabase';
 import type { Voice } from '../lib/useVoice';
 import type { SpectatorMessage, Watcher } from '../lib/watch';
+import { usePlayerStats, type PlayerStats } from '../lib/useRoom';
 import { useErrorText } from './common';
 import { AirRow, type AirControl } from './ShareMatchSheet';
 import { Sheet } from './MainScreen';
+import { ProfileCard } from './ProfileCard';
+import { SpectatorMessageRow } from './SpectatorChat';
 
 /** How long a new spectator message shows in the status line. */
 const TOAST_MS = 6000;
@@ -78,7 +81,10 @@ export function SpectatorsSheet({ watchers, count, uid, listeners, messages, onS
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
+  const authorIds = useMemo(() => [...new Set(messages.map((m) => m.user_id).filter((id) => id && !id.startsWith('link-')))], [messages]);
+  const profiles = usePlayerStats(authorIds);
   useEffect(() => { list.current?.scrollTo({ top: list.current.scrollHeight }); }, [messages.length]);
 
   const send = async (e: FormEvent) => {
@@ -127,7 +133,7 @@ export function SpectatorsSheet({ watchers, count, uid, listeners, messages, onS
       <span className="label">{t.spec.messages}</span>
       <div className="spec-messages" ref={list}>
         {messages.length === 0 ? <p className="fine">{t.spec.noMessages}</p> : messages.map((m) => (
-          <p key={m.id} className={m.user_id === uid ? 'mine' : ''}><b>{m.name}</b> {m.body}</p>
+          <SpectatorMessageRow key={m.id} message={m} mine={m.user_id === uid} profile={profiles[m.user_id]} onAuthor={setProfileId} />
         ))}
       </div>
       {!onSend && readOnlyNote && <p className="fine left">{readOnlyNote}</p>}
@@ -138,6 +144,12 @@ export function SpectatorsSheet({ watchers, count, uid, listeners, messages, onS
         </form>
       )}
       {error && <p className="error">{error}</p>}
+      {profileId && (() => {
+        const m = messages.find((x) => x.user_id === profileId);
+        if (!m) return null;
+        const fallback: PlayerStats = { id: m.user_id, display_name: m.name, avatar_url: null, xp: 0, games: 0, wins: 0, capicuas: 0, pollonas: 0, biggest_pot: 0, tournaments_won: 0 };
+        return <ProfileCard stats={profiles[profileId] ?? fallback} loading={!profiles[profileId]} onClose={() => setProfileId(null)} />;
+      })()}
     </Sheet>
   );
 }

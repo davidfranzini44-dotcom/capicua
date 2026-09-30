@@ -27,6 +27,7 @@ import { FinalTrophy } from './Trophies';
 import { useTournamentMatch } from '../lib/useTournament';
 import { TableView } from './TableView';
 import { VoiceButton } from './VoiceButton';
+import { SpectatorChatPreview } from './SpectatorChat';
 
 const SIDE_COLORS = ['var(--us)', '#6fb7ff', 'var(--them)', '#c79bff'];
 /** Games whose "fair play" reminder this device already showed. */
@@ -516,8 +517,9 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
   const share = useShareLink(room.id, game.id);
   const [shareOpen, setShareOpen] = useState(false);
   const [showSpecMessages, setShowSpecMessages] = useShowSpectatorMessages();
-  const specToast = useSpectatorToast(specChat.messages, uid, showSpecMessages);
-  const specUnread = useUnread(specChat.messages, uid, specOpen);
+  const [specCollapsed, setSpecCollapsed] = useState(false);
+  const specToast = useSpectatorToast(specChat.messages, uid, showSpecMessages && specCollapsed);
+  const specUnread = useUnread(specChat.messages, uid, specOpen || (showSpecMessages && !specCollapsed));
   const sponsor = useSponsor(game.sponsor_id);
   // Messages at the table fade on their own (they show under the hand, not over the board).
   useEffect(() => {
@@ -753,6 +755,9 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
         watchers={watchers}
         watcherCount={watcherCount}
         onShare={canShare ? () => setShareOpen(true) : undefined}
+        spectatorChat={showSpecMessages && (watcherCount > 0 || specChat.messages.length > 0) ? <SpectatorChatPreview count={watcherCount} uid={uid} messages={specChat.messages}
+          collapsed={specCollapsed} unread={specUnread} onCollapsedChange={setSpecCollapsed} onOpen={() => setSpecOpen(true)}
+          onShare={canShare ? () => setShareOpen(true) : undefined} /> : undefined}
         showXp
       />
       {card && cardStats && (
@@ -774,7 +779,7 @@ export function OnlineTable({ r, uid, voice, voiceControl, onLeave, onForfeit, o
       {specOpen && (
         <SpectatorsSheet watchers={watcherList} count={watcherCount} uid={uid} listeners={voice?.listeners} messages={specChat.messages}
           onShare={canShare ? () => { setSpecOpen(false); setShareOpen(true); } : undefined}
-          player={hear ? { hear: hear.on, onHear: hear.set, showMessages: showSpecMessages, onShowMessages: setShowSpecMessages, air } : undefined}
+          player={hear ? { hear: hear.on, onHear: hear.set, showMessages: showSpecMessages, onShowMessages: (on) => { setShowSpecMessages(on); if (on) setSpecCollapsed(false); }, air } : undefined}
           onClose={() => setSpecOpen(false)} />
       )}
       {shareOpen && <ShareMatchSheet share={share} air={air} onClose={() => setShareOpen(false)} />}

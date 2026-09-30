@@ -1,0 +1,100 @@
+.spectator-chat-dock,
+.spectator-chat-preview {
+  width: 100%; min-width: 0; color: var(--ivory); background: #082f25;
+  border: 1px solid #3a755d; border-radius: 18px; box-shadow: inset 0 1px #ffffff0d;
+}
+.spectator-chat-dock { padding: 9px; display: flex; flex-direction: column; gap: 6px; }
+.spectator-chat-head, .spectator-chat-preview > header { display: flex; align-items: center; gap: 8px; }
+.spectator-chat-title, .spectator-preview-title, .spectator-presence {
+  min-width: 0; display: flex; align-items: center; gap: 7px; padding: 0; border: 0; color: inherit; background: none;
+}
+.spectator-chat-title { flex: 1; font-size: .94rem; text-align: left; }
+.spectator-chat-title:disabled, .spectator-presence:disabled { opacity: 1; cursor: default; }
+.spectator-chat-collapse {
+  display: grid; place-items: center; width: 34px; height: 34px; flex: none; padding: 0;
+  color: #d8e6dc; border: 1px solid #45735f; border-radius: 50%; background: #0a392d;
+}
+.spectator-chat-share {
+  display: grid; place-items: center; width: 34px; height: 34px; flex: none; padding: 0;
+  color: #ffe8a3; border: 1px solid #d8b85599; border-radius: 50%; background: #163e2d;
+}
+.spectator-chat-share:active { transform: scale(.95); }
+.spectator-presence { width: fit-content; max-width: 100%; font-size: .76rem; color: #bcd0c2; }
+.spectator-face-stack { display: flex; padding-left: 6px; }
+.spectator-face-stack > span {
+  width: 25px; height: 25px; margin-left: -7px; overflow: hidden; border: 2px solid #082f25; border-radius: 50%; background: #1a4b3b;
+}
+.spectator-face-stack .avatar-face, .spectator-message-avatar .avatar-face { width: 100%; height: 100%; }
+.spectator-chat-messages { max-height: 92px; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid #ffffff16; }
+.spectator-message {
+  width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 4px;
+  border: 0; border-bottom: 1px solid #ffffff12; border-radius: 10px; color: inherit; background: transparent; text-align: left;
+}
+button.spectator-message { cursor: pointer; }
+button.spectator-message:hover { background: #ffffff08; }
+.spectator-message.mine { background: #ffffff08; }
+.spectator-message-avatar { width: 30px; height: 30px; flex: none; overflow: hidden; border: 2px solid #5c9e7d; border-radius: 50%; }
+.spectator-message-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.spectator-message-meta { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.spectator-message-meta b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8fd9ff; font-size: .82rem; }
+.spectator-message.mine .spectator-message-meta b { color: var(--us); }
+.spectator-message-meta time { color: #a7bbb0; font-size: .67rem; }
+.spectator-message-body { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .84rem; }
+.spectator-message.compact { padding: 4px 2px; border-bottom: 0; }
+.spectator-message.compact .spectator-message-avatar { width: 27px; height: 27px; }
+.spectator-message.compact .spectator-message-copy { flex-direction: row; gap: 5px; align-items: baseline; }
+.spectator-message.compact .spectator-message-meta { flex: none; }
+.spectator-message.compact .spectator-message-body { flex: 1; }
+.spectator-reactions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.spectator-reactions button {
+  min-width: 0; min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 4px;
+  border: 1px solid #38765c; border-radius: 999px; background: #0b3b2e; color: #f5ebd1; font: 700 .7rem/1 var(--font);
+}
+.spectator-reactions button:first-child { color: #ffc34b; }
+.spectator-chat-form { display: grid; grid-template-columns: minmax(0, 1fr) 38px; gap: 6px; }
+.spectator-chat-form input {
+  min-width: 0; min-height: 38px; padding: 0 12px; border: 1px solid #477762; border-radius: 999px;
+  background: #061f19; color: var(--ivory); font: .84rem var(--font);
+}
+.spectator-chat-form button {
+  display: grid; place-items: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--us); color: #183225; box-shadow: inset 0 -2px #a87c18;
+}
+.spectator-chat-form button:disabled, .spectator-reactions button:disabled { opacity: .45; }
+.spectator-chat-empty, .spectator-readonly, .spectator-chat-error { margin: 4px 2px; color: #adc3b5; font-size: .75rem; text-align: center; }
+.spectator-chat-error { color: #ffb09a; }
+.spectator-chat-dock.collapsed { padding: 0; }
+.spectator-chat-collapsed {
+  width: 100%; min-height: 50px; display: flex; align-items: center; gap: 9px; padding: 7px 11px;
+  border: 0; border-radius: inherit; background: transparent; color: inherit; text-align: left;
+}
+.spectator-chat-collapsed > span { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.spectator-chat-collapsed small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #abc0b3; font-size: .7rem; }
+.spectator-unread {
+  display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px;
+  background: #ff6f57; color: white; font: 800 .68rem/1 var(--font); font-style: normal;
+}
+.spectator-chat-preview { width: 100%; padding: 8px 10px; margin: 0; }
+.spectator-chat-preview > header { min-height: 34px; }
+.spectator-preview-title { flex: 1; font-size: .78rem; text-align: left; }
+.spectator-preview-title span { color: #b9cbbf; }
+.spectator-preview-open { flex: none; padding: 7px 5px; border: 0; background: none; color: var(--us); font: 800 .72rem var(--font); }
+.spectator-chat-preview .spectator-chat-collapse { width: 32px; height: 32px; }
+.spectator-preview-messages { display: grid; gap: 1px; }
+.spectator-chat-preview.collapsed { padding-block: 5px; }
+.spectator-chat-preview.collapsed > header { min-height: 32px; }
+
+@media (max-height: 740px) and (max-width: 699px) {
+  .spectator-chat-dock { padding: 7px; gap: 5px; }
+  .spectator-chat-messages .spectator-message:first-child { display: none; }
+  .spectator-chat-messages { max-height: 94px; }
+  .spectator-message { padding-block: 4px; }
+  .spectator-message-avatar { width: 29px; height: 29px; }
+  .spectator-reactions button { min-height: 34px; }
+  .spectator-chat-preview .spectator-preview-messages .spectator-message:first-child { display: none; }
+}
+@media (max-height: 640px) and (max-width: 699px) {
+  .spectator-chat-dock:not(.collapsed) .spectator-presence { display: none; }
+  .spectator-chat-dock:not(.collapsed) .spectator-chat-messages { height: 40px; max-height: 40px; }
+  .spectator-chat-preview:not(.collapsed) .spectator-preview-messages { display: none; }
+}

@@ -77,7 +77,8 @@ export interface TableViewProps {
   notice?: string | null;
   /**
    * Watching a friend's game (or a shared one): their seat is "mine", their hand stays face
-   * down, no playing. `tools`: listen / message. `status`: shown in the watch bar (link viewers).
+   * down, no playing. `tools`: the compact listening control in the watch bar.
+   * `status`: shown in the watch bar (link viewers).
    */
   watching?: { name: string; onLeave: () => void; tools?: ReactNode; status?: 'live' | 'reconnecting' };
   /** Friends watching this table (the players can always see who). */
@@ -90,6 +91,8 @@ export interface TableViewProps {
   onWatchersTap?: () => void;
   /** Spectator messages since the panel was last opened. */
   watchersUnread?: number;
+  /** Docked spectator conversation: full dock for viewers, compact read-only preview for players. */
+  spectatorChat?: ReactNode;
   /**
    * Board look: the Focus Table (default), the classic board (kept for the design comparison
    * preview), or 'broadcast' — the second-phone TikTok screen: the table only, no controls
@@ -413,10 +416,19 @@ export function TableView(props: TableViewProps) {
     else menuRef.current?.close();
   }, [menuOpen]);
 
-  useEffect(() => setSponsorCollapsed(false), [props.sponsor?.id]);
+  const sponsorDismissKey = props.sponsor && watching ? `capicua.sponsorDismissed.${props.sponsor.id}.${view.handNo}` : null;
+  useEffect(() => {
+    if (!sponsorDismissKey) return setSponsorCollapsed(false);
+    try { setSponsorCollapsed(localStorage.getItem(sponsorDismissKey) === '1'); }
+    catch { setSponsorCollapsed(false); }
+  }, [sponsorDismissKey]);
+  const dismissSponsor = () => {
+    setSponsorCollapsed(true);
+    if (sponsorDismissKey) try { localStorage.setItem(sponsorDismissKey, '1'); } catch { /* storage unavailable */ }
+  };
 
   return (
-    <div className={`table-screen table-redesign mode-${mode} ${arcade ? 'ruleset-arcade' : ''} ${props.presentation === 'classic' ? '' : 'table-focus'} ${broadcast ? 'table-broadcast' : ''} ${look.className}`} style={look.style} onKeyDown={(e) => {
+    <div className={`table-screen table-redesign mode-${mode} ${arcade ? 'ruleset-arcade' : ''} ${props.presentation === 'classic' ? '' : 'table-focus'} ${broadcast ? 'table-broadcast' : ''} ${props.spectatorChat ? 'has-spectator-chat' : ''} ${watching && props.spectatorChat ? 'spectator-layout' : ''} ${look.className}`} style={look.style} onKeyDown={(e) => {
       if (e.key === 'Escape') { setPending(null); setChatOpen(false); setDraft(null); setPowersOpen(false); }
     }}>
       <header className="table-header">
@@ -426,16 +438,22 @@ export function TableView(props: TableViewProps) {
         <div className="table-topbar">
           <button className="table-icon" onClick={() => setMenuOpen(true)} aria-label={t.settings}><ListIcon size={25} /></button>
           <h1 className="table-wordmark">CAPICÚA</h1>
-          <button className="table-icon" aria-label={t.exit} onClick={() => {
-            if (!playing) return onExit();
-            if (props.onForfeit) return setLeaving(true);
-            if (confirm(exitConfirm ?? t.exitConfirm)) onExit();
-          }}><XIcon size={25} /></button>
+          <div className="table-top-actions">
+            <button className={`table-icon table-top-exit ${watching ? 'watch-exit' : ''}`} aria-label={watching ? t.leave : t.exit} title={watching ? t.leave : t.exit} onClick={() => {
+              // A spectator just stops watching: nothing to lose, so no "leave the game?" question.
+              if (watching) return watching.onLeave();
+              if (!playing) return onExit();
+              if (props.onForfeit) return setLeaving(true);
+              if (confirm(exitConfirm ?? t.exitConfirm)) onExit();
+            }}><XIcon size={watching ? 18 : 25} />{watching && <span>{t.leave}</span>}</button>
+          </div>
         </div>
         )}
         <Scores view={view} mySeat={mySeat} name={name} colorOf={colorOf} pot={pot}
-          watchers={broadcast ? undefined : watchers} watcherCount={broadcast ? undefined : props.watcherCount} watching={!!watching}
-          onWatchersTap={broadcast ? undefined : props.onWatchersTap} unread={props.watchersUnread} />
+          watchers={broadcast || props.spectatorChat ? undefined : watchers}
+          watcherCount={broadcast || props.spectatorChat ? undefined : props.watcherCount} watching={!!watching}
+          onWatchersTap={broadcast || props.spectatorChat ? undefined : props.onWatchersTap}
+          unread={props.spectatorChat ? 0 : props.watchersUnread} />
       </header>
 
       <div className="table-rail"><div className="felt">
@@ -491,8 +509,9 @@ export function TableView(props: TableViewProps) {
             {bottomTurn && <TurnArrow />}
           </div>
           <b>{ownerOf && <OwnerChip role="me" />}{name(mySeat)}{arcade && <Charges n={arcade.charges[mySeat] ?? 0} label={t.arcade.charges} />}</b>
-          {broadcast && (
+          {(broadcast || watching) && (
             <span className="self-backs" aria-label={`${view.handCounts[mySeat]} ${view.handCounts[mySeat] === 1 ? t.watch.tile : t.watch.tiles}`}>
+              {watching && <span className="self-tile-label">{view.handCounts[mySeat]} {view.handCounts[mySeat] === 1 ? t.watch.tile : t.watch.tiles}</span>}
               <span className="backs" aria-hidden>{Array.from({ length: Math.min(view.handCounts[mySeat], 7) }, (_, i) => <TileBack key={i} sponsor={props.sponsor} />)}</span>
               <b className="tile-count" aria-hidden>{view.handCounts[mySeat]}</b>
             </span>
@@ -500,10 +519,9 @@ export function TableView(props: TableViewProps) {
           {myBubble && <span className="self-bubble">{myBubble.text}</span>}
         </div>
 
-        {/* Always in reach: in the felt's corner beside the bottom seat (also in the menu). */}
-        {props.onShare && !broadcast && (
-          <button type="button" className="table-share" onClick={props.onShare} aria-label={t.share.button}>
-            <ShareNetworkIcon size={18} weight="bold" aria-hidden /><span>{t.share.short}</span>
+        {props.onShare && !watching && !props.spectatorChat && (
+          <button type="button" className="table-share" onClick={props.onShare} aria-label={t.share.button} title={t.share.button}>
+            <ShareNetworkIcon size={19} weight="bold" aria-hidden /><span>{t.share.short}</span>
           </button>
         )}
 
@@ -513,7 +531,7 @@ export function TableView(props: TableViewProps) {
         <footer className="broadcast-foot">
           {props.sponsor && (
             <div className="broadcast-sponsor">
-              <SponsorLogo url={props.sponsor.url} className="sponsor-card-logo" />
+              <SponsorLogo url={props.sponsor.url} name={props.sponsor.name} className="sponsor-card-logo" />
               <span className="sponsor-card-copy"><small>{t.share.sponsoredHand}</small><b>{props.sponsor.name}</b></span>
             </div>
           )}
@@ -538,15 +556,24 @@ export function TableView(props: TableViewProps) {
         )}
         {watching && (
           <div className="watch-bar">
-            {watching.status && (
-              <span className={`live-pill ${watching.status}`} role="status">{watching.status === 'live' ? t.share.live : t.share.reconnecting}</span>
-            )}
-            <span className="backs" aria-hidden>{Array.from({ length: Math.min(view.handCounts[mySeat], 7) }, (_, i) => <TileBack key={i} sponsor={props.sponsor} />)}</span>
-            <span>👁 {t.watch.watching} <b>{watching.name}</b> · {view.handCounts[mySeat]} {view.handCounts[mySeat] === 1 ? t.watch.tile : t.watch.tiles}</span>
+            <div className="watch-summary">
+              {watching.status && (
+                <span className={`live-pill ${watching.status}`} role="status">{watching.status === 'live' ? t.share.live : t.share.reconnecting}</span>
+              )}
+              <span className="watch-summary-copy">👁 {t.watch.watching} <b>{watching.name}</b> · {view.handCounts[mySeat]} {view.handCounts[mySeat] === 1 ? t.watch.tile : t.watch.tiles}</span>
+            </div>
+            {watching.tools && <div className="watch-listen">{watching.tools}</div>}
           </div>
         )}
         {watching && props.sponsor && (
-          <SpectatorSponsorCard sponsor={props.sponsor} collapsed={sponsorCollapsed} onTap={props.onSponsorTap} onDismiss={() => setSponsorCollapsed(true)} />
+          <SpectatorSponsorCard sponsor={props.sponsor} collapsed={sponsorCollapsed} onTap={props.onSponsorTap} onDismiss={dismissSponsor} />
+        )}
+        {watching && props.spectatorChat}
+        {!watching && (props.sponsor || props.spectatorChat) && (
+          <div className="player-spectator-stack">
+            {props.sponsor && <SponsorCredit sponsor={props.sponsor} />}
+            {props.spectatorChat}
+          </div>
         )}
         {/* A big 1v1 hand (lots of draws) wraps into balanced rows sized to fit the screen. */}
         <div ref={handRef} hidden={!!watching} className={`hand ${hand.rows > 1 ? 'multi' : ''}`}
@@ -592,12 +619,7 @@ export function TableView(props: TableViewProps) {
           {stuck && <button className="btn ghost table-pass" onClick={() => play({ type: 'pass' })} title={t.arcade.stuck}>{t.arcade.pass}</button>}
         </div>
         )}
-        {watching ? (
-          <div className="table-tools watch-tools">
-            {watching.tools}
-            <button className="btn ghost" onClick={watching.onLeave} aria-label={t.watch.stop}>{watching.tools ? t.watch.stopShort : t.watch.stop}</button>
-          </div>
-        ) : (
+        {!watching && (
           <div className="table-tools">
             {voice ?? <span className="practice-voice" title={copy.practice}><MicrophoneSlashIcon size={25} /><small>{lang === 'es' ? 'Sin voz' : 'No voice'}</small></span>}
             {arcade && (

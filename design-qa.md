@@ -80,3 +80,36 @@ final result: passed
 - Oxlint: passed with the repository's existing warnings and no errors.
 - Git whitespace check: passed; Git reports the existing CRLF normalization notice for `src/ui/Sponsor.tsx`.
 
+---
+
+# Spectator chat and table controls verification
+
+final result: passed
+
+## Implemented behavior
+- Spectators now have a docked table chat with the latest messages, viewer presence, quick reactions, a message field, unread state, and a compact collapsed state.
+- Players can see a compact read-only audience feed under their hand and can open the complete spectator sheet.
+- Tapping a chat author opens the existing player profile and friend control.
+- Spectators get a labeled `Salir de la mesa` control in the top row. Share lives in the chat header, separate from leaving.
+- `Escuchando` sits inside the thin `Mirando a {player} · {n} fichas` strip, matching the approved mock and removing the old bottom action row.
+- The viewer count appears once in the audience/chat panel; the duplicate eye count beside `Mano` is suppressed whenever that panel is present.
+- The focused spectator seat is now a structured card: avatar and name, a readable ficha count, a divider, and consistently spaced face-down fichas.
+- A seated player's Share control lives in the `Público` panel header beside `Ver chat`; the top bar keeps only Exit. If the player hides the audience panel, Share falls back to the small felt-corner control and remains available in Settings.
+- The focused player's face-down fichas and numeric count are visible while spectating.
+- A spectator may dismiss a sponsor card with X for the current sponsored hand. A broken sponsor image uses branded initials instead of an empty white circle.
+
+## Browser checks
+- 390 x 844 spectator view: no horizontal or vertical overflow; `Salir de la mesa`, the 335px board, Robert's `4 fichas`, inline `Escuchando`, the complete sponsor card, Share in chat, two messages, reactions, composer, and status all fit together.
+- Sponsor dismissal: the full sponsor card becomes a 24px `Patrocinado por {name} ↗` credit and stays dismissed for the current sponsor/hand key.
+- Chat collapse: the dock becomes a single 50px bar with the latest message and unread badge, returning the extra height to the board.
+- 360 x 640 short-phone view: no viewport overflow; the compact board remains 261px tall with the dismissed sponsor credit and the chat retains its latest message, reactions and composer.
+- Profile access: tapping Papo opens the existing profile card and exposes the existing friendship action.
+- 390 x 844 player view: sponsor credit and the two latest audience messages appear between the board and hand, matching the selected mock without covering the table, hand, status, voice, or table chat controls.
+- 1366 x 768 desktop: board, focused-player count, chat, quick reactions, and message field remain centered; the table owns vertical scrolling when the expanded dock exceeds the viewport.
+
+## Automated verification
+- Production TypeScript/Vite build: passed.
+- Vitest: 19 files, 235 tests passed.
+- Oxlint: no errors; repository warnings remain.
+- Git whitespace check: passed.
+

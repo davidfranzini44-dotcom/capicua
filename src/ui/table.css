@@ -12,6 +12,11 @@
 .table-redesign > * { min-width: 0; }
 .table-header { width: min(100%, 900px); margin: auto; padding: max(8px, env(safe-area-inset-top)) 16px 10px; }
 .table-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
+.table-top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.table-top-exit.watch-exit {
+  width: auto; min-width: 132px; padding: 0 13px; display: inline-flex; gap: 7px;
+  border-color: #d8b855; border-radius: 999px; color: #fff2cf; font: 800 .78rem/1 var(--font);
+}
 .table-wordmark { font: 400 26px/1.2 var(--display); letter-spacing: 1px; color: var(--ivory); margin: 0; text-shadow: 0 3px 0 #59472c; }
 .table-wordmark::after { content: ''; display: block; height: 3px; width: 44px; background: var(--us); margin: 5px auto 0; border-radius: 2px; }
 .table-icon { display: inline-grid; place-items: center; width: 44px; height: 44px; flex: none; padding: 0; background: transparent; border: 1px solid #366052; border-radius: 14px; color: var(--ivory); }
@@ -286,7 +291,7 @@
 }
 /* Short phones: one header row (menu · scores · close) instead of two. Free-for-all keeps two: four scores need the width. */
 @media (max-height: 740px) and (max-width: 699px) {
-  .table-redesign:not(.mode-ffa) .table-header { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 8px; padding-bottom: 6px; }
+  .table-redesign:not(.mode-ffa) .table-header { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding-bottom: 6px; }
   .table-redesign:not(.mode-ffa) .table-topbar { display: contents; }
   .table-redesign:not(.mode-ffa) .table-wordmark { display: none; }
   .table-redesign:not(.mode-ffa) .table-topbar > :first-child { grid-column: 1; grid-row: 1; }
@@ -329,6 +334,11 @@
   .table-redesign .my-area:not(.watching) .table-tools > .practice-voice { background: #ffffff08; border-style: dashed; }
   .table-redesign .my-area:not(.watching) .table-tools > .practice-voice small { font-size: inherit; font-weight: 700; }
   .table-redesign .my-area:not(.watching) .table-tools > .voice-pill .vp-count { top: -6px; right: -6px; }
+  .table-redesign.has-spectator-chat .my-area:not(.watching) > .player-spectator-stack { grid-column: 1 / -1; grid-row: 1; }
+  .table-redesign.has-spectator-chat .my-area:not(.watching) > .hand { grid-row: 2; }
+  .table-redesign.has-spectator-chat .my-area:not(.watching) > .table-instruction { grid-row: 3; }
+  .table-redesign.has-spectator-chat .my-area:not(.watching) .table-tools > :first-child,
+  .table-redesign.has-spectator-chat .my-area:not(.watching) .table-tools > :last-child { grid-row: 3; }
 }
 /* Tiny phones: all three opponents share the top strip, the board takes the rest. */
 @media (max-height: 640px) and (max-width: 699px) {
@@ -349,10 +359,17 @@
 
 /* ---------- watching a friend's game ---------- */
 .watch-bar {
-  display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
   min-height: 56px; padding: 8px 12px; border-radius: 16px; color: var(--ivory);
   background: #0a3a2c; border: 1px dashed #4f7762; font-size: 14px;
 }
+.watch-summary { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.watch-summary-copy { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watch-listen { flex: none; }
+.table-redesign .watch-listen .voice-pill {
+  min-height: 34px; height: 34px; padding: 0 11px; border-radius: 999px; font-size: .76rem; border-width: 1px;
+}
+.table-redesign .watch-listen .voice-pill svg { width: 18px; height: 18px; }
 .watch-bar .backs { display: flex; gap: 3px; }
 .watch-bar .tile-back { width: 10px; height: 20px; }
 .watch-bar .tile-back.sponsored { width: 13px; height: 22px; }
@@ -463,6 +480,25 @@
   bottom: 10px; min-width: 94px; padding: 5px 10px; border-radius: 16px;
   background: #0000004d; border: 1px solid #e4bd6f4f;
 }
+.table-focus .self-backs { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.table-focus .self-backs .backs { display: flex; gap: 2px; }
+.table-focus .self-backs .tile-count { color: #fff2cf; font-size: .72rem; }
+.table-focus.spectator-layout .self-seat {
+  display: grid; grid-template-columns: auto minmax(58px, auto) auto; grid-template-rows: auto auto;
+  align-items: center; column-gap: 8px; row-gap: 0; min-width: 202px; padding: 5px 10px 5px 5px;
+  border-color: #d8b85588; border-radius: 18px; background: linear-gradient(145deg, #173f31eb, #071f18e8);
+  box-shadow: inset 0 1px #ffffff14, 0 4px 14px #001b14a6;
+}
+.table-focus.spectator-layout .self-seat > .avatar { grid-column: 1; grid-row: 1 / 3; width: 38px; height: 38px; }
+.table-focus.spectator-layout .self-seat > b { grid-column: 2; grid-row: 1; align-self: end; line-height: 1.05; font-size: .84rem; }
+.table-focus.spectator-layout .self-seat > .self-backs { grid-column: 3; grid-row: 1 / 3; padding-left: 8px; border-left: 1px solid #d8b85545; }
+.table-focus.spectator-layout .self-seat > .self-bubble { grid-column: 2 / 4; }
+.table-focus.spectator-layout .self-backs { display: grid; grid-template-rows: auto auto; justify-items: start; gap: 2px; }
+.table-focus.spectator-layout .self-backs .backs { display: flex; gap: 3px; }
+.table-focus.spectator-layout .self-backs .tile-back { width: 10px; height: 19px; }
+.table-focus.spectator-layout .self-backs .tile-back.sponsored { width: 12px; height: 21px; }
+.table-focus.spectator-layout .self-backs .tile-count { display: none; }
+.table-focus.spectator-layout .self-tile-label { color: #d9e5dc; font-size: .63rem; line-height: 1; white-space: nowrap; }
 /* My "Paso"/chat bubble sits beside my seat box, never over my name or the board. */
 .table-focus .self-bubble { top: 50%; left: calc(100% + 8px); transform: translateY(-50%); }
 .table-focus .my-area {
@@ -475,7 +511,7 @@
 .table-focus .table-instruction { color: #f0e7cf; font-weight: 700; }
 @media (max-width: 699px) {
   .table-focus:not(.mode-ffa) .table-header {
-    display: grid; grid-template-columns: 42px minmax(0, 1fr) 42px;
+    display: grid; grid-template-columns: 42px minmax(0, 1fr) auto;
     align-items: center; gap: 8px; padding: max(7px, env(safe-area-inset-top)) 10px 8px;
   }
   .table-focus:not(.mode-ffa) .table-topbar { display: contents; }
@@ -543,6 +579,10 @@ button.sponsor-credit:hover b { text-decoration: underline; }
   width: auto; min-width: 44px; max-width: 96px; height: 44px; object-fit: contain; border-radius: 11px; padding: 3px;
   background: #fff; box-shadow: 0 2px 7px #0005;
 }
+.sponsor-logo-fallback {
+  display: grid; place-items: center; flex: none; color: #fff2b8; background: linear-gradient(145deg, #173f32, #09251d);
+  border: 1px solid #d8b85588; font: 900 .82rem/1 var(--font); letter-spacing: .05em;
+}
 /* A light logo (white lettering, made for dark backgrounds) gets a dark tile instead. */
 .sponsor-card-logo.on-dark, .spectator-sponsor-chip img.on-dark { background: #0b251b; box-shadow: inset 0 0 0 1px #ffffff2e, 0 2px 7px #0005; }
 .sponsor-card-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -579,6 +619,13 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 }
 .spectator-sponsor-chip img { width: auto; min-width: 25px; max-width: 68px; height: 25px; padding: 2px; object-fit: contain; border-radius: 6px; background: #fff; }
 .spectator-sponsor-chip:disabled { cursor: default; opacity: .75; }
+.spectator-sponsor-mini {
+  align-self: center; max-width: 100%; min-height: 24px; margin: 0; padding: 3px 9px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #d8b85555;
+  border-radius: 999px; background: #0a2f25; color: #c8d5cc; font: 600 .66rem/1.1 var(--font);
+}
+button.spectator-sponsor-mini { cursor: pointer; }
+.spectator-sponsor-mini b { color: #f5d267; }
 
 /* Admin: the preview felt. */
 .sp-felt { width: 100%; max-width: 420px; background: none; }
@@ -605,12 +652,67 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 /* Watching: no hand, so the footer is simply the watch bar, the status line (spectator
    messages show there), then one row of tools — at every size, short phones included. */
 .my-area.watching { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.table-redesign.has-spectator-chat .my-area.watching { padding-top: 8px; }
 .my-area.watching > .table-instruction { margin: 0; justify-content: center; }
 .my-area.watching .table-tools.watch-tools { position: static; display: flex; flex-wrap: nowrap; justify-content: center; gap: 8px; }
 .my-area.watching .watch-tools > * { flex: 1 1 0; min-width: 0; white-space: nowrap; padding-inline: 8px; font-size: .88rem; }
 .my-area.watching .watch-tools svg { flex: none; }
 .my-area.watching .watch-tools > * { padding-inline: 6px; gap: 4px; font-size: .82rem; }
 @media (max-width: 360px) { .my-area.watching .watch-tools svg { display: none; } .my-area.watching .watch-tools > * { font-size: .78rem; } }
+
+/* The spectator mock uses one viewport: the table keeps the flexible middle, while the
+   controls below it stay compact and the chat scrolls internally. */
+.player-spectator-stack { display: grid; gap: 5px; width: 100%; min-width: 0; }
+@media (max-width: 699px) {
+  .table-redesign.spectator-layout { grid-template-rows: auto minmax(300px, 1fr) auto; overflow: hidden; }
+  .table-focus.spectator-layout:not(.mode-ffa) .table-header {
+    display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; grid-template-rows: auto auto;
+    align-items: center; gap: 4px 8px; padding-bottom: 6px;
+  }
+  .table-focus.spectator-layout:not(.mode-ffa) .table-topbar { display: contents; }
+  .table-focus.spectator-layout:not(.mode-ffa) .table-topbar > :first-child { grid-column: 1; grid-row: 1; }
+  .table-focus.spectator-layout:not(.mode-ffa) .table-wordmark {
+    display: block; grid-column: 2; grid-row: 1; justify-self: start; font-size: 21px;
+  }
+  .table-focus.spectator-layout:not(.mode-ffa) .table-wordmark::after { width: 34px; height: 2px; margin: 2px 0 0; }
+  .table-focus.spectator-layout:not(.mode-ffa) .table-topbar > :last-child { grid-column: 3; grid-row: 1; }
+  .table-focus.spectator-layout:not(.mode-ffa) .table-header .scores {
+    grid-column: 1 / -1; grid-row: 2; width: 100%; margin: 0; padding-block: 3px;
+  }
+  .table-redesign.spectator-layout .table-top-exit.watch-exit { height: 38px; min-width: 126px; padding-inline: 11px; }
+  .table-redesign.spectator-layout .table-rail { min-height: 300px; }
+  .table-redesign.spectator-layout .my-area.watching {
+    gap: 5px; padding: 6px 12px max(7px, env(safe-area-inset-bottom)); overflow: hidden;
+  }
+  .table-redesign.spectator-layout .watch-bar { min-height: 38px; padding: 3px 5px 3px 9px; border-radius: 13px; font-size: .74rem; }
+  .table-redesign.spectator-layout .watch-summary { gap: 4px; }
+  .table-redesign.spectator-layout .watch-listen .voice-pill { min-height: 30px; height: 30px; padding-inline: 8px; font-size: .7rem; }
+  .table-redesign.spectator-layout .spectator-sponsor { min-height: 50px; padding-block: 5px; }
+  .table-redesign.spectator-layout .spectator-sponsor .sponsor-card-logo { height: 36px; min-width: 36px; }
+  .table-redesign.spectator-layout .spectator-sponsor .sponsor-visit { min-height: 32px; }
+  .table-redesign.spectator-layout .spectator-sponsor-dismiss { width: 27px; height: 27px; font-size: 18px; }
+  .table-redesign.spectator-layout .spectator-chat-dock { flex: 0 0 auto; }
+  .table-redesign.spectator-layout .spectator-chat-head { min-height: 32px; }
+  .table-redesign.spectator-layout .spectator-presence { min-height: 22px; }
+  .table-redesign.spectator-layout .spectator-chat-messages { height: 76px; max-height: 76px; }
+  .table-redesign.spectator-layout .spectator-message { min-height: 38px; }
+  .table-redesign.spectator-layout .table-instruction { min-height: 22px; margin: 0; font-size: .72rem; }
+  .table-redesign.spectator-layout .self-seat { min-width: 194px; padding: 4px 8px 4px 4px; column-gap: 7px; }
+  .table-redesign.has-spectator-chat .my-area:not(.watching) { padding-top: 7px; }
+  .table-redesign.has-spectator-chat .player-spectator-stack { gap: 4px; }
+  .table-redesign.has-spectator-chat .player-spectator-stack > .sponsor-credit { padding: 1px 4px; font-size: .67rem; }
+}
+@media (max-height: 640px) and (max-width: 699px) {
+  .table-redesign.spectator-layout { grid-template-rows: auto minmax(210px, 1fr) auto; }
+  .table-redesign.spectator-layout .table-rail { min-height: 210px; }
+  .table-redesign.spectator-layout .my-area.watching { gap: 3px; padding-top: 4px; }
+  .table-redesign.spectator-layout .watch-bar { min-height: 34px; }
+  .table-redesign.spectator-layout .spectator-sponsor { min-height: 44px; }
+  .table-redesign.spectator-layout .spectator-chat-dock { gap: 3px; padding: 6px; }
+  .table-redesign.spectator-layout .spectator-chat-head { min-height: 29px; }
+  .table-redesign.spectator-layout .table-instruction { min-height: 18px; }
+  .table-redesign.spectator-layout .watch-listen .voice-pill { min-height: 28px; height: 28px; }
+}
 @media (max-width: 420px) {
   .spectator-sponsor { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 7px 34px 7px 8px; }
   .spectator-sponsor .sponsor-card-logo { width: auto; min-width: 38px; max-width: 78px; height: 38px; }
@@ -643,7 +745,7 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 .table-redesign .table-header .score.mini > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The narrowest phones: slimmer menu and close buttons, so "Nosotros" still fits whole. */
 @media (max-width: 359px) {
-  .table-focus:not(.mode-ffa) .table-header { grid-template-columns: 38px minmax(0, 1fr) 38px; gap: 6px; padding-inline: 8px; }
+  .table-focus:not(.mode-ffa) .table-header { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 6px; padding-inline: 8px; }
   .table-focus .table-icon { width: 38px; height: 38px; }
   .table-focus:not(.mode-ffa) .table-header .scores { gap: 4px; padding-inline: 4px; }
   .table-focus .table-header .arcade-label { font-size: 11px; letter-spacing: .02em; }
@@ -702,7 +804,7 @@ button.sponsor-credit:hover b { text-decoration: underline; }
 /* 1 vs 1 keeps the pile in that corner: the other one. */
 .mode-1v1 .table-share { right: auto; left: 8px; }
 /* Narrow phones: just the icon, so it never reaches the bottom seat. */
-@media (max-width: 359px) {
+@media (max-width: 480px) {
   .table-share { width: 36px; min-height: 36px; padding: 0; justify-content: center; }
   .table-share span { display: none; }
 }

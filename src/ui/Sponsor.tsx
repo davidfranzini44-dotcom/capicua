@@ -1,7 +1,7 @@
 // A sponsor's logo printed on the felt: under the dominoes, faded so it reads as
 // part of the table, never tappable during a hand (leaving the app mid-hand
 // would flag the player for fair play). The link lives on "Patrocinado por…".
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { FELTS } from '../../supabase/functions/_shared/cosmetics.ts';
 import { useI18n } from '../i18n';
 import { useLightLogo, type SponsorRow, type TableSponsor } from '../lib/sponsor';
@@ -29,9 +29,16 @@ export function SponsorCredit({ sponsor, onTap }: { sponsor: TableSponsor; onTap
 
 /** Sponsor credit used in between-hand and match-result sheets. */
 /** A sponsor's logo on its own tile: white, or dark when the logo itself is light. */
-export function SponsorLogo({ url, className = '' }: { url: string; className?: string }) {
+export function SponsorLogo({ url, className = '', name = '' }: { url: string; className?: string; name?: string }) {
   const light = useLightLogo(url);
-  return <img className={`${className}${light ? ' on-dark' : ''}`.trim() || undefined} src={url} alt="" draggable={false} />;
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const failed = failedUrl === url;
+  const classes = `${className}${light ? ' on-dark' : ''}`.trim() || undefined;
+  if (failed) {
+    const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'AD';
+    return <span className={`${classes ?? ''} sponsor-logo-fallback`.trim()} aria-label={name}>{initials}</span>;
+  }
+  return <img className={classes} src={url} alt={name} draggable={false} onError={() => setFailedUrl(url)} />;
 }
 
 export function SponsorResultCard({ sponsor, phase, onTap }: {
@@ -43,7 +50,7 @@ export function SponsorResultCard({ sponsor, phase, onTap }: {
   const clickable = !!(sponsor.link && onTap);
   return (
     <div className={`sponsor-result-card ${clickable ? 'clickable' : ''}`}>
-      <SponsorLogo url={sponsor.url} className="sponsor-card-logo" />
+      <SponsorLogo url={sponsor.url} name={sponsor.name} className="sponsor-card-logo" />
       <span className="sponsor-card-copy">
         <small>{phase === 'hand' ? t.sponsor.hand : t.sponsor.match}</small>
         <b>{sponsor.name}</b>
@@ -55,7 +62,7 @@ export function SponsorResultCard({ sponsor, phase, onTap }: {
   );
 }
 
-/** Persistent spectator sponsor card. It can collapse without hiding the sponsor link. */
+/** Persistent spectator sponsor card. Spectators may dismiss it for this hand. */
 export function SpectatorSponsorCard({ sponsor, collapsed, onTap, onDismiss }: {
   sponsor: TableSponsor;
   collapsed: boolean;
@@ -64,18 +71,15 @@ export function SpectatorSponsorCard({ sponsor, collapsed, onTap, onDismiss }: {
 }) {
   const { t } = useI18n();
   if (collapsed) {
-    return (
-      <button type="button" className="spectator-sponsor-chip" onClick={onTap} disabled={!sponsor.link || !onTap}>
-        <SponsorLogo url={sponsor.url} />
-        <span>{t.sponsor.compact}</span>
-        {sponsor.link && onTap && <span aria-hidden>↗</span>}
-      </button>
-    );
+    const credit = <><span>{t.sponsor.credit}</span> <b>{sponsor.name}</b>{sponsor.link && onTap && <span aria-hidden> ↗</span>}</>;
+    return sponsor.link && onTap
+      ? <button type="button" className="spectator-sponsor-mini" onClick={onTap}>{credit}</button>
+      : <p className="spectator-sponsor-mini">{credit}</p>;
   }
   return (
     <aside className="spectator-sponsor" aria-label={`${t.sponsor.by} ${sponsor.name}`}>
       <button type="button" className="spectator-sponsor-dismiss" onClick={onDismiss} aria-label={t.sponsor.hide}>×</button>
-      <SponsorLogo url={sponsor.url} className="sponsor-card-logo" />
+      <SponsorLogo url={sponsor.url} name={sponsor.name} className="sponsor-card-logo" />
       <span className="sponsor-card-copy">
         <small>{t.sponsor.by}</small>
         <b>{sponsor.name}</b>

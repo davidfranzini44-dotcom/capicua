@@ -239,7 +239,7 @@ export interface TournamentHistoryRow {
 export function useTournamentHistory(userId: string | null | undefined): TournamentHistoryRow[] | null {
   const [rows, setRows] = useState<{ user: string; list: TournamentHistoryRow[] } | null>(null);
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !onlineEnabled) return;
     let live = true;
     supabase.rpc('tournament_history', { p_user: userId }).then(({ data }) => {
       if (live) setRows({ user: userId, list: ((data ?? []) as TournamentHistoryRow[]).map((r) => ({ ...r, pot: Number(r.pot) })) });
