@@ -183,12 +183,22 @@ function DirectChat({ friend, messages, online, onBack }: { friend: Friend; mess
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const end = useRef<HTMLDivElement>(null);
+  const messageList = useRef<HTMLDivElement>(null);
   const thread = messages.withUser(friend.id);
   const lastId = thread.at(-1)?.id;
 
   useEffect(() => { void messages.read(friend.id).catch(() => {}); }, [friend.id, lastId, messages]);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [lastId]);
+  useEffect(() => {
+    const list = messageList.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [lastId]);
+
+  const keepLatestVisible = () => {
+    window.setTimeout(() => {
+      const list = messageList.current;
+      if (list) list.scrollTop = list.scrollHeight;
+    }, 180);
+  };
 
   const send = async (e: FormEvent) => {
     e.preventDefault();
@@ -207,7 +217,7 @@ function DirectChat({ friend, messages, online, onBack }: { friend: Friend; mess
       <span className="inbox-avatar"><Avatar name={friend.name} url={friend.avatar} /></span>
       <span><b>{friend.name}</b><small className={online ? 'online' : ''}>{online ? t.inbox.online : t.inbox.offline}</small></span>
     </header>
-    <div className="direct-chat-messages" aria-live="polite">
+    <div ref={messageList} className="direct-chat-messages" aria-live="polite">
       {thread.length === 0 && <div className="direct-chat-empty"><span>👋</span><b>{t.inbox.sayHello.replace('{name}', friend.name)}</b><small>{t.inbox.privateChat}</small></div>}
       {thread.map((message) => {
         const mine = message.sender_id === messages.uid;
@@ -215,10 +225,9 @@ function DirectChat({ friend, messages, online, onBack }: { friend: Friend; mess
           <span>{message.body}</span><small>{time(message)}{mine && ` · ${message.read_at ? '✓✓' : '✓'}`}</small>
         </div>;
       })}
-      <div ref={end} />
     </div>
     <form className="direct-chat-form" onSubmit={send}>
-      <input maxLength={280} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.inbox.messagePh} aria-label={t.inbox.messagePh} />
+      <input maxLength={280} value={text} onChange={(e) => setText(e.target.value)} onFocus={keepLatestVisible} placeholder={t.inbox.messagePh} aria-label={t.inbox.messagePh} />
       <button type="submit" disabled={busy || !text.trim()} aria-label={t.inbox.send}>➤</button>
     </form>
     {error && <p className="error direct-chat-error">{error}</p>}
