@@ -183,6 +183,11 @@ describe('how the first round is matched', () => {
     expect(ms).toEqual([['a', 'h'], ['d', 'e'], ['b', 'g'], ['c', 'f']]);
   });
 
+  it('does not create invalid preview slots before a 2v2 lobby has complete teams', () => {
+    expect(drawFirstRound([], 'xp')).toEqual([]);
+    expect(drawFirstRound([e('a', 800)], 'xp')).toEqual([[e('a', 800), null]]);
+  });
+
   it('by XP with byes: the strongest get them, then best-left against weakest-left', () => {
     const six = eight.slice(0, 6); // bracket of 8 → 2 byes
     const ms = ids(drawFirstRound(six, 'xp'));

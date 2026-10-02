@@ -695,8 +695,9 @@ function MatchupsPanel({ tour, entries, pairs, xp, mine, admin, busy, label, onP
   const room = Math.max(0, teams - bracketSize(Math.max(teams, 2)) / 2 - pairs.length);
   const canPick = seeding === 'pick' && !!mine && full(mine) && !pairOf(mine.id) && !!onPair;
   const strength = (e: EntryRow) => [e.player1, e.player2].reduce((n, x) => n + (x ? xp[x] ?? 0 : 0), 0);
-  const preview = seeding === 'xp' && entries.length >= 2
-    ? drawFirstRound(entries.filter(full).map((e) => ({ id: e.id, xp: strength(e) })), 'xp',
+  const complete = entries.filter(full);
+  const preview = seeding === 'xp' && complete.length >= 2
+    ? drawFirstRound(complete.map((e) => ({ id: e.id, xp: strength(e) })), 'xp',
       pairs.filter((x) => x.set_by === 'admin').map((x) => [x.entry_a, x.entry_b] as [string, string]))
     : null;
   return (

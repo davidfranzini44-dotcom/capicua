@@ -279,6 +279,10 @@ export interface Seedable { id: string; xp: number }
  * in the final. Never two byes in one match.
  */
 export function drawFirstRound<T extends Seedable>(entries: T[], seeding: Seeding, fixed: [string, string][] = [], rng: () => number = Math.random): [T, T | null][] {
+  // The lobby preview can temporarily have no complete 2v2 teams while solo players wait to be
+  // paired. Return a harmless preview instead of manufacturing an undefined bracket slot.
+  if (entries.length === 0) return [];
+  if (entries.length === 1) return [[entries[0], null]];
   const byId = new Map(entries.map((e) => [e.id, e]));
   const size = bracketSize(entries.length);
   const matches: [T, T | null][] = keptPairs(entries.map((e) => e.id), fixed).map(([a, b]) => [byId.get(a)!, byId.get(b)!]);
