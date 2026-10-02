@@ -84,18 +84,37 @@ button.spectator-message:hover { background: #ffffff08; }
 .spectator-chat-preview.collapsed { padding-block: 5px; }
 .spectator-chat-preview.collapsed > header { min-height: 32px; }
 
+@media (max-width: 699px) {
+  /* A 16px composer prevents iOS from zooming the whole match when chat receives focus. */
+  .spectator-chat-form input { font-size: 16px; }
+}
+
 @media (max-height: 740px) and (max-width: 699px) {
-  .spectator-chat-dock { padding: 7px; gap: 5px; }
+  .spectator-chat-dock:not(.collapsed) {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 6px; padding: 6px;
+  }
+  .spectator-chat-dock:not(.collapsed) .spectator-chat-head,
+  .spectator-chat-dock:not(.collapsed) .spectator-chat-messages { grid-column: 1 / -1; }
+  .spectator-chat-dock:not(.collapsed) .spectator-chat-head { min-height: 30px; }
+  .spectator-chat-dock:not(.collapsed) .spectator-chat-share,
+  .spectator-chat-dock:not(.collapsed) .spectator-chat-collapse { width: 30px; height: 30px; }
+  .spectator-chat-dock:not(.collapsed) .spectator-presence { display: none; }
   .spectator-chat-messages .spectator-message:not(:last-child) { display: none; }
-  .spectator-chat-messages { max-height: 94px; }
-  .spectator-message { padding-block: 4px; }
-  .spectator-message-avatar { width: 29px; height: 29px; }
-  .spectator-reactions button { min-height: 34px; }
+  .spectator-chat-dock:not(.collapsed) .spectator-chat-messages { height: 36px; max-height: 36px; }
+  .spectator-message { min-height: 36px; padding-block: 2px; }
+  .spectator-message-avatar { width: 27px; height: 27px; }
+  .spectator-chat-dock:not(.collapsed) .spectator-reactions {
+    grid-template-columns: repeat(3, 30px); align-self: center; gap: 4px;
+  }
+  .spectator-chat-dock:not(.collapsed) .spectator-reactions button {
+    width: 30px; min-height: 34px; padding: 0; font-size: 0;
+  }
+  .spectator-chat-dock:not(.collapsed) .spectator-chat-form { grid-template-columns: minmax(0,1fr) 36px; align-self: center; }
+  .spectator-chat-dock:not(.collapsed) .spectator-chat-form input { min-height: 36px; }
+  .spectator-chat-dock:not(.collapsed) .spectator-chat-form button { width: 36px; height: 36px; }
   /* Keep the newest message visible, including when it is the only message. */
   .spectator-chat-preview .spectator-preview-messages .spectator-message:not(:last-child) { display: none; }
 }
 @media (max-height: 640px) and (max-width: 699px) {
-  .spectator-chat-dock:not(.collapsed) .spectator-presence { display: none; }
-  .spectator-chat-dock:not(.collapsed) .spectator-chat-messages { height: 40px; max-height: 40px; }
   .spectator-chat-preview { padding-block: 4px; }
 }

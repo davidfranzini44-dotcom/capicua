@@ -703,7 +703,7 @@ button.spectator-sponsor-mini { cursor: pointer; }
   .table-redesign.has-player-stack .player-spectator-stack { gap: 4px; }
   .table-redesign.has-player-stack .player-spectator-stack > .sponsor-credit { padding: 1px 4px; font-size: .67rem; }
 }
-@media (max-height: 640px) and (max-width: 699px) {
+@media (max-height: 740px) and (max-width: 699px) {
   .table-redesign.spectator-layout { grid-template-rows: auto minmax(210px, 1fr) auto; }
   .table-redesign.spectator-layout .table-rail { min-height: 210px; }
   .table-redesign.spectator-layout .my-area.watching { gap: 3px; padding-top: 4px; }
