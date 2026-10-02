@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Rules } from '../../supabase/functions/_shared/domino.ts';
-import type { Seeding, TournamentMode, Visibility } from '../../supabase/functions/_shared/tournament.ts';
+import type { PartnerMatching, Seeding, TournamentMode, Visibility } from '../../supabase/functions/_shared/tournament.ts';
 import { onlineEnabled, supabase } from './supabase';
 
 export interface TournamentRow {
@@ -22,6 +22,8 @@ export interface TournamentRow {
   cancel_reason: 'host' | 'not_enough' | null;
   /** How the first round is matched. */
   seeding: Seeding;
+  /** How remaining solo players receive partners in 2v2. */
+  partner_matching: PartnerMatching;
   /** Public: listed in Mesas → Torneos abiertos. */
   visibility: Visibility;
   /** Made by an admin: "Capicúa" organizes it and the admin doesn't play. */
@@ -71,6 +73,7 @@ export interface TournamentPeek {
   pot: number;
   startsAt: string | null;
   seeding?: Seeding;
+  partnerMatching?: PartnerMatching;
   member: boolean;
   entries: { id: string; names: string[]; open: boolean }[];
   /** From a server newer than 7ab6646 (open tournaments). */
@@ -81,7 +84,7 @@ export interface TournamentPeek {
   description?: string | null;
 }
 
-const T_COLS = 'id, code, name, host, mode, size, buy_in, rules, turn_seconds, phase, rounds, pot, champion, starts_at, cancel_reason, seeding, visibility, official, featured, prize, description';
+const T_COLS = 'id, code, name, host, mode, size, buy_in, rules, turn_seconds, phase, rounds, pot, champion, starts_at, cancel_reason, seeding, partner_matching, visibility, official, featured, prize, description';
 
 /**
  * Live view of one tournament for its members: settings, sign-ups, the

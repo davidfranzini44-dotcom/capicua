@@ -13,6 +13,9 @@ export type TournamentMode = Extract<Mode, '1v1' | '2v2'>;
  */
 export type Seeding = 'random' | 'xp' | 'pick';
 export const SEEDINGS: Seeding[] = ['random', 'xp', 'pick'];
+/** How solo players are turned into teams when a 2v2 tournament starts. */
+export type PartnerMatching = 'random' | 'balanced';
+export const PARTNER_MATCHINGS: PartnerMatching[] = ['random', 'balanced'];
 /**
  * Who can find it: 'private' — only with the code or an invite; 'public' — listed in Mesas →
  * Torneos abiertos for anyone to join. Official tournaments (made by an admin) are always public.
@@ -72,6 +75,8 @@ export interface TournamentSettings {
   startsAt?: number;
   /** How the first round is matched (older tournaments: a draw). */
   seeding?: Seeding;
+  /** In 2v2, how remaining solo players get partners (older tournaments: random). */
+  partnerMatching?: PartnerMatching;
   /** Private (code or invite) unless the host makes it public. */
   visibility?: Visibility;
   /**
@@ -107,6 +112,10 @@ export function validateTournament(s: Partial<TournamentSettings>, now = Date.no
   if (s.seeding !== undefined) {
     if (!SEEDINGS.includes(s.seeding)) return null;
     out.seeding = s.seeding;
+  }
+  if (s.partnerMatching !== undefined) {
+    if (!PARTNER_MATCHINGS.includes(s.partnerMatching)) return null;
+    out.partnerMatching = s.partnerMatching;
   }
   if (s.startsAt !== undefined && s.startsAt !== null) {
     // A minute of slack for the time it takes to press Create.
@@ -149,6 +158,7 @@ export interface TournamentEdit {
   target?: number;
   turnSeconds?: number;
   seeding?: Seeding;
+  partnerMatching?: PartnerMatching;
   size?: (typeof TOURNAMENT_SIZES)[number];
   visibility?: Visibility;
   prize?: number;
@@ -178,6 +188,10 @@ export function validateTournamentEdit(c: TournamentEdit, admin: boolean, now = 
   if (c.seeding !== undefined) {
     if (!SEEDINGS.includes(c.seeding)) return null;
     out.seeding = c.seeding;
+  }
+  if (c.partnerMatching !== undefined) {
+    if (!PARTNER_MATCHINGS.includes(c.partnerMatching)) return null;
+    out.partnerMatching = c.partnerMatching;
   }
   if (c.size !== undefined) {
     if (!admin || !TOURNAMENT_SIZES.includes(c.size)) return null;
@@ -271,6 +285,37 @@ export function keptPairs(ids: string[], pairs: [string, string][]): [string, st
 }
 
 export interface Seedable { id: string; xp: number }
+
+/**
+ * Turn solo 2v2 entrants into teams. Balanced partners combine the strongest remaining player
+ * with the weakest, bringing team XP totals closer together. A protected entry (the host) never
+ * becomes the odd player left out.
+ */
+export function pairPartners<T extends Seedable>(players: T[], matching: PartnerMatching, protectedId?: string, rng: () => number = Math.random): {
+  pairs: [T, T][];
+  leftover: T | null;
+} {
+  const ordered = matching === 'balanced'
+    ? [...players].sort((a, b) => b.xp - a.xp || (a.id < b.id ? -1 : 1))
+    : shuffle(players, rng);
+  const pairs: [T, T][] = [];
+  const pairCount = Math.floor(ordered.length / 2);
+  for (let i = 0; i < pairCount; i++) {
+    pairs.push(matching === 'balanced'
+      ? [ordered[i], ordered[ordered.length - 1 - i]]
+      : [ordered[i * 2], ordered[i * 2 + 1]]);
+  }
+  let leftover: T | null = ordered.length % 2
+    ? ordered[matching === 'balanced' ? pairCount : ordered.length - 1]
+    : null;
+  if (leftover && leftover.id === protectedId && pairs.length) {
+    const swapAt = matching === 'balanced' ? Math.floor(pairs.length / 2) : 0;
+    const replacement = pairs[swapAt][0];
+    pairs[swapAt][0] = leftover;
+    leftover = replacement;
+  }
+  return { pairs, leftover };
+}
 
 /**
  * The first round, in bracket order. Fixed matches go in as they are; everyone else is drawn

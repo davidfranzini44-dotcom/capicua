@@ -21,8 +21,8 @@ import {
   type ChestKind, type SeatInfo, type SideBetKind,
 } from '../_shared/table.ts';
 import {
-  afterFeeders, bracketSize, checkInOpen, drawFirstRound, minEntries, noShowOutcome, placementFor, playersPerEntry, prizes, roundCount, TOURNAMENT,
-  tournamentRules, validateTournament, validateTournamentEdit, type Seeding, type TournamentEdit, type TournamentMode,
+  afterFeeders, bracketSize, checkInOpen, drawFirstRound, minEntries, noShowOutcome, pairPartners, placementFor, playersPerEntry, prizes, roundCount, TOURNAMENT,
+  tournamentRules, validateTournament, validateTournamentEdit, type PartnerMatching, type Seeding, type TournamentEdit, type TournamentMode,
 } from '../_shared/tournament.ts';
 import { canUse, chipPrice, lookById } from '../_shared/cosmetics.ts';
 import { pickWeighted, sponsorMatches, validateSponsor } from '../_shared/sponsors.ts';
@@ -79,6 +79,8 @@ interface TournamentDb {
   reminded: number;
   /** How the first round is matched (migration 20261014000000). */
   seeding: Seeding;
+  /** How solo 2v2 entrants receive partners (migration 20261019000000). */
+  partner_matching: PartnerMatching;
   /** Migration 20261016000000: public = listed for anyone to join; official = made by an admin, who doesn't play. */
   visibility: 'private' | 'public';
   official: boolean;
@@ -639,17 +641,25 @@ async function startTournament(tx: Tx, t: TournamentDb, by: 'host' | 'clock' | '
   }
   let entries = await entriesOf(tx, t.id);
   if (t.mode === '2v2') {
-    const solo = entries.filter((e) => !e.player2).sort(() => Math.random() - 0.5);
-    // With an odd number the one at the front sits out — never the host.
-    if (solo.length % 2 && solo[0].player1 === t.host) solo.push(solo.shift()!);
-    while (solo.length >= 2) {
-      const [a, b] = [solo.pop()!, solo.pop()!];
+    const solo = entries.filter((e) => !e.player2);
+    const xp = solo.length ? await tx<{ id: string; xp: number }[]>`
+      select id, coalesce(xp, 0)::int as xp from profiles where id in ${tx(solo.map((e) => e.player1))}` : [];
+    const protectedEntry = solo.find((e) => e.player1 === t.host)?.id;
+    const matched = pairPartners(solo.map((e) => ({
+      id: e.id,
+      xp: Number(xp.find((p) => p.id === e.player1)?.xp ?? 0),
+    })), t.partner_matching ?? 'random', protectedEntry);
+    const byEntry = new Map(solo.map((e) => [e.id, e]));
+    for (const [pa, pb] of matched.pairs) {
+      const a = byEntry.get(pa.id)!;
+      const b = byEntry.get(pb.id)!;
       await tx`delete from tournament_entries where id = ${b.id}`;
       await tx`update tournament_entries set player2 = ${b.player1} where id = ${a.id}`;
     }
-    if (solo.length) {
-      await removeFromTournament(tx, t, solo[0], solo[0].player1);
-      dropped.push(solo[0].player1);
+    if (matched.leftover) {
+      const left = byEntry.get(matched.leftover.id)!;
+      await removeFromTournament(tx, t, left, left.player1);
+      dropped.push(left.player1);
     }
     entries = await entriesOf(tx, t.id);
   }
@@ -1298,10 +1308,10 @@ export const handlers = {
       let t: TournamentDb | undefined;
       for (let i = 0; i < 8 && !t; i++) {
         [t] = await tx<TournamentDb[]>`
-          insert into tournaments (code, name, host, mode, size, buy_in, rules, turn_seconds, seeding,
+          insert into tournaments (code, name, host, mode, size, buy_in, rules, turn_seconds, seeding, partner_matching,
                                    visibility, official, featured, prize, pot, description)
           values (${roomCode(Math.random, TOURNAMENT.codeLength)}, ${s.name}, ${uid}, ${s.mode}, ${s.size}, ${s.buyIn},
-                  ${tx.json(tournamentRules(s) as never)}, ${s.turnSeconds}, ${s.seeding ?? 'random'},
+                  ${tx.json(tournamentRules(s) as never)}, ${s.turnSeconds}, ${s.seeding ?? 'random'}, ${s.partnerMatching ?? 'random'},
                   ${visibility}, ${official}, ${official && !!s.featured}, ${prize}, ${prize}, ${official ? s.description ?? null : null})
           on conflict (code) do nothing returning *`;
       }
@@ -1336,6 +1346,7 @@ export const handlers = {
     return {
       id: t.id, code: t.code, name: t.name, mode: t.mode, size: t.size, buyIn: t.buy_in, phase: t.phase,
       target: t.rules.target, host: t.official ? 'Capicúa' : host?.display_name ?? '', pot: Number(t.pot), seeding: t.seeding ?? 'random',
+      partnerMatching: t.partner_matching ?? 'random',
       startsAt: t.starts_at ? new Date(t.starts_at).toISOString() : null,
       turnSeconds: t.turn_seconds, visibility: t.visibility ?? 'private', official: !!t.official,
       prize: Number(t.prize ?? 0), description: t.description ?? null,
@@ -1468,6 +1479,10 @@ export const handlers = {
         await tx`update tournaments set seeding = ${c.seeding} where id = ${t.id}`;
         // Players' picks only count in a 'pick' tournament (an admin's fixed matches stay).
         if (c.seeding !== 'pick') await tx`delete from tournament_pairs where tournament_id = ${t.id} and set_by = 'player'`;
+      }
+      if (c.partnerMatching && c.partnerMatching !== t.partner_matching) {
+        if (t.mode !== '2v2') throw new HttpError(400, 'bad_settings');
+        await tx`update tournaments set partner_matching = ${c.partnerMatching} where id = ${t.id}`;
       }
       if (c.visibility && c.visibility !== t.visibility) {
         if (t.official) throw new HttpError(409, 'official_is_public');

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  afterFeeders, bracketSize, checkInOpen, drawFirstRound, firstRound, keptPairs, minEntries, nextMatch, noShowOutcome, placementFor, prizes, roundCount, seedOrder, stage, TOURNAMENT, validateTournament, validateTournamentEdit,
+  afterFeeders, bracketSize, checkInOpen, drawFirstRound, firstRound, keptPairs, minEntries, nextMatch, noShowOutcome, pairPartners, placementFor, prizes, roundCount, seedOrder, stage, TOURNAMENT, validateTournament, validateTournamentEdit,
 } from '../supabase/functions/_shared/tournament.ts';
 import { roomCode, voiceRoomFor } from '../supabase/functions/_shared/table.ts';
 
@@ -144,6 +144,12 @@ describe('settings', () => {
     expect(validateTournament({ ...ok, visibility: 'secret' as 'public' })).toBeNull();
   });
 
+  it('lets 2v2 hosts choose random or XP-balanced partners', () => {
+    expect(validateTournament({ ...ok, partnerMatching: 'random' })?.partnerMatching).toBe('random');
+    expect(validateTournament({ ...ok, partnerMatching: 'balanced' })?.partnerMatching).toBe('balanced');
+    expect(validateTournament({ ...ok, partnerMatching: 'captains' as never })).toBeNull();
+  });
+
   it('official ones are always public and may carry a house prize, a description and a home spot', () => {
     expect(validateTournament({ ...ok, official: true, visibility: 'private', prize: 10_000, description: '  Sábado   de dominó ', featured: true }))
       .toMatchObject({ official: true, visibility: 'public', prize: 10_000, description: 'Sábado de dominó', featured: true });
@@ -164,6 +170,30 @@ describe('settings', () => {
   it('tournament codes are 5 letters (tables are 4), and the whole table can talk', () => {
     expect(roomCode(Math.random, 5)).toMatch(/^[A-HJ-NP-Z]{5}$/);
     expect(voiceRoomFor('tournament', '2v2', 'ABCD', 1)).toBe('capicua-ABCD');
+  });
+});
+
+describe('forming 2v2 partners', () => {
+  const e = (id: string, xp: number) => ({ id, xp });
+
+  it('balances teams by pairing the highest XP player with the lowest', () => {
+    const players = [e('a', 1000), e('b', 800), e('c', 300), e('d', 100)];
+    const result = pairPartners(players, 'balanced');
+    expect(result.pairs.map(([a, b]) => [a.id, b.id])).toEqual([['a', 'd'], ['b', 'c']]);
+    expect(result.leftover).toBeNull();
+  });
+
+  it('random pairing still uses every entrant exactly once', () => {
+    const players = [e('a', 1000), e('b', 800), e('c', 300), e('d', 100), e('e', 50)];
+    const result = pairPartners(players, 'random', undefined, seeded(9));
+    expect([...result.pairs.flat(), result.leftover!].map((x) => x.id).sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('does not leave the host outside when the solo count is odd', () => {
+    const players = [e('a', 1000), e('host', 700), e('b', 500), e('c', 300), e('d', 100)];
+    const result = pairPartners(players, 'balanced', 'host');
+    expect(result.leftover?.id).not.toBe('host');
+    expect(result.pairs.flat().some((x) => x.id === 'host')).toBe(true);
   });
 });
 
@@ -223,8 +253,8 @@ describe('how the first round is matched', () => {
 describe('editing before the start', () => {
   const now = Date.now();
   it('the host changes name, start time (or clears it), target, timer and matching', () => {
-    expect(validateTournamentEdit({ name: '  Copa   nueva ', target: 150, turnSeconds: 40, seeding: 'xp' }, false, now))
-      .toEqual({ name: 'Copa nueva', target: 150, turnSeconds: 40, seeding: 'xp' });
+    expect(validateTournamentEdit({ name: '  Copa   nueva ', target: 150, turnSeconds: 40, seeding: 'xp', partnerMatching: 'balanced' }, false, now))
+      .toEqual({ name: 'Copa nueva', target: 150, turnSeconds: 40, seeding: 'xp', partnerMatching: 'balanced' });
     expect(validateTournamentEdit({ startsAt: now + 60 * 60_000 }, false, now)).toEqual({ startsAt: now + 60 * 60_000 });
     expect(validateTournamentEdit({ startsAt: null }, false, now)).toEqual({ startsAt: null });
   });
@@ -232,6 +262,7 @@ describe('editing before the start', () => {
     expect(validateTournamentEdit({ startsAt: now + 60_000 }, false, now)).toBeNull();
     expect(validateTournamentEdit({ target: 123 }, false, now)).toBeNull();
     expect(validateTournamentEdit({ seeding: 'vip' as never }, false, now)).toBeNull();
+    expect(validateTournamentEdit({ partnerMatching: 'captains' as never }, false, now)).toBeNull();
     expect(validateTournamentEdit({ size: 16 }, false, now)).toBeNull();
     expect(validateTournamentEdit({ size: 16 }, true, now)).toEqual({ size: 16 });
     expect(validateTournamentEdit({}, true, now)).toBeNull();

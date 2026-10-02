@@ -5,7 +5,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import {
   bracketSize, checkInOpen, drawFirstRound, stage, TOURNAMENT, TOURNAMENT_SIZES, playersPerEntry,
-  type Seeding, type TournamentEdit, type TournamentSettings, type Visibility,
+  type PartnerMatching, type Seeding, type TournamentEdit, type TournamentSettings, type Visibility,
 } from '../../supabase/functions/_shared/tournament.ts';
 import { useI18n, type Strings } from '../i18n';
 import { api, type Profile } from '../lib/supabase';
@@ -94,7 +94,8 @@ export function TournamentForm({ profile, guest, official = false, onBack, onCre
   const { t, lang } = useI18n();
   const errText = useErrorText();
   const [s, setS] = useState<TournamentSettings>(() => ({
-    name: '', mode: '1v1', size: 8, buyIn: guest || official ? 0 : 500, target: 100, turnSeconds: 25, seeding: 'random', visibility: 'private',
+    name: '', mode: '1v1', size: 8, buyIn: guest || official ? 0 : 500, target: 100, turnSeconds: 25,
+    seeding: 'random', partnerMatching: 'random', visibility: 'private',
     ...(official ? { official: true, visibility: 'public' as const, prize: 0, description: '', featured: true } : {}),
   }));
   // When it starts: minutes from now, or 'custom' with the time typed in.
@@ -136,7 +137,9 @@ export function TournamentForm({ profile, guest, official = false, onBack, onCre
           <VisibilityPicker value={s.visibility ?? 'private'} onChange={(v) => set('visibility', v)} />
         )}
         <label className="label">{t.modeLbl}</label>
-        <Seg value={s.mode} options={[['1v1', t.modes['1v1'].name], ['2v2', t.modes['2v2'].name]]} onChange={(v) => set('mode', v)} />
+        <Seg value={s.mode} options={[['1v1', t.modes['1v1'].name], ['2v2', t.modes['2v2'].name]]}
+          onChange={(v) => setS((x) => ({ ...x, mode: v, partnerMatching: v === '2v2' ? x.partnerMatching ?? 'random' : 'random' }))} />
+        {s.mode === '2v2' && <PartnerMatchingPicker value={s.partnerMatching ?? 'random'} onChange={(v) => set('partnerMatching', v)} />}
         <label className="label">{t.tour.sizeLbl}</label>
         <Seg value={s.size} options={TOURNAMENT_SIZES.map((n) => [n, `${n} ${unit}`] as [TournamentSettings['size'], string])} onChange={(v) => set('size', v)} />
         <label className="label">{t.tour.buyInLbl}</label>
@@ -373,6 +376,7 @@ export function TournamentView(p: TournamentViewProps) {
           <span className={`phase-chip ${tour.phase}`}>{t.tour.phase[tour.phase]}</span>
           {!tour.official && <span>{t.tour.vis[tour.visibility ?? 'private']}</span>}
           <span>{t.modes[tour.mode].name}</span>
+          {tour.mode === '2v2' && <span>{t.tour.partnerChip[tour.partner_matching ?? 'random']}</span>}
           <span>{t.targetLbl} {tour.rules.target}</span>
           <span>{tour.buy_in ? `🪙 ${tour.buy_in.toLocaleString()}` : t.free}</span>
           <span>⏱ {tour.turn_seconds}s</span>
@@ -427,7 +431,7 @@ export function TournamentView(p: TournamentViewProps) {
               </div>
             ))}
           </section>
-          {tour.mode === '2v2' && <p className="fine">{t.tour.soloNote}</p>}
+          {tour.mode === '2v2' && <p className="fine">{t.tour.partnerHint[tour.partner_matching ?? 'random']}</p>}
           <MatchupsPanel tour={tour} entries={entries} pairs={p.pairs ?? []} xp={p.xp ?? {}} mine={mine} admin={admin} busy={p.busy}
             label={label} onPair={p.onPair} onUnpair={p.onUnpair} />
           {canManage && p.onEdit && <button className="btn ghost wide" onClick={() => setEditing(true)}>✏️ {t.tour.edit}</button>}
@@ -590,6 +594,18 @@ function SeedingPicker({ value, onChange }: { value: Seeding; onChange: (v: Seed
   );
 }
 
+/** How the server forms teams from solo sign-ups in a 2v2 tournament. */
+function PartnerMatchingPicker({ value, onChange }: { value: PartnerMatching; onChange: (v: PartnerMatching) => void }) {
+  const { t } = useI18n();
+  return (
+    <>
+      <label className="label">{t.tour.partnerLbl}</label>
+      <Seg value={value} options={[['random', t.tour.partner.random], ['balanced', t.tour.partner.balanced]]} onChange={onChange} />
+      <p className="fine left">{t.tour.partnerHint[value]}</p>
+    </>
+  );
+}
+
 /** Before the start: the host edits the settings (never the matches); an admin also the size. */
 function EditTournamentSheet({ tour, admin, busy, onSave, onClose }: {
   tour: TournamentRow; admin: boolean; busy?: boolean; onSave: (c: TournamentEdit) => void; onClose: () => void;
@@ -599,6 +615,7 @@ function EditTournamentSheet({ tour, admin, busy, onSave, onClose }: {
   const [target, setTarget] = useState(tour.rules.target);
   const [turn, setTurn] = useState(tour.turn_seconds);
   const [seeding, setSeeding] = useState<Seeding>(tour.seeding ?? 'random');
+  const [partnerMatching, setPartnerMatching] = useState<PartnerMatching>(tour.partner_matching ?? 'random');
   const [size, setSize] = useState(tour.size as TournamentSettings['size']);
   const [visibility, setVisibility] = useState<Visibility>(tour.visibility ?? 'private');
   const [prize, setPrize] = useState(tour.prize ?? 0);
@@ -616,6 +633,7 @@ function EditTournamentSheet({ tour, admin, busy, onSave, onClose }: {
     if (target !== tour.rules.target) c.target = target;
     if (turn !== tour.turn_seconds) c.turnSeconds = turn;
     if (seeding !== (tour.seeding ?? 'random')) c.seeding = seeding;
+    if (tour.mode === '2v2' && partnerMatching !== (tour.partner_matching ?? 'random')) c.partnerMatching = partnerMatching;
     if (admin && size !== tour.size) c.size = size;
     if (!tour.official && visibility !== (tour.visibility ?? 'private')) c.visibility = visibility;
     if (admin && tour.official && prize !== tour.prize) c.prize = prize;
@@ -662,6 +680,7 @@ function EditTournamentSheet({ tour, admin, busy, onSave, onClose }: {
         <label className="label">{t.turnTimerLbl}</label>
         <Seg value={turn} options={[[15, '15s'], [25, '25s'], [40, '40s']]} onChange={setTurn} />
         <SeedingPicker value={seeding} onChange={setSeeding} />
+        {tour.mode === '2v2' && <PartnerMatchingPicker value={partnerMatching} onChange={setPartnerMatching} />}
         {admin && (
           <>
             <label className="label">🛡️ {t.tour.sizeLbl}</label>
@@ -837,6 +856,7 @@ export function TournamentInvite({ peek, busy, onJoin }: { peek: TournamentPeek;
           <span className={`phase-chip ${peek.phase}`}>{t.tour.phase[peek.phase]}</span>
           {peek.visibility && !peek.official && <span>{t.tour.vis[peek.visibility]}</span>}
           <span>{t.modes[peek.mode].name}</span>
+          {peek.mode === '2v2' && <span>{t.tour.partnerChip[peek.partnerMatching ?? 'random']}</span>}
           <span>{t.targetLbl} {peek.target}</span>
           <span>{peek.buyIn ? `🪙 ${peek.buyIn.toLocaleString()}` : t.free}</span>
           {peek.turnSeconds && <span>⏱ {peek.turnSeconds}s</span>}

@@ -463,7 +463,7 @@ function Screen({ s }: { s: string }) {
       id: 't1', code: 'KXQTB', name: 'Copa del barrio', host: 'me', mode: '1v1', size: 8, buy_in: 500, rules: publicRules('1v1'),
       turn_seconds: 25, phase, rounds: phase === 'lobby' ? null : 3, pot: 2500, champion: phase === 'finished' ? 'e0' : null,
       starts_at: scheduled || lobbyish ? new Date(Date.now() + (s === 'tournament-scheduled' || lobbyish ? 95 : 9) * 60_000).toISOString() : null, cancel_reason: null,
-      seeding, visibility: official ? 'public' : 'private', official, featured: official, prize: official ? 10_000 : 0,
+      seeding, partner_matching: 'random', visibility: official ? 'public' : 'private', official, featured: official, prize: official ? 10_000 : 0,
       description: official ? 'El torneo del mes: el campeón se lleva el trofeo de octubre.' : null,
     };
     const xp = { me: 1_240, y: 6_200, r: 380, k: 2_100, c: 90 } as Record<string, number>;
