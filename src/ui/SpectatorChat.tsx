@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   CaretDownIcon, CaretUpIcon, ChatCircleDotsIcon, FireIcon, HandsClappingIcon,
   PaperPlaneTiltIcon, ShareNetworkIcon, SmileyIcon, UsersThreeIcon,
@@ -86,7 +86,10 @@ export function SpectatorChatDock({ watchers, count, uid, messages, onSend, read
   const [profileId, setProfileId] = useState<string | null>(null);
   const ids = useMemo(() => authorIds(messages), [messages]);
   const stats = usePlayerStats(ids);
-  const latest = messages.slice(-2);
+  const messageList = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!collapsed) messageList.current?.scrollTo({ top: messageList.current.scrollHeight });
+  }, [collapsed, messages.length]);
   const send = async (body: string) => {
     if (!onSend || !body.trim() || busy) return;
     setBusy(true);
@@ -135,8 +138,8 @@ export function SpectatorChatDock({ watchers, count, uid, messages, onSend, read
         <UsersThreeIcon size={18} aria-hidden />
         <span>{t.spec.watchingCount.replace('{n}', String(count ?? watchers.length))}</span>
       </button>
-      <div className="spectator-chat-messages" aria-live="polite">
-        {latest.length === 0 ? <p className="spectator-chat-empty">{t.spec.noMessages}</p> : latest.map((m) => (
+      <div ref={messageList} className="spectator-chat-messages" aria-live="polite">
+        {messages.length === 0 ? <p className="spectator-chat-empty">{t.spec.noMessages}</p> : messages.map((m) => (
           <SpectatorMessageRow key={m.id} message={m} mine={m.user_id === uid} profile={stats[m.user_id]} onAuthor={setProfileId} />
         ))}
       </div>
@@ -173,7 +176,10 @@ export function SpectatorChatPreview({ count, uid, messages, collapsed, unread =
   const [profileId, setProfileId] = useState<string | null>(null);
   const ids = useMemo(() => authorIds(messages), [messages]);
   const stats = usePlayerStats(ids);
-  const latest = messages.slice(-2);
+  const messageList = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!collapsed) messageList.current?.scrollTo({ top: messageList.current.scrollHeight });
+  }, [collapsed, messages.length]);
   const root = useRef<HTMLElement>(null);
   return (
     <section ref={root} className={`spectator-chat-preview ${collapsed ? 'collapsed' : ''}`} aria-label={t.spec.audienceChat}>
@@ -193,8 +199,8 @@ export function SpectatorChatPreview({ count, uid, messages, collapsed, unread =
           {collapsed ? <CaretUpIcon size={18} /> : <CaretDownIcon size={18} />}
         </button>
       </header>
-      {!collapsed && <div className="spectator-preview-messages">
-        {latest.length === 0 ? <p className="spectator-chat-empty">{t.spec.noMessages}</p> : latest.map((m) => (
+      {!collapsed && <div ref={messageList} className="spectator-preview-messages" aria-live="polite">
+        {messages.length === 0 ? <p className="spectator-chat-empty">{t.spec.noMessages}</p> : messages.map((m) => (
           <SpectatorMessageRow key={m.id} message={m} mine={m.user_id === uid} profile={stats[m.user_id]} onAuthor={setProfileId} compact />
         ))}
       </div>}
