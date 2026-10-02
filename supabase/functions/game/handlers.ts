@@ -1432,9 +1432,13 @@ export const handlers = {
     return await sql.begin(async (tx) => {
       const t = await lockTournament(tx, id);
       const host = t.host === uid;
-      if (!host && !(await isAdmin(tx, uid))) throw new HttpError(403, 'host_only');
+      const admin = await isAdmin(tx, uid);
+      if (!host && !admin) throw new HttpError(403, 'host_only');
       if (t.phase !== 'lobby') throw new HttpError(409, 'tournament_started');
-      await startTournament(tx, t, host ? 'host' : 'admin');
+      // Official tournaments are created by an admin who is also stored as the host. Keep the
+      // admin override in that case; otherwise the organizer is incorrectly forced through the
+      // player check-in gate even though they are not one of the competitors.
+      await startTournament(tx, t, admin ? 'admin' : 'host');
       return { ok: true };
     });
   },
