@@ -8,6 +8,34 @@ const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 export const onlineEnabled = Boolean(url && key);
 export const supabase = onlineEnabled ? createClient(url!, key!) : (null as never);
 
+export interface AuthProviders {
+  apple: boolean;
+}
+
+const noAuthProviders: AuthProviders = { apple: false };
+
+/**
+ * Social providers enabled in Supabase. This endpoint is public by design and lets
+ * the sign-in screen avoid offering a provider before its credentials are ready.
+ */
+export async function getAuthProviders(): Promise<AuthProviders> {
+  if (!onlineEnabled) return noAuthProviders;
+  try {
+    const response = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: key! } });
+    if (!response.ok) return noAuthProviders;
+    const settings = await response.json() as { external?: { apple?: boolean } };
+    return { apple: settings.external?.apple === true };
+  } catch {
+    return noAuthProviders;
+  }
+}
+
+export function useAuthProviders() {
+  const [providers, setProviders] = useState<AuthProviders>(noAuthProviders);
+  useEffect(() => { void getAuthProviders().then(setProviders); }, []);
+  return providers;
+}
+
 export class ApiError extends Error {
   code: string;
   constructor(code: string) {
@@ -50,7 +78,7 @@ export function keptAuthParams(search: string): string {
   return keep.toString();
 }
 
-/** Where Google sends the player back: this page, with only what keptAuthParams keeps. */
+/** Where a social provider sends the player back, with only what keptAuthParams keeps. */
 export function authReturnUrl() {
   const qs = keptAuthParams(location.search);
   return `${location.origin}${location.pathname}${qs ? `?${qs}` : ''}`;

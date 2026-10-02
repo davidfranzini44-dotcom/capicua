@@ -452,6 +452,8 @@ const dict = {
     // online
     signInTitle: 'Entra para jugar con tus panas',
     google: 'Entrar con Google',
+    apple: 'Continuar con Apple',
+    authFailed: 'No se pudo iniciar sesión. Inténtalo de nuevo.',
     guest: 'Jugar como invitado',
     guestNote: 'Como invitado solo juegas mesas sin apuesta. Para jugar por chelitos, entra con Google.',
     whatsapp: 'Entrar con WhatsApp',
@@ -1262,6 +1264,8 @@ const dict = {
     // online
     signInTitle: 'Sign in to play with friends',
     google: 'Continue with Google',
+    apple: 'Continue with Apple',
+    authFailed: 'Could not sign in. Please try again.',
     guest: 'Play as guest',
     guestNote: 'Guests only play free tables. To play for chips, continue with Google.',
     whatsapp: 'Continue with WhatsApp',

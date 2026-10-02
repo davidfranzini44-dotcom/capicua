@@ -1,9 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { AppleLogoIcon } from '@phosphor-icons/react';
 import type { Mode, Ruleset } from '../../supabase/functions/_shared/domino.ts';
 import { BONUS_POINTS, botsAllowed, CHIPS, customBotsAllowed, levelFromXp, MODES, REGLAS, TURN_SECONDS, xpForLevel, type CustomSettings } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { forgetTable, lastTable } from '../lib/lastTable';
-import { api, ApiError, authReturnUrl, canClaimDaily, needsName, onlineEnabled, reloadProfile, supabase, useProfile, useSession, type Profile } from '../lib/supabase';
+import { api, ApiError, authReturnUrl, canClaimDaily, needsName, onlineEnabled, reloadProfile, supabase, useAuthProviders, useProfile, useSession, type Profile } from '../lib/supabase';
 import { fitName, NAME_MAX, nextRename, RENAME_DAYS } from '../lib/names';
 import { NameEditor } from './NameEditor';
 import { usePlayerStats } from '../lib/useRoom';
@@ -774,11 +775,23 @@ function RankingTab({ me }: { me: string }) {
 function SignIn({ onBack }: { onBack: () => void }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
-  const google = () => supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: authReturnUrl() } });
+  const [error, setError] = useState(false);
+  const providers = useAuthProviders();
+  const social = async (provider: 'google' | 'apple') => {
+    setBusy(true);
+    setError(false);
+    const { error: authError } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: authReturnUrl() } });
+    if (authError) {
+      setBusy(false);
+      setError(true);
+    }
+  };
   const guest = async () => {
     setBusy(true);
-    await supabase.auth.signInAnonymously();
+    setError(false);
+    const { error: authError } = await supabase.auth.signInAnonymously();
     setBusy(false);
+    setError(!!authError);
   };
   return (
     <div className="screen">
@@ -786,12 +799,19 @@ function SignIn({ onBack }: { onBack: () => void }) {
       <h1 className="logo small">Capicúa</h1>
       <h2 className="screen-title">{t.signInTitle}</h2>
       <div className="menu">
-        <button className="btn primary big-btn" onClick={google}>{t.google}</button>
+        <button className="btn primary big-btn" onClick={() => social('google')} disabled={busy}>{t.google}</button>
+        {providers.apple && (
+          <button className="btn big-btn apple-signin" onClick={() => social('apple')} disabled={busy}>
+            <AppleLogoIcon size={24} weight="fill" aria-hidden />
+            <span>{t.apple}</span>
+          </button>
+        )}
         <button className="btn ghost big-btn" disabled>
           {t.whatsapp}
           <small className="soon">{t.soon}</small>
         </button>
         <button className="btn ghost big-btn" onClick={guest} disabled={busy}>{t.guest}</button>
+        {error && <p className="error" role="alert">{t.authFailed}</p>}
         <p className="fine">{t.guestNote}</p>
       </div>
     </div>
