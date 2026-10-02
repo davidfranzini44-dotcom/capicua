@@ -15,7 +15,7 @@ import {
   type GameState, type Mode, type Move, type Rules, type Ruleset, type Seat,
 } from '../_shared/domino.ts';
 import {
-  arcadeAllowed, autoAction, autoDelay, botsAllowed, CHEST_SLOTS, chestReward, CHESTS, CHIPS, customRules, effectiveStake, rollChest, rushCost, gameXp, LEAVER_XP, levelFromXp, LOBBY, matchRules, MAX_STRIKES,
+  arcadeAllowed, autoAction, autoDelay, botsAllowed, CHEST_SLOTS, chestReward, CHESTS, CHIPS, customMinHumans, customRules, effectiveStake, hasHumanOpponents, rollChest, rushCost, gameXp, LEAVER_XP, levelFromXp, LOBBY, matchRules, MAX_STRIKES,
   MIN_PEOPLE_FOR_BOT_FILL, minHumans, MODES, needsReadyCheck, payouts, publicState, rivalBonus, roomCode, rulesetOf, RULESETS, salaFor, seatsNeeded, SIDE_BET_KINDS,
   sideBetLimit, sideBetMultiplier, sideBetWon, TURN_SECONDS, validateCustom, voiceRoomFor,
   type ChestKind, type SeatInfo, type SideBetKind,
@@ -114,6 +114,10 @@ interface GameDb {
 const toSeatInfo = (r: SeatRow): SeatInfo => ({ seat: r.seat as Seat, userId: r.user_id, name: r.name, isBot: r.is_bot, away: r.away });
 const humansOf = (seats: SeatRow[]) => seats.filter((s) => !s.is_bot && s.user_id);
 const later = (ms: number) => sql`now() + ${ms} * interval '1 millisecond'`;
+const humansNeeded = (room: RoomDb) => room.kind === 'custom' ? customMinHumans(room.mode, room.stake) : minHumans(room.mode, room.stake);
+const enoughHumans = (room: RoomDb, seats: SeatRow[]) =>
+  humansOf(seats).length >= humansNeeded(room)
+  && (room.kind !== 'custom' || room.stake === 0 || room.mode !== '2v2' || hasHumanOpponents(room.mode, seats.map(toSeatInfo)));
 
 async function lockRoom(tx: Tx, roomId: string) {
   const [room] = await tx<RoomDb[]>`
@@ -362,7 +366,9 @@ async function breakUpTable(tx: Tx, room: RoomDb, seats: SeatRow[], decliners: s
 // ---------- games ----------
 
 async function startGame(tx: Tx, room: RoomDb, seats: SeatRow[]) {
-  if (humansOf(seats).length < minHumans(room.mode, room.stake)) throw new HttpError(409, `need_players:${minHumans(room.mode, room.stake)}`);
+  const needed = humansNeeded(room);
+  if (humansOf(seats).length < needed) throw new HttpError(409, `need_players:${needed}`);
+  if (!enoughHumans(room, seats)) throw new HttpError(409, 'need_opponents');
   const names = BOT_NAMES.filter((n) => !seats.some((s) => s.name === n));
   const humanLevels = humansOf(seats).map((s) => s.level);
   const botLevel = humanLevels.length ? Math.round(humanLevels.reduce((a, b) => a + b, 0) / humanLevels.length) : 1;
@@ -553,7 +559,7 @@ async function roomDeadline(tx: Tx, room: RoomDb, seats: SeatRow[]) {
     return { phase: 'closed' };
   }
   if (room.phase === 'countdown') {
-    if (humansOf(seats).length < minHumans(room.mode, room.stake)) {
+    if (!enoughHumans(room, seats)) {
       await tx`update rooms set phase = 'lobby', phase_ends_at = null, updated_at = now() where id = ${room.id}`;
       return { phase: 'lobby' };
     }
@@ -1014,8 +1020,9 @@ export const handlers = {
       const { room, seats } = await lockRoom(tx, roomId);
       if (room.host !== uid) throw new HttpError(403, 'host_only');
       if (room.phase !== 'lobby') throw new HttpError(409, 'game_in_progress');
-      const needed = minHumans(room.mode, room.stake);
+      const needed = humansNeeded(room);
       if (humansOf(seats).length < needed) throw new HttpError(409, `need_players:${needed}`);
+      if (!enoughHumans(room, seats)) throw new HttpError(409, 'need_opponents');
       if (!humansOf(seats).every((s) => s.ready || s.user_id === uid)) throw new HttpError(409, 'not_everyone_ready');
       await tx`update rooms set phase = 'countdown', phase_ends_at = ${later(LOBBY.allReadyMs)}, updated_at = now() where id = ${room.id}`;
       return { ok: true };

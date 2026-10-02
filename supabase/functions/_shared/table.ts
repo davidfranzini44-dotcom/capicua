@@ -198,9 +198,9 @@ const humanSides = (mode: Mode, seats: SeatInfo[]) =>
   new Set(seats.filter((x) => !x.isBot && x.userId).map((x) => sideOf(mode, x.seat)));
 
 /**
- * Who has to be a real person. With chips on the line, 1v1 and 2v2 are
- * people-only (a bot partner or opponent would decide someone's money), and a
- * free-for-all needs at least two people. Free tables can fill up with bots.
+ * Public matchmaking requirements. With chips on the line, 1v1 and 2v2 are
+ * people-only; a free-for-all needs at least two people. Free tables can fill
+ * up with bots.
  */
 export function minHumans(mode: Mode, stake: number): number {
   if (stake === 0) return 1;
@@ -208,9 +208,22 @@ export function minHumans(mode: Mode, stake: number): number {
 }
 export const botsAllowed = (mode: Mode, stake: number) => minHumans(mode, stake) < playerCount(mode);
 
+/**
+ * A custom 2v2 table may be a head-to-head challenge where each real player
+ * gets a bot partner. Public chip matchmaking remains people-only.
+ */
+export function customMinHumans(mode: Mode, stake: number): number {
+  if (mode === '2v2' && stake > 0) return 2;
+  return minHumans(mode, stake);
+}
+export const customBotsAllowed = (mode: Mode, stake: number) => customMinHumans(mode, stake) < playerCount(mode);
+
+/** A chip game needs a real person on at least two opposing sides. */
+export const hasHumanOpponents = (mode: Mode, seats: SeatInfo[]) => humanSides(mode, seats).size >= 2;
+
 /** Chips only move between humans: no bet unless at least two sides have a person. */
 export function effectiveStake(mode: Mode, stake: number, seats: SeatInfo[]): number {
-  return humanSides(mode, seats).size >= 2 ? stake : 0;
+  return hasHumanOpponents(mode, seats) ? stake : 0;
 }
 
 export interface Payout {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyMove, CLASSIC_DR, newGame, type Mode, type Seat } from '../supabase/functions/_shared/domino.ts';
 import { chooseMove } from '../supabase/functions/_shared/bot.ts';
 import {
-  autoAction, autoDelay, botsAllowed, chestReward, CHESTS, effectiveStake, packFor, rollChest, rushCost, salaFor, gameXp, levelFromXp, levelTitle, minHumans, needsReadyCheck, payouts, publicState, roomCode,
+  autoAction, autoDelay, botsAllowed, chestReward, CHESTS, customBotsAllowed, customMinHumans, effectiveStake, hasHumanOpponents, packFor, rollChest, rushCost, salaFor, gameXp, levelFromXp, levelTitle, minHumans, needsReadyCheck, payouts, publicState, roomCode,
   rivalBonus, sideBetMultiplier, sideBetWon, TIMING, validateCustom, voiceRoomFor, xpForLevel, type SeatInfo,
   customRules, publicRules,
 } from '../supabase/functions/_shared/table.ts';
@@ -128,7 +128,7 @@ describe('levels & matchmaking', () => {
     ])).toBe(15);
   });
 
-  it('bet tables: 1v1/2v2 people only, ffa needs 2 people, free tables can use bots', () => {
+  it('public bet tables: 1v1/2v2 people only, ffa needs 2 people, free tables can use bots', () => {
     expect(minHumans('2v2', 500)).toBe(4);
     expect(minHumans('1v1', 500)).toBe(2);
     expect(minHumans('ffa', 500)).toBe(2);
@@ -137,6 +137,20 @@ describe('levels & matchmaking', () => {
     expect(botsAllowed('ffa', 500)).toBe(true);
     expect(minHumans('2v2', 0)).toBe(1);
     expect(botsAllowed('2v2', 0)).toBe(true);
+  });
+
+  it('private 2v2 tables let two rivals play for chips with one bot partner each', () => {
+    const rivals = [human(0, 'a'), human(1, 'b')];
+    const partners = [human(0, 'a'), bot(1), bot(2), human(3, 'b')];
+    const sameTeam = [human(0, 'a'), human(2, 'b')];
+    expect(customMinHumans('2v2', 500)).toBe(2);
+    expect(customBotsAllowed('2v2', 500)).toBe(true);
+    expect(hasHumanOpponents('2v2', rivals)).toBe(true);
+    expect(hasHumanOpponents('2v2', sameTeam)).toBe(false);
+    expect(effectiveStake('2v2', 500, partners)).toBe(500);
+    // Public matchmaking keeps requiring a complete human table.
+    expect(minHumans('2v2', 500)).toBe(4);
+    expect(botsAllowed('2v2', 500)).toBe(false);
   });
 
   it('friendly matchmaking is stake 0, open to any balance', () => {

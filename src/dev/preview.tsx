@@ -956,7 +956,8 @@ function Screen({ s }: { s: string }) {
     const r = data({
       room: room({ kind: 'custom', phase: 'lobby', phase_ends_at: null, host: 'me', stake: 750, turn_seconds: 25,
         rules: { mode: '2v2', target: 200, capicuaBonus: 25, paseCorridoBonus: 0 } }),
-      seats: [seat(0, 'Wilfri', 4, { ready: true }), seat(1, 'Robert', 6, { ready: true }), seat(3, 'Kirsy', 2)],
+      // Two invited rivals, one per team: the two empty partner seats become bots at the start.
+      seats: [seat(0, 'Wilfri', 4, { ready: true }), seat(1, 'Robert', 6, { ready: true })],
     });
     return <Pregame r={r} uid="me" profile={profile} voice={null} onLeave={noop} />;
   }

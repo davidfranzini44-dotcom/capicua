@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Mode, Ruleset } from '../../supabase/functions/_shared/domino.ts';
-import { BONUS_POINTS, botsAllowed, CHIPS, levelFromXp, MODES, REGLAS, TURN_SECONDS, xpForLevel, type CustomSettings } from '../../supabase/functions/_shared/table.ts';
+import { BONUS_POINTS, botsAllowed, CHIPS, customBotsAllowed, levelFromXp, MODES, REGLAS, TURN_SECONDS, xpForLevel, type CustomSettings } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { forgetTable, lastTable } from '../lib/lastTable';
 import { api, ApiError, authReturnUrl, canClaimDaily, needsName, onlineEnabled, reloadProfile, supabase, useProfile, useSession, type Profile } from '../lib/supabase';
@@ -1031,7 +1031,9 @@ export function CustomForm({ profile, guest = false, onBack, onCreated }: { prof
         <Seg value={c.turnSeconds} options={[[15, '15s'], [25, '25s'], [40, '40s']]} onChange={(v) => set('turnSeconds', v)} />
         <label className="label">{t.visibilityLbl}</label>
         <Seg value={c.visibility} options={[['private', t.privateLbl], ['public', t.publicLbl]]} onChange={(v) => set('visibility', v)} />
-        {!arcade && c.stake > 0 && <p className="fine left people-only">{botsAllowed(c.mode, c.stake) ? t.ffaMinTwo : t.peopleOnly}</p>}
+        {!arcade && c.stake > 0 && <p className="fine left people-only">
+          {c.mode === '2v2' && customBotsAllowed(c.mode, c.stake) ? t.botPartners : botsAllowed(c.mode, c.stake) ? t.ffaMinTwo : t.peopleOnly}
+        </p>}
       </section>
       {error && <p className="error">{error}</p>}
       <button className="btn primary wide" disabled={busy || (!arcade && c.stake > profile.chips)} onClick={create}>{t.create}</button>

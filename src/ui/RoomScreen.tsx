@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { seatsOf, sideOf, type Mode, type Move, type Ruleset, type Seat } from '../../supabase/functions/_shared/domino.ts';
 import {
-  botsAllowed, minHumans, rivalBonus, SIDE_BET_KINDS, sideBetLimit, sideBetMultiplier, voiceRoomFor, type SideBetKind,
+  botsAllowed, customBotsAllowed, customMinHumans, rivalBonus, SIDE_BET_KINDS, sideBetLimit, sideBetMultiplier, voiceRoomFor, type SideBetKind,
 } from '../../supabase/functions/_shared/table.ts';
 import { useI18n } from '../i18n';
 import { OUT_OF_APP_MS, useFairPlay, type TableAlert } from '../lib/fairPlay';
@@ -194,9 +194,14 @@ export function Pregame({ r, uid, profile, voice, voiceControl, onLeave }: {
 
   const humansSeated = r.seats.filter((s) => s.user_id && !s.is_bot);
   const everyoneReady = humansSeated.every((s) => s.ready || s.user_id === room.host);
-  const enoughPeople = humansSeated.length >= minHumans(mode, room.stake);
-  const withBots = botsAllowed(mode, room.stake);
-  const seatNote = !withBots ? t.peopleOnly : room.stake > 0 ? t.ffaMinTwo : t.botsFill;
+  const requiredHumans = room.kind === 'custom' ? customMinHumans(mode, room.stake) : 1;
+  const opposingHumans = new Set(humansSeated.map((s) => sideOf(mode, s.seat))).size >= 2;
+  const enoughPeople = humansSeated.length >= requiredHumans
+    && (room.kind !== 'custom' || room.stake === 0 || mode !== '2v2' || opposingHumans);
+  const withBots = room.kind === 'custom' ? customBotsAllowed(mode, room.stake) : botsAllowed(mode, room.stake);
+  const seatNote = room.kind === 'custom' && mode === '2v2' && room.stake > 0
+    ? t.botPartners
+    : !withBots ? t.peopleOnly : room.stake > 0 ? t.ffaMinTwo : t.botsFill;
 
   // Teams (2v2 private tables, before the game): anyone hops to a free chair on the
   // other team; the host can swap any two chairs or shuffle.
